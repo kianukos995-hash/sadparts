@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { PackageSearch, RefreshCw, ShoppingCart, ClipboardList, Truck, Upload, AlertTriangle } from "lucide-react";
+import { PackageSearch, RefreshCw, ShoppingCart, ClipboardList, Wallet, Upload, AlertTriangle, Truck } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +53,10 @@ export default function HomePage() {
           <Link href="/orders" className={cn(buttonVariants({ variant: "outline" }))}>
             <ClipboardList />
             Заказы
+          </Link>
+          <Link href="/money" className={cn(buttonVariants({ variant: "outline" }))}>
+            <Wallet />
+            Деньги
           </Link>
           <Link href="/catalog" className={cn(buttonVariants({ variant: "outline" }))}>
             Каталог

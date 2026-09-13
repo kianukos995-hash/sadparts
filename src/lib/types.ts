@@ -4,6 +4,9 @@ export type AuthMode = "bearer" | "header" | "query";
 export type AdapterKind = "generic" | "demo" | "rossko";
 export type SyncStatus = "ok" | "error";
 export type OrderStatus = "draft" | "assembled" | "sent";
+export type PaymentMethod = "cash" | "card" | "cashless";
+export type MoneyDirection = "income" | "expense";
+export type BillPayStatus = "unpaid" | "partial" | "paid";
 
 export const FIELD_KEYS = [
   "sku",
@@ -200,6 +203,31 @@ export interface PublicSettings {
   telegramChats: TelegramChat[];
 }
 
+export interface MoneyMovement {
+  id: string;
+  at: string;
+  amount: number;
+  method: PaymentMethod;
+  direction: MoneyDirection;
+  counterparty: string;
+  comment: string;
+  clientId?: string;
+  orderId?: string;
+  supplierId?: string;
+  supplierBillId?: string;
+  createdAt: string;
+}
+
+export interface SupplierBill {
+  id: string;
+  number: string;
+  supplierId: string;
+  amount: number;
+  comment: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface StoreSnapshot {
   version: number;
   suppliers: Supplier[];
@@ -207,6 +235,8 @@ export interface StoreSnapshot {
   logs: SyncLog[];
   clients: Client[];
   orders: Order[];
+  moneyMovements: MoneyMovement[];
+  supplierBills: SupplierBill[];
 }
 
 export interface ParsedTable {

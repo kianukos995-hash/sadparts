@@ -1,4 +1,4 @@
-export const STORE_VERSION = 5;
+export const STORE_VERSION = 6;
 
 export const DEMO_KEYS = {
   rossko: "rk_live_demo_rossko_91f2",

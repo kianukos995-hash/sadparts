@@ -276,6 +276,8 @@ export function createInitialStore(): StoreSnapshot {
       })),
     clients: DEFAULT_CLIENTS,
     orders: [],
+    moneyMovements: [],
+    supplierBills: [],
   };
 }
 

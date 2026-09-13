@@ -8,14 +8,22 @@ import { removeCatalog } from "@/lib/file-catalog";
 import { CORE_PARTS } from "@/lib/mock-parts";
 import { createInitialStore, DEFAULT_CLIENTS } from "@/lib/seed";
 import { DEFAULT_PRICE_BANDS } from "@/lib/price-bands";
+import {
+  nextBillNumber,
+  roundCash,
+  syncOrderPaidAmounts,
+} from "@/lib/money";
 import type {
   AppSettings,
   Client,
   ImportMode,
+  MoneyMovement,
   Offer,
   Order,
+  PaymentMethod,
   StoreSnapshot,
   Supplier,
+  SupplierBill,
   SyncLog,
 } from "@/lib/types";
 import { DEFAULT_COLUMN_MAP } from "@/lib/types";
@@ -101,13 +109,68 @@ function migrateStore(store: StoreSnapshot): StoreSnapshot {
       images: offer.images?.length ? offer.images : demoPhoto ? [demoPhoto] : offer.images,
     };
   });
+  const moneyMovements = Array.isArray(store.moneyMovements)
+    ? store.moneyMovements.map(normalizeMovement)
+    : [];
+  const supplierBills = Array.isArray(store.supplierBills)
+    ? store.supplierBills.map(normalizeBill)
+    : [];
+  const orders = dedupeOrders(Array.isArray(store.orders) ? store.orders : []);
   return {
     ...store,
     version: STORE_VERSION,
     suppliers,
     offers,
     clients: Array.isArray(store.clients) ? store.clients : DEFAULT_CLIENTS,
-    orders: dedupeOrders(Array.isArray(store.orders) ? store.orders : []),
+    orders: syncOrderPaidAmounts(orders, moneyMovements),
+    moneyMovements,
+    supplierBills,
+  };
+}
+
+const PAYMENT_METHODS = new Set<PaymentMethod>(["cash", "card", "cashless"]);
+
+function normalizeMovement(item: MoneyMovement): MoneyMovement {
+  const method = PAYMENT_METHODS.has(item.method) ? item.method : "cash";
+  const direction = item.direction === "expense" ? "expense" : "income";
+  return {
+    id: item.id,
+    at: item.at || item.createdAt || new Date().toISOString(),
+    amount: roundCash(Number(item.amount) || 0),
+    method,
+    direction,
+    counterparty: item.counterparty?.trim() ?? "",
+    comment: item.comment?.trim() ?? "",
+    clientId: item.clientId || undefined,
+    orderId: item.orderId || undefined,
+    supplierId: item.supplierId || undefined,
+    supplierBillId: item.supplierBillId || undefined,
+    createdAt: item.createdAt || item.at || new Date().toISOString(),
+  };
+}
+
+function normalizeBill(item: SupplierBill): SupplierBill {
+  return {
+    id: item.id,
+    number: item.number?.trim() || nextBillNumber([]),
+    supplierId: item.supplierId,
+    amount: roundCash(Number(item.amount) || 0),
+    comment: item.comment?.trim() ?? "",
+    createdAt: item.createdAt || new Date().toISOString(),
+    updatedAt: item.updatedAt || item.createdAt || new Date().toISOString(),
+  };
+}
+
+function withMoney(store: StoreSnapshot, patch: Partial<StoreSnapshot>): StoreSnapshot {
+  const moneyMovements = patch.moneyMovements ?? store.moneyMovements ?? [];
+  const supplierBills = patch.supplierBills ?? store.supplierBills ?? [];
+  const orders = patch.orders ?? store.orders;
+  return {
+    ...store,
+    ...patch,
+    moneyMovements,
+    supplierBills,
+    orders: syncOrderPaidAmounts(orders, moneyMovements),
   };
 }
 
@@ -156,7 +219,12 @@ async function readStoreFile(): Promise<StoreSnapshot> {
     const parsed: unknown = JSON.parse(raw);
     if (isStore(parsed)) {
       const migrated = migrateStore(parsed);
-      if (parsed.version !== migrated.version || !Array.isArray(parsed.clients)) {
+      if (
+        parsed.version !== migrated.version ||
+        !Array.isArray(parsed.clients) ||
+        !Array.isArray(parsed.moneyMovements) ||
+        !Array.isArray(parsed.supplierBills)
+      ) {
         await persistStore(migrated);
       }
       return migrated;
@@ -206,12 +274,15 @@ export function upsertSupplier(supplier: Supplier) {
 export function removeSupplier(id: string) {
   return enqueue(async () => {
     const store = await readStoreFile();
-    const next: StoreSnapshot = {
-      ...store,
+    const next = withMoney(store, {
       suppliers: store.suppliers.filter((item) => item.id !== id),
       offers: store.offers.filter((item) => item.supplierId !== id),
       logs: store.logs.filter((item) => item.supplierId !== id),
-    };
+      supplierBills: (store.supplierBills ?? []).filter((item) => item.supplierId !== id),
+      moneyMovements: (store.moneyMovements ?? []).map((item) =>
+        item.supplierId === id ? { ...item, supplierId: undefined, supplierBillId: undefined } : item,
+      ),
+    });
     await removeCatalog(id);
     await persistStore(next);
     return next;
@@ -344,13 +415,15 @@ export function upsertClient(client: Client) {
 export function removeClient(id: string) {
   return enqueue(async () => {
     const store = await readStoreFile();
-    const next: StoreSnapshot = {
-      ...store,
+    const next = withMoney(store, {
       clients: store.clients.filter((item) => item.id !== id),
       orders: store.orders.map((order) =>
         order.clientId === id ? { ...order, clientId: "" } : order,
       ),
-    };
+      moneyMovements: (store.moneyMovements ?? []).map((item) =>
+        item.clientId === id ? { ...item, clientId: undefined } : item,
+      ),
+    });
     await persistStore(next);
     return next;
   });
@@ -374,10 +447,92 @@ export function upsertOrder(order: Order) {
 export function removeOrder(id: string) {
   return enqueue(async () => {
     const store = await readStoreFile();
-    const next: StoreSnapshot = {
-      ...store,
+    const next = withMoney(store, {
       orders: store.orders.filter((item) => item.id !== id),
-    };
+      moneyMovements: (store.moneyMovements ?? []).map((item) =>
+        item.orderId === id ? { ...item, orderId: undefined } : item,
+      ),
+    });
+    await persistStore(next);
+    return next;
+  });
+}
+
+function sanitizeMovement(raw: MoneyMovement): MoneyMovement | null {
+  const amount = roundCash(Number(raw.amount));
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  if (!PAYMENT_METHODS.has(raw.method)) return null;
+  if (raw.direction !== "income" && raw.direction !== "expense") return null;
+  return normalizeMovement({
+    ...raw,
+    id: raw.id?.trim() || crypto.randomUUID(),
+    amount,
+  });
+}
+
+function sanitizeBill(raw: SupplierBill, existing: SupplierBill[]): SupplierBill | null {
+  const amount = roundCash(Number(raw.amount));
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  if (!raw.supplierId?.trim()) return null;
+  return normalizeBill({
+    ...raw,
+    id: raw.id?.trim() || crypto.randomUUID(),
+    number: raw.number?.trim() || nextBillNumber(existing),
+    amount,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export function upsertMoneyMovement(movement: MoneyMovement) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const nextMovement = sanitizeMovement(movement);
+    if (!nextMovement) throw new Error("Укажите сумму и способ оплаты");
+    const exists = store.moneyMovements.some((item) => item.id === nextMovement.id);
+    const moneyMovements = exists
+      ? store.moneyMovements.map((item) => (item.id === nextMovement.id ? nextMovement : item))
+      : [nextMovement, ...store.moneyMovements];
+    const next = withMoney(store, { moneyMovements });
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function removeMoneyMovement(id: string) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const next = withMoney(store, {
+      moneyMovements: store.moneyMovements.filter((item) => item.id !== id),
+    });
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function upsertSupplierBill(bill: SupplierBill) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const nextBill = sanitizeBill(bill, store.supplierBills);
+    if (!nextBill) throw new Error("Укажите поставщика и сумму счёта");
+    const exists = store.supplierBills.some((item) => item.id === nextBill.id);
+    const supplierBills = exists
+      ? store.supplierBills.map((item) => (item.id === nextBill.id ? nextBill : item))
+      : [nextBill, ...store.supplierBills];
+    const next = withMoney(store, { supplierBills });
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function removeSupplierBill(id: string) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const next = withMoney(store, {
+      supplierBills: store.supplierBills.filter((item) => item.id !== id),
+      moneyMovements: store.moneyMovements.map((item) =>
+        item.supplierBillId === id ? { ...item, supplierBillId: undefined } : item,
+      ),
+    });
     await persistStore(next);
     return next;
   });

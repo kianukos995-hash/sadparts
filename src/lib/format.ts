@@ -22,6 +22,27 @@ export function formatDateTime(iso?: string) {
   }).format(new Date(iso));
 }
 
+export function formatDate(iso?: string) {
+  if (!iso) return "—";
+  return new Intl.DateTimeFormat("ru-RU", {
+    dateStyle: "short",
+  }).format(new Date(iso));
+}
+
+export function toDateInput(iso?: string) {
+  const date = iso ? new Date(iso) : new Date();
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+export function fromDateInput(value: string) {
+  if (!value) return new Date().toISOString();
+  const local = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(local.getTime())) return new Date().toISOString();
+  return local.toISOString();
+}
+
 export function formatSignedMoney(amount: number, currency = "RUB") {
   const sign = amount > 0 ? "+" : "";
   return `${sign}${formatMoney(amount, currency)}`;

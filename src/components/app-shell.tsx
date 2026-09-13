@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   ClipboardList,
+  FileSpreadsheet,
+  KeyRound,
   LayoutGrid,
   BookOpen,
   Menu,
@@ -14,7 +16,7 @@ import {
   Send,
   Settings,
   ShoppingCart,
-  Truck,
+  Wallet,
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -38,13 +40,15 @@ const GROUPS = [
     items: [
       { href: "/cart", label: "Корзина", icon: ShoppingCart },
       { href: "/orders", label: "Заказы", icon: ClipboardList },
+      { href: "/money", label: "Деньги", icon: Wallet },
       { href: "/clients", label: "Клиенты", icon: Users },
     ],
   },
   {
     title: "Прайсы",
     items: [
-      { href: "/suppliers", label: "Поставщики", icon: Truck },
+      { href: "/suppliers/files", label: "Поставщики через файлы", icon: FileSpreadsheet },
+      { href: "/suppliers/api", label: "Поставщики через API", icon: KeyRound },
       { href: "/import", label: "Добавить прайс", icon: PackagePlus },
     ],
   },

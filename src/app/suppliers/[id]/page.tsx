@@ -16,6 +16,7 @@ import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { AUTH_MODE_LABELS } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
 import { fetchSupplierPayload, payloadToOffers, buildSyncLog, syncSupplier } from "@/lib/sync";
+import { isApiSupplier } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import type { Offer } from "@/lib/types";
 
@@ -100,6 +101,10 @@ export default function SupplierDetailPage() {
     }
   }
 
+  const backHref = supplier && isApiSupplier(supplier) ? "/suppliers/api" : "/suppliers/files";
+  const backLabel =
+    supplier && isApiSupplier(supplier) ? "Поставщики через API" : "Поставщики через файлы";
+
   if (!ready) return <p className="text-sm text-muted-foreground">Загружаю…</p>;
   if (!supplier) {
     return (
@@ -116,11 +121,11 @@ export default function SupplierDetailPage() {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
       <Link
-        href="/suppliers"
+        href={backHref}
         className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
-        Все поставщики
+        {backLabel}
       </Link>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">

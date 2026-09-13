@@ -1,194 +1,82 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { toast } from "sonner";
-import { Plus, RefreshCw, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { PriceListUpload } from "@/components/price-list-upload";
-import { SupplierFormDialog } from "@/components/supplier-form";
+import { FileSpreadsheet, KeyRound } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
-import { AUTH_MODE_LABELS } from "@/lib/constants";
-import { formatDateTime, formatDays, maskKey } from "@/lib/format";
-import { buildSyncLog, syncSupplier } from "@/lib/sync";
-import type { Supplier } from "@/lib/types";
+import { isApiSupplier, isFileSupplier } from "@/lib/money";
+import { cn } from "@/lib/utils";
 
-function keySummary(supplier: Supplier) {
-  if (supplier.adapter === "rossko") {
-    return `KEY1 ${maskKey(supplier.apiKey)} · KEY2 ${maskKey(supplier.apiKey2)}`;
-  }
-  if (supplier.source === "api") {
-    const second = supplier.apiKey2.trim() ? ` · KEY2 ${maskKey(supplier.apiKey2)}` : "";
-    return `${maskKey(supplier.apiKey)}${second}`;
-  }
-  const mapped = Object.values(supplier.columnMap ?? {}).filter(Boolean).length;
-  return mapped ? `карта ${mapped} полей` : "файл";
-}
-
-export default function SuppliersPage() {
-  const { ready, suppliers, upsertSupplier, removeSupplier, replaceOffers } = useAvtoPrice();
-  const [open, setOpen] = useState(false);
-  const [syncingId, setSyncingId] = useState<string | null>(null);
-
-  async function runSync(supplier: Supplier) {
-    if (supplier.adapter === "rossko") {
-      setSyncingId(supplier.id);
-      try {
-        const response = await fetch("/api/rossko", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "test", supplierId: supplier.id }),
-        });
-        const data = (await response.json()) as { error?: string; details?: { deliveries: { name: string }[] } };
-        if (!response.ok) throw new Error(data.error || "Ключи Росско не приняты");
-        toast.success(
-          `KEY1/KEY2 работают. Доставка: ${(data.details?.deliveries ?? []).map((item) => item.name).join(", ") || "ок"}`,
-        );
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Ошибка Росско");
-      } finally {
-        setSyncingId(null);
-      }
-      return;
-    }
-    if (supplier.source !== "api") {
-      toast.error("У этого поставщика нет API — нажмите «Добавить прайс» и выберите файл");
-      return;
-    }
-    setSyncingId(supplier.id);
-    try {
-      const result = await syncSupplier(supplier);
-      await replaceOffers(supplier.id, result.offers, buildSyncLog(supplier, result, "api"));
-      toast.success(`${supplier.name}: ${result.offers.length} позиций`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Ошибка синхронизации";
-      await replaceOffers(supplier.id, [], buildSyncLog(supplier, { error: message }, "api"));
-      toast.error(message);
-    } finally {
-      setSyncingId(null);
-    }
-  }
+export default function SuppliersHubPage() {
+  const { ready, error, refresh, suppliers } = useAvtoPrice();
+  const files = suppliers.filter(isFileSupplier).length;
+  const api = suppliers.filter(isApiSupplier).length;
 
   if (!ready) return <p className="text-sm text-muted-foreground">Загружаю поставщиков…</p>;
 
+  if (error) {
+    return (
+      <div className="rounded-xl border border-dashed px-4 py-12 text-center">
+        <p className="text-sm font-medium">Не загрузить поставщиков</p>
+        <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+        <button type="button" className={cn(buttonVariants({ variant: "outline" }), "mt-4")} onClick={() => void refresh()}>
+          Повторить
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Поставщики</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            «Добавить прайс» грузит CSV/ZIP/XLSX в карточку. KEY1/KEY2 и карта колонок учитываются при разборе.
-          </p>
-        </div>
-        <Button onClick={() => setOpen(true)}>
-          <Plus />
-          Добавить
-        </Button>
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Поставщики</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Разделены по тому, как приходит прайс: файл на диск или живой API.
+        </p>
       </div>
-
-      {suppliers.length === 0 ? (
+      <div className="grid gap-4 md:grid-cols-2">
         <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            Поставщиков нет. Добавьте API или источник для загрузки файла.
+          <CardHeader>
+            <CardDescription>Файлы и jsonl</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="size-5" />
+              Поставщики через файлы
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
+              CSV, ZIP, XLSX и каталоги `data/catalogs/*.jsonl`, в том числе прайс Росско после загрузки.
+            </p>
+            <p className="text-sm">
+              {files} {files === 1 ? "поставщик" : "поставщиков"}
+            </p>
+            <Link href="/suppliers/files" className={cn(buttonVariants(), "w-fit")}>
+              Открыть
+            </Link>
           </CardContent>
         </Card>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Название</TableHead>
-              <TableHead className="hidden md:table-cell">Источник</TableHead>
-              <TableHead className="hidden lg:table-cell">Ключи</TableHead>
-              <TableHead>Синхронизация</TableHead>
-              <TableHead className="hidden md:table-cell">До Москвы</TableHead>
-              <TableHead className="text-right">Действия</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {suppliers.map((supplier) => (
-              <TableRow key={supplier.id}>
-                <TableCell>
-                  <Link href={`/suppliers/${supplier.id}`} className="font-medium hover:underline">
-                    {supplier.name}
-                  </Link>
-                  <p className="text-xs text-muted-foreground">{supplier.code}</p>
-                </TableCell>
-                <TableCell className="hidden md:table-cell">
-                  <div className="flex flex-wrap gap-1">
-                    <Badge variant="secondary">{supplier.source === "api" ? "API" : "Файл"}</Badge>
-                    {supplier.source === "api" ? (
-                      <Badge variant="outline">{AUTH_MODE_LABELS[supplier.authMode]}</Badge>
-                    ) : null}
-                  </div>
-                </TableCell>
-                <TableCell className="hidden font-mono text-xs lg:table-cell">
-                  {keySummary(supplier)}
-                </TableCell>
-                <TableCell>
-                  <p className="text-sm">{formatDateTime(supplier.lastSyncAt)}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {supplier.lastSyncStatus === "error"
-                      ? supplier.lastSyncError
-                      : `${supplier.catalogCount ?? supplier.lastSyncCount ?? 0} позиций`}
-                  </p>
-                </TableCell>
-                <TableCell className="hidden md:table-cell">
-                  <p className="text-sm">{formatDays(supplier.deliveryDaysMoscow)}</p>
-                  <p className="max-w-48 truncate text-xs text-muted-foreground">
-                    {supplier.deliveryNote || "—"}
-                  </p>
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex flex-wrap justify-end gap-1">
-                    <PriceListUpload supplier={supplier} />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={
-                        syncingId === supplier.id ||
-                        (supplier.source !== "api" && supplier.adapter !== "rossko")
-                      }
-                      onClick={() => void runSync(supplier)}
-                    >
-                      <RefreshCw className={syncingId === supplier.id ? "animate-spin" : ""} />
-                      {supplier.adapter === "rossko" ? "Ключи" : "Синхр."}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => {
-                        if (confirm(`Удалить «${supplier.name}» и его прайс?`)) {
-                          removeSupplier(supplier.id);
-                        }
-                      }}
-                    >
-                      <Trash2 />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
-
-      <SupplierFormDialog
-        open={open}
-        onOpenChange={setOpen}
-        onSave={(supplier) => {
-          upsertSupplier(supplier).then(() => toast.success("Поставщик сохранён"));
-        }}
-      />
+        <Card>
+          <CardHeader>
+            <CardDescription>Ключи и синхронизация</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <KeyRound className="size-5" />
+              Поставщики через API
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
+              Росско SOAP KEY1/KEY2, Автопитер, Exist и любой JSON с авторизацией.
+            </p>
+            <p className="text-sm">
+              {api} {api === 1 ? "поставщик" : "поставщиков"}
+            </p>
+            <Link href="/suppliers/api" className={cn(buttonVariants(), "w-fit")}>
+              Открыть
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

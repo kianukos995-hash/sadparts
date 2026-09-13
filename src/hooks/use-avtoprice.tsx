@@ -3,25 +3,30 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { copyClientVehicle, emptyDraft, findDraft, findDraftForClient, findDrafts, offerToLine } from "@/lib/order";
 import { DEFAULT_PRICE_BANDS } from "@/lib/price-bands";
+import { STORE_VERSION } from "@/lib/constants";
 import type { OfferPatch } from "@/lib/offer-patches";
 import type {
   Client,
   ImportMode,
+  MoneyMovement,
   Offer,
   Order,
   PublicSettings,
   StoreSnapshot,
   Supplier,
+  SupplierBill,
   SyncLog,
 } from "@/lib/types";
 
 const EMPTY_STORE: StoreSnapshot = {
-  version: 2,
+  version: STORE_VERSION,
   suppliers: [],
   offers: [],
   logs: [],
   clients: [],
   orders: [],
+  moneyMovements: [],
+  supplierBills: [],
 };
 
 const EMPTY_PUBLIC: PublicSettings = {
@@ -44,11 +49,14 @@ const DRAFT_KEY = "sadparts-active-draft";
 
 export interface AvtoPriceApi {
   ready: boolean;
+  error: string | null;
   suppliers: Supplier[];
   offers: Offer[];
   logs: SyncLog[];
   clients: Client[];
   orders: Order[];
+  moneyMovements: MoneyMovement[];
+  supplierBills: SupplierBill[];
   drafts: Order[];
   draft: Order | null;
   activeDraftId: string;
@@ -68,6 +76,10 @@ export interface AvtoPriceApi {
   removeClient: (id: string) => Promise<void>;
   upsertOrder: (order: Order) => Promise<void>;
   removeOrder: (id: string) => Promise<void>;
+  upsertMoneyMovement: (movement: MoneyMovement) => Promise<void>;
+  removeMoneyMovement: (id: string) => Promise<void>;
+  upsertSupplierBill: (bill: SupplierBill) => Promise<void>;
+  removeSupplierBill: (id: string) => Promise<void>;
   addToDraft: (
     offer: Offer,
     qty?: number,
@@ -153,6 +165,7 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
   const [store, setStore] = useState<StoreSnapshot>(EMPTY_STORE);
   const [settings, setSettings] = useState<PublicSettings>(EMPTY_PUBLIC);
   const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [activeDraftId, setActiveDraftIdState] = useState("");
   const dirty = useRef(false);
 
@@ -163,26 +176,35 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       ...data,
       clients: data.clients ?? [],
       orders,
+      moneyMovements: data.moneyMovements ?? [],
+      supplierBills: data.supplierBills ?? [],
     });
     return orders;
   }, []);
 
   const refresh = useCallback(async () => {
-    const [storeResponse, settingsResponse] = await Promise.all([
-      fetch("/api/store", { cache: "no-store" }),
-      fetch("/api/settings", { cache: "no-store" }),
-    ]);
-    const data = (await storeResponse.json()) as StoreSnapshot;
-    const publicSettings = (await settingsResponse.json()) as PublicSettings;
-    const orders = applyStore(data);
-    setSettings(publicSettings);
-    setReady(true);
-    setActiveDraftIdState((current) => {
-      if (current && orders.some((item) => item.id === current)) return current;
-      const saved = typeof window !== "undefined" ? window.localStorage.getItem(DRAFT_KEY) : "";
-      if (saved && orders.some((item) => item.id === saved)) return saved;
-      return findDraft(orders)?.id ?? "";
-    });
+    try {
+      const [storeResponse, settingsResponse] = await Promise.all([
+        fetch("/api/store", { cache: "no-store" }),
+        fetch("/api/settings", { cache: "no-store" }),
+      ]);
+      if (!storeResponse.ok) throw new Error("Не загрузить склад");
+      const data = (await storeResponse.json()) as StoreSnapshot;
+      const publicSettings = (await settingsResponse.json()) as PublicSettings;
+      const orders = applyStore(data);
+      setSettings(publicSettings);
+      setError(null);
+      setReady(true);
+      setActiveDraftIdState((current) => {
+        if (current && orders.some((item) => item.id === current)) return current;
+        const saved = typeof window !== "undefined" ? window.localStorage.getItem(DRAFT_KEY) : "";
+        if (saved && orders.some((item) => item.id === saved)) return saved;
+        return findDraft(orders)?.id ?? "";
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не загрузить данные");
+      setReady(true);
+    }
   }, [applyStore]);
 
   useEffect(() => {
@@ -358,17 +380,36 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
     applyStore(await mutate({ action: "reset" }), []);
   }, [applyStore]);
 
+  const upsertMoneyMovement = useCallback(async (movement: MoneyMovement) => {
+    applyStore(await mutate({ action: "upsertMoneyMovement", movement }));
+  }, [applyStore]);
+
+  const removeMoneyMovement = useCallback(async (id: string) => {
+    applyStore(await mutate({ action: "removeMoneyMovement", movementId: id }));
+  }, [applyStore]);
+
+  const upsertSupplierBill = useCallback(async (bill: SupplierBill) => {
+    applyStore(await mutate({ action: "upsertSupplierBill", bill }));
+  }, [applyStore]);
+
+  const removeSupplierBill = useCallback(async (id: string) => {
+    applyStore(await mutate({ action: "removeSupplierBill", billId: id }));
+  }, [applyStore]);
+
   const drafts = useMemo(() => findDrafts(store.orders), [store.orders]);
   const draft = drafts.find((item) => item.id === activeDraftId) ?? findDraft(store.orders);
 
   const value = useMemo<AvtoPriceApi>(
     () => ({
       ready,
+      error,
       suppliers: store.suppliers,
       offers: store.offers,
       logs: store.logs,
       clients: store.clients,
       orders: store.orders,
+      moneyMovements: store.moneyMovements ?? [],
+      supplierBills: store.supplierBills ?? [],
       drafts,
       draft,
       activeDraftId: draft?.id ?? "",
@@ -383,12 +424,17 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       removeClient,
       upsertOrder,
       removeOrder,
+      upsertMoneyMovement,
+      removeMoneyMovement,
+      upsertSupplierBill,
+      removeSupplierBill,
       addToDraft,
       saveTradeSettings,
       resetDemo,
     }),
     [
       ready,
+      error,
       store,
       drafts,
       draft,
@@ -403,6 +449,10 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       removeClient,
       upsertOrder,
       removeOrder,
+      upsertMoneyMovement,
+      removeMoneyMovement,
+      upsertSupplierBill,
+      removeSupplierBill,
       addToDraft,
       saveTradeSettings,
       resetDemo,

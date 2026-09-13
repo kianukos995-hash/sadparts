@@ -25,12 +25,12 @@ import { AUTH_MODE_LABELS, ADAPTER_LABELS, FIELD_LABELS, ROSSKO_API_BASE } from 
 import type { AdapterKind, AuthMode, Supplier, SupplierSource } from "@/lib/types";
 import { DEFAULT_COLUMN_MAP, FIELD_KEYS } from "@/lib/types";
 
-function emptySupplier(): Supplier {
+function emptySupplier(source: SupplierSource = "api"): Supplier {
   return {
     id: crypto.randomUUID(),
     name: "",
     code: "",
-    source: "api",
+    source,
     adapter: "generic",
     apiUrl: "",
     apiKey: "",
@@ -52,11 +52,13 @@ export function SupplierFormDialog({
   open,
   onOpenChange,
   initial,
+  defaultSource = "api",
   onSave,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initial?: Supplier;
+  defaultSource?: SupplierSource;
   onSave: (supplier: Supplier) => void;
 }) {
   return (
@@ -64,8 +66,9 @@ export function SupplierFormDialog({
       <DialogContent className="sm:max-w-2xl">
         {open ? (
           <SupplierFormFields
-            key={initial?.id ?? "new"}
+            key={initial?.id ?? `new-${defaultSource}`}
             initial={initial}
+            defaultSource={defaultSource}
             onCancel={() => onOpenChange(false)}
             onSave={(supplier) => {
               onSave(supplier);
@@ -80,15 +83,19 @@ export function SupplierFormDialog({
 
 function SupplierFormFields({
   initial,
+  defaultSource = "api",
   onSave,
   onCancel,
 }: {
   initial?: Supplier;
+  defaultSource?: SupplierSource;
   onSave: (supplier: Supplier) => void;
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState<Supplier>(() =>
-    initial ? { ...initial, columnMap: { ...initial.columnMap } } : emptySupplier(),
+    initial
+      ? { ...initial, columnMap: { ...initial.columnMap } }
+      : emptySupplier(defaultSource),
   );
 
   function update<K extends keyof Supplier>(key: K, value: Supplier[K]) {
