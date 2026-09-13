@@ -3,6 +3,7 @@ import { DEFAULT_COLUMN_MAP } from "@/lib/types";
 import { mergeCrosses } from "@/lib/cross-catalog";
 import { normalizeSku, offerKey } from "@/lib/format";
 import { stringifyCell } from "@/lib/json-path";
+import { extractSpecs } from "@/lib/specs";
 
 const ALIASES: Record<FieldKey, string[]> = {
   sku: ["артикул", "partnumber", "sku", "article", "каталожныйномер"],
@@ -163,6 +164,7 @@ export function rowToOffer(
     guid,
     stockId: stockId || undefined,
     vendorCode: vendor || undefined,
+    specs: extractSpecs(row, columnMap),
     updatedAt: now,
     source: supplier.source,
   };

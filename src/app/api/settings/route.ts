@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { randomBytes } from "node:crypto";
 import { maskToken, readSettings, writeSettings } from "@/lib/server-store";
 import { getBotProfile } from "@/lib/telegram";
+import { sanitizeBands } from "@/lib/price-bands";
 import type { PublicSettings } from "@/lib/types";
 
 function toPublic(settings: Awaited<ReturnType<typeof readSettings>>): PublicSettings {
@@ -12,6 +13,7 @@ function toPublic(settings: Awaited<ReturnType<typeof readSettings>>): PublicSet
     telegramTokenMasked: maskToken(settings.telegramToken),
     markupPercent: settings.markupPercent,
     moscowHubNote: settings.moscowHubNote,
+    priceBands: settings.priceBands,
   };
 }
 
@@ -26,6 +28,7 @@ export async function POST(request: NextRequest) {
     clear?: boolean;
     markupPercent?: number;
     moscowHubNote?: string;
+    priceBands?: { id: string; min: number; max: number | null; markupPercent: number }[];
   };
   try {
     body = (await request.json()) as typeof body;
@@ -49,6 +52,9 @@ export async function POST(request: NextRequest) {
   }
   if (typeof body.moscowHubNote === "string") {
     tradePatch.moscowHubNote = body.moscowHubNote;
+  }
+  if (Array.isArray(body.priceBands)) {
+    tradePatch.priceBands = sanitizeBands(body.priceBands);
   }
 
   let token = current.telegramToken;

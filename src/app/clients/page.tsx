@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
+import { formatBandLabel } from "@/lib/price-bands";
 import type { Client } from "@/lib/types";
 
 function emptyClient(): Client {
@@ -34,13 +35,14 @@ function emptyClient(): Client {
     phone: "",
     inn: "",
     discountPercent: 0,
+    bandMarkups: {},
     notes: "",
     createdAt: new Date().toISOString(),
   };
 }
 
 export default function ClientsPage() {
-  const { ready, clients, upsertClient, removeClient } = useAvtoPrice();
+  const { ready, clients, settings, upsertClient, removeClient } = useAvtoPrice();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Client>(emptyClient());
 
@@ -52,7 +54,7 @@ export default function ClientsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Клиенты</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Скидка клиента применяется к цене с наценкой склада при сборке заказа.
+            Скидка и свои наценки по ценовым коридорам — отдельно для каждого клиента.
           </p>
         </div>
         <Button
@@ -80,6 +82,7 @@ export default function ClientsPage() {
               <TableHead className="hidden md:table-cell">Телефон</TableHead>
               <TableHead className="hidden lg:table-cell">ИНН</TableHead>
               <TableHead className="text-right">Скидка</TableHead>
+              <TableHead className="hidden text-right lg:table-cell">Коридоры</TableHead>
               <TableHead className="text-right"> </TableHead>
             </TableRow>
           </TableHeader>
@@ -106,6 +109,11 @@ export default function ClientsPage() {
                   {client.inn || "—"}
                 </TableCell>
                 <TableCell className="text-right">{client.discountPercent}%</TableCell>
+                <TableCell className="hidden text-right text-xs text-muted-foreground lg:table-cell">
+                  {Object.keys(client.bandMarkups ?? {}).length
+                    ? `${Object.keys(client.bandMarkups ?? {}).length} своих`
+                    : "как в настройках"}
+                </TableCell>
                 <TableCell className="text-right">
                   <Button
                     variant="ghost"
@@ -124,11 +132,11 @@ export default function ClientsPage() {
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{draft.createdAt && clients.some((item) => item.id === draft.id) ? "Клиент" : "Новый клиент"}</DialogTitle>
             <DialogDescription>
-              Скидка вычитается после наценки: 1000 ₽, наценка 18%, скидка 8% → 1085.60 ₽.
+            Цена = закуп × (1 + наценка коридора) × (1 − скидка). Пустая наценка коридора — берётся из настроек.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
@@ -167,6 +175,35 @@ export default function ClientsPage() {
                 }
               />
             </Field>
+            <div className="grid gap-2">
+              <Label>Наценки по ценовым категориям</Label>
+              {settings.priceBands.map((band) => {
+                const value = draft.bandMarkups?.[band.id];
+                return (
+                  <label key={band.id} className="grid grid-cols-[1fr_6rem] items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">
+                      {formatBandLabel(band)} · база {band.markupPercent}%
+                    </span>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.1"
+                      placeholder={String(band.markupPercent)}
+                      value={value ?? ""}
+                      onChange={(event) => {
+                        const raw = event.target.value;
+                        setDraft((prev) => {
+                          const next = { ...(prev.bandMarkups ?? {}) };
+                          if (raw === "") delete next[band.id];
+                          else next[band.id] = Number.parseFloat(raw) || 0;
+                          return { ...prev, bandMarkups: next };
+                        });
+                      }}
+                    />
+                  </label>
+                );
+              })}
+            </div>
             <Field label="Комментарий">
               <Textarea
                 rows={3}

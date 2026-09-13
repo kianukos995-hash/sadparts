@@ -141,7 +141,7 @@ export default function HomePage() {
                       <p className="font-medium">{supplier?.name ?? "Поставщик удалён"}</p>
                       <p className="text-xs text-muted-foreground">
                         {formatDateTime(log.at)}
-                        {log.fileName ? ` · ${log.fileName}` : ""}
+                        {log.label ? ` · ${log.label}` : log.fileName ? ` · ${log.fileName}` : ""}
                       </p>
                     </div>
                     <Badge variant={log.status === "ok" ? "secondary" : "destructive"}>

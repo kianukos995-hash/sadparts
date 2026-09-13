@@ -1,6 +1,7 @@
 "use client";
 
 import { ImportWizard } from "@/components/import-wizard";
+import { ImportHistoryCard } from "@/components/import-history";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 
 export default function ImportPage() {
@@ -24,11 +25,12 @@ export default function ImportPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Добавить прайс</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Файл, ссылка, JSON/XML, API поставщика или одна позиция вручную. Каталог общий с
-          Telegram-ботом.
+          Сначала быстрый просмотр и имя прайса — потом запись. Ошибки в CSV/ZIP не рвут загрузку.
+          Новый прайс можно откатить из истории.
         </p>
       </div>
       <ImportWizard />
+      <ImportHistoryCard />
     </div>
   );
 }

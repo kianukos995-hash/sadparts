@@ -71,6 +71,7 @@ export interface Offer {
   guid?: string;
   stockId?: string;
   vendorCode?: string;
+  specs?: Record<string, string>;
   updatedAt: string;
   source: SupplierSource;
 }
@@ -84,6 +85,7 @@ export interface SyncLog {
   error?: string;
   source: SupplierSource;
   fileName?: string;
+  label?: string;
   mode?: ImportMode;
 }
 
@@ -93,6 +95,7 @@ export interface Client {
   phone: string;
   inn: string;
   discountPercent: number;
+  bandMarkups?: Record<string, number>;
   notes: string;
   createdAt: string;
 }
@@ -130,6 +133,13 @@ export interface Order {
   externalMessage?: string;
 }
 
+export interface PriceBand {
+  id: string;
+  min: number;
+  max: number | null;
+  markupPercent: number;
+}
+
 export interface AppSettings {
   telegramToken: string;
   telegramUsername: string;
@@ -138,6 +148,7 @@ export interface AppSettings {
   telegramSecret: string;
   markupPercent: number;
   moscowHubNote: string;
+  priceBands: PriceBand[];
 }
 
 export interface PublicSettings {
@@ -147,6 +158,7 @@ export interface PublicSettings {
   telegramTokenMasked: string;
   markupPercent: number;
   moscowHubNote: string;
+  priceBands: PriceBand[];
 }
 
 export interface StoreSnapshot {
@@ -162,6 +174,7 @@ export interface ParsedTable {
   headers: string[];
   rows: Record<string, string>[];
   total: number;
+  warnings?: string[];
 }
 
 export const DEFAULT_COLUMN_MAP: ColumnMap = {
@@ -192,3 +205,17 @@ export const CATEGORIES = [
 ] as const;
 
 export type Category = (typeof CATEGORIES)[number];
+
+export interface ImportHistoryItem {
+  id: string;
+  at: string;
+  supplierId: string;
+  label: string;
+  fileName: string;
+  mode: ImportMode;
+  imported: number;
+  skipped: number;
+  snapshotFile?: string;
+  warnings?: string[];
+  rolledBackFrom?: string;
+}

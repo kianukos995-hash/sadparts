@@ -20,6 +20,7 @@ export interface CatalogRow {
   crosses: string[];
   vendor?: string;
   stockId?: string;
+  specs?: Record<string, string>;
 }
 
 interface CatalogIndex {
@@ -94,7 +95,13 @@ export async function readCatalog(supplierId: string): Promise<CatalogIndex> {
   }
 }
 
-export function catalogCount(supplierId: string) {
+export function invalidateCatalog(supplierId?: string) {
+  if (supplierId) cache.delete(supplierId);
+  else cache.clear();
+}
+
+export function catalogSize(supplierId?: string) {
+  if (!supplierId) return 0;
   return cache.get(supplierId)?.rows.length ?? 0;
 }
 
@@ -150,6 +157,7 @@ export function catalogRowToOffer(supplier: Supplier, row: CatalogRow, now = new
     guid: row.guid,
     stockId: row.stockId,
     vendorCode: row.vendor,
+    specs: row.specs,
     updatedAt: now,
     source: "file",
   };
@@ -169,5 +177,6 @@ export function offerToCatalogRow(offer: Offer): CatalogRow {
     crosses: offer.crossOems ?? [],
     vendor: offer.vendorCode,
     stockId: offer.stockId,
+    specs: offer.specs,
   };
 }

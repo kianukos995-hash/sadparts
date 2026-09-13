@@ -18,10 +18,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { PricePreviewCard, type PricePreview } from "@/components/price-preview";
 import { cn } from "@/lib/utils";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { FIELD_LABELS } from "@/lib/constants";
 import { guessColumnMap, mapPayloadToOffers } from "@/lib/mapping";
+import { guessPriceTitle } from "@/lib/price-bands";
 import { buildSyncLog, fetchFeedTable, syncSupplier } from "@/lib/sync";
 import { offerKey } from "@/lib/format";
 import type { AuthMode, ColumnMap, ImportMode, ParsedTable, Supplier, SupplierSource } from "@/lib/types";
@@ -100,9 +102,16 @@ export function ImportWizard() {
           >
             Пример CSV
           </a>
+          <a
+            href="/samples/price-crooked.csv"
+            download
+            className={cn(buttonVariants({ variant: "outline" }), "justify-center")}
+          >
+            Кривой CSV (для проверки)
+          </a>
           <p className="text-xs text-muted-foreground">
-            Также ZIP/CSV Росско (номенклатура, артикул, цена, наличие, срок, OEM). Полный прайс
-            остаётся на сервере. Telegram ищет и в нём, и через GetSearch.
+            ZIP/CSV Росско и кривые выгрузки: лишняя шапка, кавычки, windows-1251. Сначала просмотр и
+            имя прайса, потом запись. Откат — в истории ниже.
           </p>
         </CardContent>
       </Card>
@@ -233,6 +242,7 @@ async function commitTable(
   fileName: string,
   mode: ImportMode,
   onImport: ImportFn,
+  label?: string,
 ) {
   const { offers, skipped } = mapPayloadToOffers(table.rows, {
     ...supplier,
@@ -242,9 +252,48 @@ async function commitTable(
   if (offers.length === 0) {
     throw new Error("Не нашлось строк с артикулом. Проверьте соответствие колонок.");
   }
-  const log = buildSyncLog(supplier, { offers, skipped }, source, fileName);
+  const log = buildSyncLog(supplier, { offers, skipped }, source, fileName, label);
   await onImport(supplier.id, offers, log, mode);
   return offers.length;
+}
+
+function isBulkPrice(file: File, supplier?: Supplier) {
+  const name = file.name.toLowerCase();
+  return (
+    name.endsWith(".zip") ||
+    name.endsWith(".xml") ||
+    file.size > 400_000 ||
+    supplier?.adapter === "rossko"
+  );
+}
+
+async function previewBulkFile(file: File, supplierId: string) {
+  const form = new FormData();
+  form.set("action", "preview");
+  form.set("file", file);
+  form.set("supplierId", supplierId);
+  const response = await fetch("/api/catalog/import", { method: "POST", body: form });
+  const data = (await response.json()) as PricePreview & { error?: string };
+  if (!response.ok) throw new Error(data.error || "Не удалось просмотреть файл");
+  return data;
+}
+
+async function importBulkFile(file: File, supplierId: string, mode: ImportMode, label: string) {
+  const form = new FormData();
+  form.set("action", "import");
+  form.set("file", file);
+  form.set("supplierId", supplierId);
+  form.set("mode", mode);
+  form.set("label", label);
+  const response = await fetch("/api/catalog/import", { method: "POST", body: form });
+  const data = (await response.json()) as {
+    imported?: number;
+    skipped?: number;
+    error?: string;
+    label?: string;
+  };
+  if (!response.ok) throw new Error(data.error || "Не удалось загрузить прайс");
+  return data;
 }
 
 function FilePane({
@@ -258,74 +307,87 @@ function FilePane({
   onImport: ImportFn;
   onRefresh: () => Promise<void>;
 }) {
+  const [files, setFiles] = useState<File[]>([]);
   const [fileName, setFileName] = useState("");
+  const [preview, setPreview] = useState<PricePreview | null>(null);
+  const [label, setLabel] = useState("");
   const [table, setTable] = useState<ParsedTable | null>(null);
   const [map, setMap] = useState<ColumnMap | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function onFiles(files: FileList | File[] | undefined) {
-    const list = files ? Array.from(files) : [];
-    if (list.length === 0) return;
+  function resetPreview() {
+    setPreview(null);
+    setTable(null);
+    setMap(null);
+    setFiles([]);
+    setFileName("");
+    setLabel("");
+  }
+
+  async function onFiles(list: FileList | File[] | undefined) {
+    const next = list ? Array.from(list) : [];
+    if (next.length === 0) return;
     setBusy(true);
     setError(null);
+    setTable(null);
+    setMap(null);
+    setPreview(null);
     try {
-      if (list.length === 1) {
-        const file = list[0];
-        setFileName(file.name);
-        const rosskoBulk =
-          Boolean(supplier) &&
-          (file.name.toLowerCase().endsWith(".zip") ||
-            file.name.toLowerCase().endsWith(".xml") ||
-            file.size > 400_000 ||
-            supplier?.adapter === "rossko");
-        if (rosskoBulk && supplier) {
-          const form = new FormData();
-          form.set("file", file);
-          form.set("supplierId", supplier.id);
-          form.set("mode", mode);
-          const response = await fetch("/api/catalog/import", { method: "POST", body: form });
-          const data = (await response.json()) as { imported?: number; error?: string };
-          if (!response.ok) throw new Error(data.error || "Не удалось загрузить прайс");
-          await onRefresh();
-          toast.success(`Прайс на сервере: ${data.imported} позиций. Ищите по артикулу в каталоге.`);
-          return;
-        }
-        const form = new FormData();
-        form.set("file", file);
-        const response = await fetch("/api/parse-price-list", { method: "POST", body: form });
-        const data = (await response.json()) as ParsedTable & { error?: string };
-        if (!response.ok) throw new Error(data.error || "Не удалось прочитать файл");
-        setTable(data);
-        setMap(guessColumnMap(data.headers));
+      if (!supplier) throw new Error("Выберите поставщика");
+      const file = next[0];
+      setFiles(next);
+      setFileName(file.name);
+      if (isBulkPrice(file, supplier) || next.length > 1) {
+        const data = await previewBulkFile(file, supplier.id);
+        setPreview(data);
+        setLabel(data.title || guessPriceTitle(file.name));
         return;
       }
-      if (!supplier) throw new Error("Выберите поставщика");
-      let total = 0;
-      for (const file of list) {
-        const form = new FormData();
-        form.set("file", file);
-        const response = await fetch("/api/parse-price-list", { method: "POST", body: form });
-        const data = (await response.json()) as ParsedTable & { error?: string };
-        if (!response.ok) throw new Error(`${file.name}: ${data.error || "ошибка"}`);
-        total += await commitTable(
-          supplier,
-          data,
-          guessColumnMap(data.headers),
-          "file",
-          file.name,
-          mode,
-          onImport,
-        );
-      }
-      toast.success(`Из ${list.length} файлов загружено ${total} позиций`);
-      setTable(null);
-      setMap(null);
+      const form = new FormData();
+      form.set("file", file);
+      const response = await fetch("/api/parse-price-list", { method: "POST", body: form });
+      const data = (await response.json()) as ParsedTable & { error?: string };
+      if (!response.ok) throw new Error(data.error || "Не удалось прочитать файл");
+      setTable(data);
+      setMap(guessColumnMap(data.headers));
+      setPreview({
+        title: guessPriceTitle(file.name),
+        headers: data.headers,
+        rows: data.rows.slice(0, 25),
+        total: data.total,
+        warnings: data.warnings,
+      });
+      setLabel(guessPriceTitle(file.name));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка чтения файла");
     } finally {
       setBusy(false);
     }
+  }
+
+  async function confirmImport() {
+    if (!supplier) throw new Error("Выберите поставщика");
+    const title = label.trim() || guessPriceTitle(fileName);
+    if (table && map && files.length === 1 && !isBulkPrice(files[0], supplier)) {
+      await commitTable(supplier, table, map, "file", fileName, mode, onImport, title);
+      toast.success(`«${title}»: загружено в каталог`);
+      resetPreview();
+      return;
+    }
+    let total = 0;
+    for (const file of files) {
+      const name = file === files[0] ? title : guessPriceTitle(file.name);
+      const result = await importBulkFile(file, supplier.id, mode, name);
+      total += result.imported ?? 0;
+    }
+    await onRefresh();
+    toast.success(
+      files.length > 1
+        ? `Из ${files.length} файлов на сервере ${total} позиций`
+        : `«${title}»: ${total} позиций. Можно откатить в истории.`,
+    );
+    resetPreview();
   }
 
   return (
@@ -340,7 +402,9 @@ function FilePane({
       >
         <Upload className="size-6 text-muted-foreground" />
         <span className="text-sm font-medium">Перетащите файлы или нажмите, чтобы выбрать</span>
-        <span className="text-xs text-muted-foreground">CSV, ZIP, XLSX, JSON, XML/YML · можно несколько</span>
+        <span className="text-xs text-muted-foreground">
+          CSV, ZIP, XLSX, JSON, XML/YML · сначала просмотр, имя прайса — по имени файла
+        </span>
         <input
           type="file"
           multiple
@@ -356,7 +420,16 @@ function FilePane({
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
-      {table && map && supplier ? (
+      {preview ? (
+        <PricePreviewCard
+          preview={preview}
+          label={label}
+          onLabelChange={setLabel}
+          fileName={fileName}
+          showTable={!(table && map)}
+        />
+      ) : null}
+      {table && map && supplier && files.length === 1 && !isBulkPrice(files[0], supplier) ? (
         <MappingBlock
           table={table}
           map={map}
@@ -365,16 +438,23 @@ function FilePane({
           busy={busy}
           onConfirm={() => {
             setBusy(true);
-            void commitTable(supplier, table, map, "file", fileName, mode, onImport)
-              .then((count) => {
-                toast.success(`Загружено ${count} позиций`);
-                setTable(null);
-                setMap(null);
-              })
+            void confirmImport()
               .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Ошибка"))
               .finally(() => setBusy(false));
           }}
         />
+      ) : preview && supplier ? (
+        <Button
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            void confirmImport()
+              .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Ошибка"))
+              .finally(() => setBusy(false));
+          }}
+        >
+          {busy ? "Сохраняю…" : files.length > 1 ? `Загрузить ${files.length} прайса` : "Загрузить прайс"}
+        </Button>
       ) : null}
     </div>
   );

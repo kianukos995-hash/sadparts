@@ -13,11 +13,13 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { OfferSpecs } from "@/components/offer-specs";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { formatDateTime, formatDays, formatMoney, formatStock } from "@/lib/format";
 import { offerOems, offerTitle, relatedOffers } from "@/lib/oem";
-import { sellUnitPrice } from "@/lib/pricing";
-import type { Client, Offer, Supplier } from "@/lib/types";
+import { findBand, formatBandLabel } from "@/lib/price-bands";
+import { clientSellPrice } from "@/lib/pricing";
+import type { Client, Offer, PriceBand, Supplier } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export function OfferDrawer({
@@ -25,7 +27,9 @@ export function OfferDrawer({
   offers,
   suppliers,
   clients,
+  clientId,
   markupPercent,
+  priceBands,
   onAdd,
   onOpenChange,
 }: {
@@ -33,7 +37,9 @@ export function OfferDrawer({
   offers: Offer[];
   suppliers: Supplier[];
   clients?: Client[];
+  clientId?: string;
   markupPercent: number;
+  priceBands?: PriceBand[];
   onAdd?: (offer: Offer) => void;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -47,7 +53,9 @@ export function OfferDrawer({
             offers={offers}
             suppliers={suppliers}
             clients={clients ?? []}
+            clientId={clientId ?? ""}
             markupPercent={markupPercent}
+            priceBands={priceBands ?? []}
             onAdd={onAdd}
             onOpenChange={onOpenChange}
           />
@@ -62,7 +70,9 @@ function DrawerBody({
   offers,
   suppliers,
   clients,
+  clientId: initialClientId,
   markupPercent,
+  priceBands,
   onAdd,
   onOpenChange,
 }: {
@@ -70,7 +80,9 @@ function DrawerBody({
   offers: Offer[];
   suppliers: Supplier[];
   clients: Client[];
+  clientId: string;
   markupPercent: number;
+  priceBands: PriceBand[];
   onAdd?: (offer: Offer) => void;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -80,11 +92,13 @@ function DrawerBody({
   const names = new Map(suppliers.map((supplier) => [supplier.id, supplier.name]));
   const [name, setName] = useState(offer.displayName ?? "");
   const [cross, setCross] = useState((offer.crossOems ?? []).join(", "));
-  const [clientId, setClientId] = useState("");
+  const [clientId, setClientId] = useState(initialClientId);
   const client = clients.find((item) => item.id === clientId);
-  const discount = client?.discountPercent ?? 0;
-  const sell = sellUnitPrice(offer.price, markupPercent, discount);
+  const band = findBand(offer.price, priceBands);
+  const sell = clientSellPrice(offer.price, priceBands, markupPercent, client);
   const oems = offerOems(offer);
+  const clientMarkup = client?.bandMarkups?.[band.id];
+  const markup = typeof clientMarkup === "number" ? clientMarkup : band.markupPercent || markupPercent;
 
   return (
     <>
@@ -99,17 +113,16 @@ function DrawerBody({
         <div className="flex flex-wrap gap-2">
           <Badge variant="secondary">{offer.category}</Badge>
           <Badge variant="outline">{names.get(offer.supplierId)}</Badge>
+          <Badge variant="outline">{formatBandLabel(band)}</Badge>
         </div>
         <div>
           <p className="text-2xl font-semibold tracking-tight">
-            {formatMoney(offer.price, offer.currency)}
+            {formatMoney(sell, offer.currency)}
           </p>
           <p className="text-sm text-muted-foreground">
-            С наценкой {markupPercent}%
-            {discount ? ` и скидкой клиента ${discount}%` : ""}:{" "}
-            <span className="font-medium text-foreground">
-              {formatMoney(sell, offer.currency)}
-            </span>
+            Закуп {formatMoney(offer.price, offer.currency)} · коридор {formatBandLabel(band)} ·
+            наценка {markup}%
+            {client?.discountPercent ? ` · скидка ${client.discountPercent}%` : ""}
           </p>
         </div>
         <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -119,6 +132,8 @@ function DrawerBody({
           <Info label="Обновлено" value={formatDateTime(offer.updatedAt)} />
         </dl>
 
+        <OfferSpecs specs={offer.specs} defaultOpen />
+
         {clients.length > 0 ? (
           <label className="grid gap-1.5 text-sm">
             <Label>Клиент для расчёта</Label>
@@ -127,10 +142,10 @@ function DrawerBody({
               value={clientId}
               onChange={(event) => setClientId(event.target.value)}
             >
-              <option value="">Без скидки</option>
+              <option value="">Розница / без клиента</option>
               {clients.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.name} · {item.discountPercent}%
+                  {item.name} · скидка {item.discountPercent}%
                 </option>
               ))}
             </select>

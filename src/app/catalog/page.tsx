@@ -15,10 +15,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { OfferDrawer } from "@/components/offer-drawer";
+import { OfferSpecs } from "@/components/offer-specs";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { formatDays, formatMoney, formatStock, normalizeSku } from "@/lib/format";
 import { groupByOem, offerOems, offerTitle, searchHaystack } from "@/lib/oem";
-import { sellUnitPrice } from "@/lib/pricing";
+import { findBand, formatBandLabel } from "@/lib/price-bands";
+import { clientSellPrice } from "@/lib/pricing";
 import { CATEGORIES } from "@/lib/types";
 import type { Offer } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -34,12 +36,16 @@ export default function CatalogPage() {
   const [supplierId, setSupplierId] = useState("all");
   const [category, setCategory] = useState("all");
   const [brand, setBrand] = useState("all");
+  const [clientId, setClientId] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [maxDays, setMaxDays] = useState("");
   const [inStock, setInStock] = useState(false);
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Offer | null>(null);
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+
+  const client = clients.find((item) => item.id === clientId);
+  const bands = settings.priceBands;
 
   const brands = useMemo(
     () => Array.from(new Set((liveOffers ?? offers).map((offer) => offer.brand))).sort(),
@@ -108,7 +114,8 @@ export default function CatalogPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Каталог запчастей</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Поиск по артикулу и OEM. Для Росско: живой GetSearch (KEY1/KEY2) плюс прайс с диска.
+          Закуп и цена клиенту по ценовым коридорам. Характеристики раскрываются в строке или в
+          номенклатуре.
           {searching ? " Ищу у Росско…" : ""}
         </p>
       </div>
@@ -126,6 +133,26 @@ export default function CatalogPage() {
             }}
           />
         </div>
+        <Select
+          value={clientId || "none"}
+          onValueChange={(value) => {
+            if (value) setClientId(value === "none" ? "" : value);
+          }}
+        >
+          <SelectTrigger className="w-full">
+            <span className="flex flex-1 truncate text-left">
+              {client ? `${client.name} · скидка ${client.discountPercent}%` : "Клиент для цены"}
+            </span>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Розница / без клиента</SelectItem>
+            {clients.map((item) => (
+              <SelectItem key={item.id} value={item.id}>
+                {item.name} · {item.discountPercent}%
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select
           value={supplierId}
           onValueChange={(value) => {
@@ -226,7 +253,7 @@ export default function CatalogPage() {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        {groups.length} групп OEM · {filtered.length} предложений · наценка {settings.markupPercent}%
+        {groups.length} групп OEM · {filtered.length} предложений · {bands.length} ценовых коридоров
         {liveNote ? ` · ${liveNote}` : ""}
       </p>
 
@@ -241,6 +268,7 @@ export default function CatalogPage() {
           {visible.map((group) => {
             const open = openGroups.has(group.key) || Boolean(query.trim());
             const best = group.offers[0];
+            const bestSell = clientSellPrice(best.price, bands, settings.markupPercent, client);
             return (
               <div key={group.key} className="overflow-hidden rounded-xl border">
                 <button
@@ -273,7 +301,10 @@ export default function CatalogPage() {
                     </div>
                   </div>
                   <div className="hidden shrink-0 text-right sm:block">
-                    <p className="text-sm font-semibold">{formatMoney(group.minPrice)}</p>
+                    <p className="text-sm font-semibold">{formatMoney(bestSell)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      клиенту · закуп от {formatMoney(group.minPrice)}
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       от {formatDays(group.minDays)} · {formatStock(group.stock)}
                     </p>
@@ -282,11 +313,18 @@ export default function CatalogPage() {
                 {open ? (
                   <div className="border-t bg-muted/20">
                     {group.offers.map((offer) => {
-                      const sell = sellUnitPrice(offer.price, settings.markupPercent, 0);
+                      const sell = clientSellPrice(
+                        offer.price,
+                        bands,
+                        settings.markupPercent,
+                        client,
+                      );
+                      const band = findBand(offer.price, bands);
+                      const clientMarkup = client?.bandMarkups?.[band.id];
                       return (
                         <div
                           key={offer.id}
-                          className="flex flex-col gap-2 border-b px-4 py-3 last:border-b-0 sm:flex-row sm:items-center"
+                          className="flex flex-col gap-2 border-b px-4 py-3 last:border-b-0 sm:flex-row sm:items-start"
                         >
                           <button
                             type="button"
@@ -301,6 +339,7 @@ export default function CatalogPage() {
                               {names.get(offer.supplierId)} · {formatStock(offer.stock)} ·{" "}
                               {formatDays(offer.deliveryDays)} до Москвы
                             </p>
+                            <OfferSpecs specs={offer.specs} compact />
                           </button>
                           <div className="flex items-center justify-between gap-3 sm:justify-end">
                             <div className="text-right">
@@ -310,17 +349,18 @@ export default function CatalogPage() {
                                   offer.id === best.id && "text-emerald-700",
                                 )}
                               >
-                                {formatMoney(offer.price, offer.currency)}
+                                {formatMoney(sell, offer.currency)}
                               </p>
                               <p className="text-[11px] text-muted-foreground">
-                                с наценкой {formatMoney(sell, offer.currency)}
+                                закуп {formatMoney(offer.price, offer.currency)} ·{" "}
+                                {formatBandLabel(band)} +
+                                {typeof clientMarkup === "number"
+                                  ? clientMarkup
+                                  : band.markupPercent}
+                                %
                               </p>
                             </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => void addOffer(offer)}
-                            >
+                            <Button size="sm" variant="outline" onClick={() => void addOffer(offer)}>
                               <ShoppingCart />
                               В заказ
                             </Button>
@@ -359,7 +399,9 @@ export default function CatalogPage() {
         offers={liveOffers ?? offers}
         suppliers={suppliers}
         clients={clients}
+        clientId={clientId}
         markupPercent={settings.markupPercent}
+        priceBands={bands}
         onAdd={(item) => void addOffer(item)}
         onOpenChange={(openState) => {
           if (!openState) setSelected(null);

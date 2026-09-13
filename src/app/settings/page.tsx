@@ -10,9 +10,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { SupplierFormDialog } from "@/components/supplier-form";
+import { PriceBandsEditor } from "@/components/price-bands-editor";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { formatDays, maskKey } from "@/lib/format";
-import type { Supplier } from "@/lib/types";
+import { DEFAULT_PRICE_BANDS, sanitizeBands } from "@/lib/price-bands";
+import type { PriceBand, Supplier } from "@/lib/types";
 
 export default function SettingsPage() {
   const {
@@ -27,10 +29,12 @@ export default function SettingsPage() {
   const [editing, setEditing] = useState<Supplier | undefined>();
   const [markup, setMarkup] = useState<string | null>(null);
   const [hubNote, setHubNote] = useState<string | null>(null);
+  const [bands, setBands] = useState<PriceBand[] | null>(null);
   const [busy, setBusy] = useState(false);
 
   const markupValue = markup ?? String(settings.markupPercent);
   const noteValue = hubNote ?? settings.moscowHubNote;
+  const bandsValue = bands ?? sanitizeBands(settings.priceBands?.length ? settings.priceBands : DEFAULT_PRICE_BANDS);
 
   if (!ready) return <p className="text-sm text-muted-foreground">Загружаю настройки…</p>;
 
@@ -58,12 +62,13 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle>Торговля</CardTitle>
           <CardDescription>
-            Цена клиенту = закупочная × (1 + наценка) × (1 − скидка клиента).
+            Цена клиенту = закуп × (1 + наценка коридора) × (1 − скидка). Коридоры можно переопределить
+            в карточке клиента.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <label className="grid gap-1.5">
-            <Label>Наценка склада, %</Label>
+            <Label>Наценка по умолчанию, %</Label>
             <Input
               type="number"
               min={0}
@@ -80,6 +85,10 @@ export default function SettingsPage() {
               onChange={(event) => setHubNote(event.target.value)}
             />
           </label>
+          <div className="sm:col-span-2">
+            <Label className="mb-2 block">Ценовые категории</Label>
+            <PriceBandsEditor bands={bandsValue} onChange={setBands} />
+          </div>
           <div>
             <Button
               disabled={busy}
@@ -88,6 +97,7 @@ export default function SettingsPage() {
                 void saveTradeSettings({
                   markupPercent: Number.parseFloat(markupValue.replace(",", ".")) || 0,
                   moscowHubNote: noteValue,
+                  priceBands: bandsValue,
                 })
                   .then(() => toast.success("Настройки сохранены"))
                   .catch((error: unknown) =>

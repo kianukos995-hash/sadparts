@@ -4,6 +4,7 @@ import { DEMO_KEYS, ROSSKO_API_BASE, STORE_VERSION } from "@/lib/constants";
 import { mergeCrosses } from "@/lib/cross-catalog";
 import { removeCatalog } from "@/lib/file-catalog";
 import { createInitialStore, DEFAULT_CLIENTS } from "@/lib/seed";
+import { DEFAULT_PRICE_BANDS } from "@/lib/price-bands";
 import type {
   AppSettings,
   Client,
@@ -28,6 +29,7 @@ export const EMPTY_SETTINGS: AppSettings = {
   telegramSecret: "",
   markupPercent: 18,
   moscowHubNote: "Срок до Москвы считается от склада поставщика + 1 день на хаб.",
+  priceBands: DEFAULT_PRICE_BANDS,
 };
 
 const DEFAULT_DELIVERY: Record<string, { days: number; note: string }> = {
@@ -322,7 +324,11 @@ async function readSettingsFile(): Promise<AppSettings> {
   try {
     const raw = await readFile(SETTINGS_FILE, "utf8");
     const parsed = JSON.parse(raw) as Partial<AppSettings>;
-    return { ...EMPTY_SETTINGS, ...parsed };
+    return {
+      ...EMPTY_SETTINGS,
+      ...parsed,
+      priceBands: parsed.priceBands?.length ? parsed.priceBands : DEFAULT_PRICE_BANDS,
+    };
   } catch {
     return { ...EMPTY_SETTINGS };
   }

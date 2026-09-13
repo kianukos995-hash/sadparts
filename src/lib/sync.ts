@@ -60,6 +60,7 @@ export function buildSyncLog(
   result: { offers: Offer[]; skipped: number } | { error: string },
   source: Supplier["source"],
   fileName?: string,
+  label?: string,
 ): SyncLog {
   if ("error" in result) {
     return {
@@ -71,6 +72,7 @@ export function buildSyncLog(
       error: result.error,
       source,
       fileName,
+      label,
     };
   }
   return {
@@ -82,6 +84,7 @@ export function buildSyncLog(
     error: result.skipped ? `Пропущено без артикула: ${result.skipped}` : undefined,
     source,
     fileName,
+    label,
   };
 }
 

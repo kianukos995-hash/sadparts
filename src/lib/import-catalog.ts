@@ -1,17 +1,57 @@
-import Papa from "papaparse";
-import { offerToCatalogRow, readCatalog, writeCatalog, type CatalogRow } from "@/lib/file-catalog";
+import { offerToCatalogRow, readCatalog, writeCatalog } from "@/lib/file-catalog";
+import { copyPreviousCatalog, recordImportHistory } from "@/lib/import-history";
 import { guessColumnMap, rowToOffer } from "@/lib/mapping";
 import { parseCsvText, xmlToTable } from "@/lib/parse-feed";
+import { guessPriceTitle } from "@/lib/price-bands";
 import { isRosskoSoapXml } from "@/lib/rossko-soap";
-import { extractFirstZipFile } from "@/lib/zip";
+import { decodePriceText, extractBestZipFile } from "@/lib/zip";
 import type { ImportMode, Offer, Supplier } from "@/lib/types";
 
-function payloadText(buffer: Buffer, filename: string) {
+const IMPORT_ROWS = 400_000;
+
+function payloadBuffer(buffer: Buffer, filename: string) {
   const lower = filename.toLowerCase();
-  const payload = lower.endsWith(".zip") ? extractFirstZipFile(buffer).body : buffer;
-  let text = payload.toString("utf8");
-  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
-  return text;
+  if (lower.endsWith(".zip")) return extractBestZipFile(buffer);
+  return { name: filename, body: buffer };
+}
+
+function decodeText(buffer: Buffer, filename: string) {
+  const { name, body } = payloadBuffer(buffer, filename);
+  return { name, text: decodePriceText(body) };
+}
+
+function priceTitle(filename: string, innerName: string) {
+  return guessPriceTitle(filename) || guessPriceTitle(innerName || filename);
+}
+
+function offersFromRecords(supplier: Supplier, rows: Record<string, string>[], headers: string[]) {
+  const map = guessColumnMap(headers.length ? headers : Object.keys(rows[0] ?? {}));
+  const mappedSupplier = { ...supplier, columnMap: map, source: "file" as const };
+  const offers: Offer[] = [];
+  let skipped = 0;
+  const skipReasons: string[] = [];
+  for (const row of rows) {
+    try {
+      const offer = rowToOffer(row, mappedSupplier, map);
+      if (offer) offers.push(offer);
+      else {
+        skipped += 1;
+        if (skipReasons.length < 6) skipReasons.push("нет артикула");
+      }
+    } catch (error) {
+      skipped += 1;
+      if (skipReasons.length < 6) {
+        skipReasons.push(error instanceof Error ? error.message : "строка не разобралась");
+      }
+    }
+  }
+  return {
+    offers,
+    skipped,
+    headers: headers.length ? headers : Object.keys(rows[0] ?? {}),
+    map,
+    skipReasons,
+  };
 }
 
 async function commitRows(supplier: Supplier, offers: Offer[], mode: ImportMode) {
@@ -26,70 +66,100 @@ async function commitRows(supplier: Supplier, offers: Offer[], mode: ImportMode)
   return catalogRows;
 }
 
-function offersFromRecords(supplier: Supplier, rows: Record<string, string>[], map = guessColumnMap(Object.keys(rows[0] ?? {}))) {
-  const mappedSupplier = { ...supplier, columnMap: map, source: "file" as const };
-  const offers: Offer[] = [];
-  let skipped = 0;
-  for (const row of rows) {
-    const offer = rowToOffer(row, mappedSupplier, map);
-    if (offer) offers.push(offer);
-    else skipped += 1;
-  }
-  return { offers, skipped, headers: Object.keys(rows[0] ?? {}), map };
-}
-
-export async function importCatalogFile(supplier: Supplier, buffer: Buffer, filename: string, mode: ImportMode) {
-  const text = payloadText(buffer, filename);
-  const lower = filename.toLowerCase();
-
-  if (isRosskoSoapXml(text) || lower.endsWith(".xml")) {
+export function previewCatalogFile(buffer: Buffer, filename: string) {
+  const decoded = decodeText(buffer, filename);
+  const text = decoded.text;
+  const title = priceTitle(filename, decoded.name);
+  if (
+    isRosskoSoapXml(text) ||
+    decoded.name.toLowerCase().endsWith(".xml") ||
+    filename.toLowerCase().endsWith(".xml")
+  ) {
     const table = xmlToTable(text);
-    const { offers, skipped, headers } = offersFromRecords(supplier, table.rows, guessColumnMap(table.headers));
-    const catalogRows = await commitRows(supplier, offers, mode);
-    return { imported: catalogRows.length, skipped, headers };
+    return {
+      title,
+      innerName: decoded.name,
+      headers: table.headers,
+      rows: table.rows.slice(0, 25),
+      total: table.total,
+      warnings: table.total === 0 ? ["SOAP/XML не дал строк прайса"] : [],
+    };
   }
-
-  const preview = parseCsvText(text.slice(0, 50_000));
-  const map = guessColumnMap(preview.headers.length ? preview.headers : parseCsvText(text).headers);
-  const mappedSupplier = { ...supplier, columnMap: map, source: "file" as const };
-  const delimiter = (text.split(/\r?\n/, 1)[0] ?? "").includes(";") ? ";" : ",";
-  const catalogRows: CatalogRow[] = [];
-  let skipped = 0;
-  const byId =
-    mode === "merge"
-      ? new Map((await readCatalog(supplier.id)).rows.map((row) => [`${row.guid}:${row.sku}`, row]))
-      : null;
-
-  Papa.parse<Record<string, string>>(text, {
-    header: true,
-    skipEmptyLines: "greedy",
-    delimiter,
-    step(result) {
-      const row = result.data;
-      if (!row || typeof row !== "object") {
-        skipped += 1;
-        return;
-      }
-      const offer = rowToOffer(row, mappedSupplier, map);
-      if (!offer) {
-        skipped += 1;
-        return;
-      }
-      const catalogRow = offerToCatalogRow(offer);
-      if (byId) byId.set(`${catalogRow.guid}:${catalogRow.sku}`, catalogRow);
-      else catalogRows.push(catalogRow);
-    },
-  });
-
-  const finalRows = byId ? Array.from(byId.values()) : catalogRows;
-  await writeCatalog(supplier.id, finalRows);
+  const lineCount = (text.match(/\n/g) ?? []).length;
+  const sampleLines = text.split(/\r?\n/, 45).join("\n");
+  const table = parseCsvText(sampleLines, 40);
   return {
-    imported: finalRows.length,
-    skipped,
-    headers: preview.headers,
+    title,
+    innerName: decoded.name,
+    headers: table.headers,
+    rows: table.rows.slice(0, 25),
+    total: Math.max(table.total, lineCount),
+    warnings: table.warnings,
   };
 }
 
-export function compactCount(rows: CatalogRow[]) {
-  return rows.length;
+export async function importCatalogFile(
+  supplier: Supplier,
+  buffer: Buffer,
+  filename: string,
+  mode: ImportMode,
+  label?: string,
+) {
+  const decoded = decodeText(buffer, filename);
+  const text = decoded.text;
+  const title = (label ?? "").trim() || priceTitle(filename, decoded.name);
+  let offers: Offer[] = [];
+  let skipped = 0;
+  let headers: string[] = [];
+  const warnings: string[] = [];
+
+  if (
+    isRosskoSoapXml(text) ||
+    decoded.name.toLowerCase().endsWith(".xml") ||
+    filename.toLowerCase().endsWith(".xml")
+  ) {
+    const table = xmlToTable(text);
+    const mapped = offersFromRecords(supplier, table.rows, table.headers);
+    offers = mapped.offers;
+    skipped = mapped.skipped;
+    headers = mapped.headers;
+    warnings.push(...mapped.skipReasons);
+  } else {
+    const parsed = parseCsvText(text, IMPORT_ROWS);
+    const mapped = offersFromRecords(supplier, parsed.rows, parsed.headers);
+    offers = mapped.offers;
+    skipped = mapped.skipped;
+    headers = mapped.headers;
+    warnings.push(...(parsed.warnings ?? []), ...mapped.skipReasons);
+  }
+
+  if (offers.length === 0) {
+    throw new Error(
+      warnings.filter((item) => !item.startsWith("пропущены служебные")).join(" · ") ||
+        "В файле нет артикулов. Проверьте разделитель, кодировку и заголовки.",
+    );
+  }
+
+  const previous = await copyPreviousCatalog(supplier.id);
+  const catalogRows = await commitRows(supplier, offers, mode);
+  const history = await recordImportHistory({
+    id: previous.id,
+    at: new Date().toISOString(),
+    supplierId: supplier.id,
+    label: title,
+    fileName: decoded.name || filename,
+    mode,
+    imported: catalogRows.length,
+    skipped,
+    snapshotFile: previous.snapshotFile || undefined,
+    warnings: warnings.slice(0, 8),
+  });
+  return {
+    imported: catalogRows.length,
+    skipped,
+    headers,
+    warnings: warnings.slice(0, 8),
+    label: title,
+    history,
+  };
 }

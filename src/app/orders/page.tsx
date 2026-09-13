@@ -21,7 +21,7 @@ import {
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { findDraft } from "@/lib/order";
 import { formatDays, formatMoney } from "@/lib/format";
-import { lineTotal, sellUnitPrice } from "@/lib/pricing";
+import { clientLineTotal, clientSellPrice } from "@/lib/pricing";
 import { cn } from "@/lib/utils";
 import type { Order, OrderStatus } from "@/lib/types";
 
@@ -47,10 +47,10 @@ export default function OrdersPage() {
 
   const client = clients.find((item) => item.id === storedDraft?.clientId);
   const discount = client?.discountPercent ?? 0;
-  const markup =
-    markupOverride === null
-      ? (storedDraft?.markupPercent ?? settings.markupPercent)
-      : Number.parseFloat(markupOverride.replace(",", ".")) || 0;
+  const useBands = markupOverride === null || markupOverride.trim() === "";
+  const markup = useBands
+    ? null
+    : Number.parseFloat(markupOverride.replace(",", ".")) || 0;
   const names = useMemo(
     () => new Map(suppliers.map((supplier) => [supplier.id, supplier.name])),
     [suppliers],
@@ -61,15 +61,29 @@ export default function OrdersPage() {
     return storedDraft.lines.reduce(
       (acc, line) => ({
         buy: acc.buy + line.buyPrice * line.qty,
-        sell: acc.sell + lineTotal(line.buyPrice, line.qty, markup, discount),
+        sell:
+          acc.sell +
+          clientLineTotal(
+            line.buyPrice,
+            line.qty,
+            settings.priceBands,
+            settings.markupPercent,
+            client,
+            markup,
+          ),
         qty: acc.qty + line.qty,
       }),
       { buy: 0, sell: 0, qty: 0 },
     );
-  }, [storedDraft, markup, discount]);
+  }, [storedDraft, markup, client, settings.priceBands, settings.markupPercent]);
 
   async function persist(next: Order) {
-    await upsertOrder({ ...next, markupPercent: markup, updatedAt: new Date().toISOString() });
+    await upsertOrder({
+      ...next,
+      markupPercent:
+        next.status === "draft" ? (markup ?? settings.markupPercent) : next.markupPercent,
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   if (!ready) return <p className="text-sm text-muted-foreground">Загружаю заказы…</p>;
@@ -81,7 +95,7 @@ export default function OrdersPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Заказы</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          OEM, артикул, срок до Москвы, количество, наценка склада и скидка клиента.
+            Скидка клиента и ценовые коридоры. Если задать наценку числом — она перекроет коридоры.
         </p>
       </div>
 
@@ -117,12 +131,17 @@ export default function OrdersPage() {
               <Input
                 type="number"
                 min={0}
-                value={markupOverride ?? String(draft.markupPercent)}
+                placeholder="по коридорам"
+                value={markupOverride ?? ""}
                 onChange={(event) => setMarkupOverride(event.target.value)}
                 onBlur={() => {
-                  void persist({ ...draft, markupPercent: markup });
+                  if (!useBands) void persist({ ...draft, markupPercent: markup ?? 0 });
                 }}
               />
+              <p className="text-[11px] text-muted-foreground">
+                Пусто — наценка из ценовых категорий
+                {client ? ` клиента «${client.name}»` : ""}.
+              </p>
             </label>
             <div className="grid gap-1 text-sm">
               <p className="text-muted-foreground">Скидка клиента</p>
@@ -183,12 +202,28 @@ export default function OrdersPage() {
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {formatMoney(
-                        sellUnitPrice(line.buyPrice, markup, discount),
+                        clientSellPrice(
+                          line.buyPrice,
+                          settings.priceBands,
+                          settings.markupPercent,
+                          client,
+                          markup,
+                        ),
                         line.currency,
                       )}
                       <p className="text-[11px] font-normal text-muted-foreground">
                         × {line.qty} ={" "}
-                        {formatMoney(lineTotal(line.buyPrice, line.qty, markup, discount), line.currency)}
+                        {formatMoney(
+                          clientLineTotal(
+                            line.buyPrice,
+                            line.qty,
+                            settings.priceBands,
+                            settings.markupPercent,
+                            client,
+                            markup,
+                          ),
+                          line.currency,
+                        )}
                       </p>
                     </TableCell>
                     <TableCell className="hidden text-right lg:table-cell">
@@ -287,7 +322,14 @@ export default function OrdersPage() {
                 const orderDiscount = orderClient?.discountPercent ?? 0;
                 const sell = order.lines.reduce(
                   (sum, line) =>
-                    sum + lineTotal(line.buyPrice, line.qty, order.markupPercent, orderDiscount),
+                    sum +
+                    clientLineTotal(
+                      line.buyPrice,
+                      line.qty,
+                      settings.priceBands,
+                      order.markupPercent,
+                      orderClient,
+                    ),
                   0,
                 );
                 return (
@@ -300,8 +342,7 @@ export default function OrdersPage() {
                         {order.number} · {orderClient?.name || "без клиента"}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {order.lines.length} поз. · наценка {order.markupPercent}% · скидка{" "}
-                        {orderDiscount}%
+                        {order.lines.length} поз. · коридоры / скидка {orderDiscount}%
                       </p>
                     </div>
                     <div className="flex items-center gap-2">

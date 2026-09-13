@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { emptyDraft, findDraft, offerToLine } from "@/lib/order";
+import { DEFAULT_PRICE_BANDS } from "@/lib/price-bands";
 import type {
   Client,
   ImportMode,
@@ -29,6 +30,7 @@ const EMPTY_PUBLIC: PublicSettings = {
   telegramTokenMasked: "",
   markupPercent: 18,
   moscowHubNote: "",
+  priceBands: DEFAULT_PRICE_BANDS,
 };
 
 export interface AvtoPriceApi {
@@ -58,7 +60,11 @@ export interface AvtoPriceApi {
   upsertOrder: (order: Order) => Promise<void>;
   removeOrder: (id: string) => Promise<void>;
   addToDraft: (offer: Offer, qty?: number) => Promise<void>;
-  saveTradeSettings: (patch: { markupPercent?: number; moscowHubNote?: string }) => Promise<void>;
+  saveTradeSettings: (patch: {
+    markupPercent?: number;
+    moscowHubNote?: string;
+    priceBands?: PublicSettings["priceBands"];
+  }) => Promise<void>;
   resetDemo: () => Promise<void>;
 }
 
@@ -167,7 +173,11 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
   );
 
   const saveTradeSettings = useCallback(
-    async (patch: { markupPercent?: number; moscowHubNote?: string }) => {
+    async (patch: {
+      markupPercent?: number;
+      moscowHubNote?: string;
+      priceBands?: PublicSettings["priceBands"];
+    }) => {
       const response = await fetch("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import {
   ClipboardList,
   LayoutGrid,
+  BookOpen,
   Menu,
   PackagePlus,
   PackageSearch,
@@ -26,6 +27,7 @@ const GROUPS = [
     items: [
       { href: "/", label: "Обзор", icon: LayoutGrid },
       { href: "/catalog", label: "Каталог", icon: PackageSearch },
+      { href: "/nomenclature", label: "Номенклатура", icon: BookOpen },
     ],
   },
   {

@@ -193,7 +193,12 @@ function mergeOffers(offers: Offer[]) {
   const map = new Map<string, Offer>();
   for (const offer of offers) {
     const current = map.get(offer.id);
-    if (!current || (offer.source === "api" && current.source !== "api")) map.set(offer.id, offer);
+    if (!current || (offer.source === "api" && current.source !== "api")) {
+      map.set(offer.id, {
+        ...offer,
+        specs: offer.specs && Object.keys(offer.specs).length ? offer.specs : current?.specs,
+      });
+    }
     else if (!current) map.set(offer.id, offer);
   }
   return Array.from(map.values()).sort((a, b) => a.price - b.price || a.deliveryDays - b.deliveryDays);

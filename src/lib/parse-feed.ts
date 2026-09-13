@@ -13,20 +13,21 @@ import {
 
 const MAX_ROWS = 20_000;
 
-export function matrixToTable(matrix: string[][]): ParsedTable {
+export function matrixToTable(matrix: string[][], maxRows = MAX_ROWS): ParsedTable {
   const filled = matrix.filter((row) => row.some((cell) => cell.trim()));
   if (filled.length === 0) {
     return { headers: [], rows: [], total: 0 };
   }
-  const headers = filled[0].map((cell, index) => cell.trim() || `Колонка ${index + 1}`);
-  const rows = filled.slice(1, MAX_ROWS + 1).map((row) => {
+  const headers = uniqueHeaders(filled[0].map((cell, index) => cell.trim() || `Колонка ${index + 1}`));
+  const body = filled.slice(1);
+  const rows = body.slice(0, maxRows).map((row) => {
     const record: Record<string, string> = {};
     headers.forEach((header, index) => {
       record[header] = row[index] ?? "";
     });
     return record;
   });
-  return { headers, rows, total: rows.length };
+  return { headers, rows, total: body.length };
 }
 
 export function recordsToTable(records: Record<string, unknown>[]): ParsedTable {
@@ -46,17 +47,83 @@ export function recordsToTable(records: Record<string, unknown>[]): ParsedTable 
   return { headers, rows, total: rows.length };
 }
 
-export function parseCsvText(text: string): ParsedTable {
-  const stripped = text.replace(/^\uFEFF/, "");
-  const first = stripped.split(/\r?\n/, 1)[0] ?? "";
-  const semicolons = (first.match(/;/g) ?? []).length;
-  const commas = (first.match(/,/g) ?? []).length;
-  const parsed = Papa.parse<string[]>(stripped, {
-    skipEmptyLines: "greedy",
-    delimiter: semicolons > commas ? ";" : "",
+const HEADER_HINT =
+  /артикул|номенклатура|sku|partnumber|brand|бренд|цена|price|наличие|stock|oem|описание|наименование/i;
+
+export function detectDelimiter(line: string) {
+  const semicolons = (line.match(/;/g) ?? []).length;
+  const commas = (line.match(/,/g) ?? []).length;
+  const tabs = (line.match(/\t/g) ?? []).length;
+  if (tabs >= semicolons && tabs >= commas && tabs > 0) return "\t";
+  return semicolons >= commas ? ";" : ",";
+}
+
+export function stripCsvJunk(text: string) {
+  const stripped = text.replace(/^\uFEFF/, "").replace(/\0/g, "");
+  const lines = stripped.split(/\r?\n/);
+  let start = 0;
+  while (start < Math.min(lines.length - 1, 6)) {
+    const line = lines[start]?.replace(/^"|"$/g, "").trim() ?? "";
+    if (!line) {
+      start += 1;
+      continue;
+    }
+    if (HEADER_HINT.test(line)) break;
+    if (HEADER_HINT.test(lines[start + 1] ?? "")) {
+      start += 1;
+      break;
+    }
+    break;
+  }
+  return { text: lines.slice(start).join("\n"), skipped: start };
+}
+
+function uniqueHeaders(headers: string[]) {
+  const seen = new Map<string, number>();
+  return headers.map((raw, index) => {
+    const base = raw.replace(/^\uFEFF/, "").replace(/^"|"$/g, "").trim() || `Колонка ${index + 1}`;
+    const count = seen.get(base) ?? 0;
+    seen.set(base, count + 1);
+    return count ? `${base} (${count + 1})` : base;
   });
+}
+
+function parseDelimited(text: string, delimiter: string) {
+  const parseFn = Papa.parse as unknown as (
+    input: string,
+    config: {
+      header: false;
+      skipEmptyLines: "greedy";
+      delimiter: string;
+      relaxColumnCount: true;
+      relaxQuotes: true;
+      worker: false;
+      download: false;
+    },
+  ) => { data: string[][]; errors: { row?: number; message: string; code?: string }[] };
+  return parseFn(text, {
+    header: false,
+    skipEmptyLines: "greedy",
+    delimiter,
+    relaxColumnCount: true,
+    relaxQuotes: true,
+    worker: false,
+    download: false,
+  });
+}
+
+export function parseCsvText(text: string, maxRows = MAX_ROWS): ParsedTable {
+  const prepared = stripCsvJunk(text);
+  const first = prepared.text.split(/\r?\n/, 1)[0] ?? "";
+  const parsed = parseDelimited(prepared.text, detectDelimiter(first));
   const matrix = parsed.data.map((row) => row.map((cell) => String(cell ?? "").trim()));
-  return matrixToTable(matrix);
+  const table = matrixToTable(matrix, maxRows);
+  const warnings = (parsed.errors ?? [])
+    .filter((item) => item.code !== "UndetectableDelimiter")
+    .slice(0, 8)
+    .map((item) => `стр. ${item.row ?? "?"}: ${item.message}`);
+  if (prepared.skipped) warnings.unshift(`пропущены служебные строки: ${prepared.skipped}`);
+  return { ...table, warnings: warnings.length ? warnings : undefined };
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
