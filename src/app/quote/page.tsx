@@ -48,8 +48,8 @@ function QuotePageInner() {
   const [inStock, setInStock] = useState(false);
   const [changedOnly, setChangedOnly] = useState(false);
   const [live, setLive] = useState(false);
-  const [clientId, setClientId] = useState("");
-  const [orderId, setOrderId] = useState("");
+  const [clientId, setClientId] = useState(searchParams.get("clientId") ?? "");
+  const [orderId, setOrderId] = useState(searchParams.get("orderId") ?? "");
   const [page, setPage] = useState(0);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [total, setTotal] = useState(0);
@@ -69,6 +69,7 @@ function QuotePageInner() {
   );
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- quote opens with ?clientId=&orderId= from an order */
     const fromClient = searchParams.get("clientId") ?? "";
     const fromOrder = searchParams.get("orderId") ?? "";
     if (fromClient) setClientId(fromClient);
@@ -76,6 +77,7 @@ function QuotePageInner() {
       setOrderId(fromOrder);
       setActiveDraftId(fromOrder);
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [searchParams, setActiveDraftId]);
 
   const load = useCallback(() => {
