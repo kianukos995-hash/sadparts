@@ -4,44 +4,29 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
-  useSyncExternalStore,
+  useState,
 } from "react";
 import { loadStore, resetStore, saveStore } from "@/lib/storage";
 import type { Offer, StoreSnapshot, Supplier, SyncLog } from "@/lib/types";
 
 type Listener = () => void;
 
-let snapshot: StoreSnapshot | null = null;
-const listeners = new Set<Listener>();
+const EMPTY_STORE: StoreSnapshot = {
+  version: 1,
+  suppliers: [],
+  offers: [],
+  logs: [],
+};
 
-function current(): StoreSnapshot {
-  if (!snapshot) snapshot = loadStore();
-  return snapshot;
-}
+let snapshot: StoreSnapshot = EMPTY_STORE;
+const listeners = new Set<Listener>();
 
 function emit(next: StoreSnapshot) {
   snapshot = next;
   saveStore(next);
   listeners.forEach((listener) => listener());
-}
-
-function subscribe(listener: Listener) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function getSnapshot() {
-  return current();
-}
-
-function getServerSnapshot(): StoreSnapshot {
-  return {
-    version: 1,
-    suppliers: [],
-    offers: [],
-    logs: [],
-  };
 }
 
 export interface AvtoPriceApi {
@@ -57,16 +42,27 @@ export interface AvtoPriceApi {
 
 const AvtoPriceContext = createContext<AvtoPriceApi | null>(null);
 
-function subscribeHydration() {
-  return () => {};
-}
-
 export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
-  const store = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-  const ready = useSyncExternalStore(subscribeHydration, () => true, () => false);
+  const [store, setStore] = useState<StoreSnapshot>(EMPTY_STORE);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- localStorage is only available after mount */
+    const loaded = loadStore();
+    snapshot = loaded;
+    setStore(loaded);
+    setReady(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+
+    const listener = () => setStore(snapshot);
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  }, []);
 
   const upsertSupplier = useCallback((supplier: Supplier) => {
-    const prev = current();
+    const prev = snapshot.suppliers.length || snapshot.offers.length ? snapshot : loadStore();
     const exists = prev.suppliers.some((item) => item.id === supplier.id);
     emit({
       ...prev,
@@ -77,7 +73,7 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const removeSupplier = useCallback((id: string) => {
-    const prev = current();
+    const prev = snapshot;
     emit({
       ...prev,
       suppliers: prev.suppliers.filter((item) => item.id !== id),
@@ -87,7 +83,7 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const replaceOffers = useCallback((supplierId: string, nextOffers: Offer[], log: SyncLog) => {
-    const prev = current();
+    const prev = snapshot;
     emit({
       ...prev,
       suppliers: prev.suppliers.map((supplier) =>

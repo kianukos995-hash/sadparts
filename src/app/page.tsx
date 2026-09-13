@@ -27,7 +27,7 @@ export default function HomePage() {
   }, [offers, suppliers]);
 
   if (!ready) {
-    return <p className="text-sm text-muted-foreground">Загружаю каталог…</p>;
+    return <p className="text-sm text-muted-foreground">Загрузка данных поставщиков…</p>;
   }
 
   return (
