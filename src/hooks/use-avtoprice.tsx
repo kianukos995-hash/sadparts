@@ -118,6 +118,26 @@ function mergeOrders(server: Order[], local: Order[]) {
   );
 }
 
+async function postStock(direction: "take" | "release", order: Order) {
+  if (order.lines.length === 0) return;
+  const response = await fetch("/api/catalog/stock", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      direction,
+      items: order.lines.map((line) => ({
+        offerId: line.offerId,
+        supplierId: line.supplierId,
+        qty: line.qty,
+      })),
+    }),
+  });
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(data.error || "Не обновить остаток");
+  }
+}
+
 async function mutate(body: unknown) {
   const response = await fetch("/api/store/mutate", {
     method: "POST",
@@ -229,33 +249,43 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
   }, [applyStore]);
 
   const upsertOrder = useCallback(async (order: Order) => {
+    const prev = store.orders.find((item) => item.id === order.id);
     dirty.current = true;
     const next = { ...order, updatedAt: new Date().toISOString() };
-    setStore((prev) => {
-      const exists = prev.orders.some((item) => item.id === next.id);
+    setStore((current) => {
+      const exists = current.orders.some((item) => item.id === next.id);
       const orders = exists
-        ? prev.orders.map((item) => (item.id === next.id ? next : item))
-        : [next, ...prev.orders];
+        ? current.orders.map((item) => (item.id === next.id ? next : item))
+        : [next, ...current.orders];
       saveLocalOrders(orders);
-      return { ...prev, orders };
+      return { ...current, orders };
     });
     try {
+      if (prev?.status === "draft" && next.status === "assembled") {
+        await postStock("take", next);
+      } else if (prev && prev.status !== "draft" && next.status === "draft") {
+        await postStock("release", prev);
+      }
       applyStore(await mutate({ action: "upsertOrder", order: next }));
       dirty.current = false;
     } catch (error) {
       dirty.current = true;
       throw error;
     }
-  }, [applyStore]);
+  }, [applyStore, store.orders]);
 
   const removeOrder = useCallback(async (id: string) => {
-    setStore((prev) => {
-      const orders = prev.orders.filter((item) => item.id !== id);
+    const prev = store.orders.find((item) => item.id === id);
+    if (prev && prev.status !== "draft") {
+      await postStock("release", prev);
+    }
+    setStore((current) => {
+      const orders = current.orders.filter((item) => item.id !== id);
       saveLocalOrders(orders);
-      return { ...prev, orders };
+      return { ...current, orders };
     });
     applyStore(await mutate({ action: "removeOrder", orderId: id }));
-  }, [applyStore]);
+  }, [applyStore, store.orders]);
 
   const addToDraft = useCallback(
     async (

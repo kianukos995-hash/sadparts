@@ -3,6 +3,7 @@ import type { Offer, Order } from "@/lib/types";
 export function reservedQty(orders: Order[], offerId: string) {
   let qty = 0;
   for (const order of orders) {
+    if (order.status !== "draft") continue;
     for (const line of order.lines) {
       if (line.offerId === offerId) qty += line.qty;
     }

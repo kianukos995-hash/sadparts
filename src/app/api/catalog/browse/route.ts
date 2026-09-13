@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { queryPriceOffers, priceMeta } from "@/lib/catalog-query";
 import { readStore } from "@/lib/server-store";
+import type { CatalogBrowseFilter } from "@/lib/file-catalog";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,9 @@ export async function GET(request: NextRequest) {
   }
   const result = await queryPriceOffers(store.suppliers, store.offers, {
     q: url.searchParams.get("q") ?? "",
+    qField: (["sku", "oem", "name", "brand"].includes(url.searchParams.get("field") ?? "")
+      ? (url.searchParams.get("field") as CatalogBrowseFilter["qField"])
+      : "any"),
     supplierId: url.searchParams.get("supplierId") || undefined,
     brand: url.searchParams.get("brand") || undefined,
     minPrice: num(url.searchParams.get("minPrice")),

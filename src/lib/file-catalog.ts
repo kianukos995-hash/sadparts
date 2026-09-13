@@ -166,6 +166,7 @@ export async function searchCatalog(supplier: Supplier, query: string, limit = 8
 
 export interface CatalogBrowseFilter {
   q?: string;
+  qField?: "any" | "sku" | "oem" | "name" | "brand";
   brand?: string;
   minPrice?: number;
   maxPrice?: number;
@@ -187,6 +188,19 @@ function rowMatches(row: CatalogRow, filter: CatalogBrowseFilter, q: string, qSk
   if (!q) return true;
   const sku = normalizeSku(row.sku);
   const oem = normalizeSku(row.oem);
+  const field = filter.qField || "any";
+  if (field === "sku") {
+    return sku.includes(qSku) || normalizeSku(row.guid).includes(qSku);
+  }
+  if (field === "oem") {
+    return oem.includes(qSku) || row.crosses.some((item) => normalizeSku(item).includes(qSku));
+  }
+  if (field === "name") {
+    return row.name.toLowerCase().includes(q);
+  }
+  if (field === "brand") {
+    return row.brand.toLowerCase().includes(q);
+  }
   if (qSku && (sku.includes(qSku) || oem.includes(qSku) || normalizeSku(row.guid).includes(qSku))) {
     return true;
   }
@@ -241,16 +255,25 @@ export async function browseCatalog(supplier: Supplier, filter: CatalogBrowseFil
     }
     matched += 1;
   };
+  const field = filter.qField || "any";
   const candidateIdx =
     filter.brand && !q
       ? (index.byBrand.get(filter.brand.toLowerCase()) ?? [])
-      : qSku.length >= 2
-        ? uniqueIndexes([
-            ...(index.bySku.get(qSku) ?? []),
-            ...(index.byOem.get(qSku) ?? []),
-            ...prefixIndexes(index.bySku, qSku, 400),
-          ])
-        : undefined;
+      : field === "name" || field === "brand"
+        ? undefined
+        : qSku.length >= 2
+          ? uniqueIndexes(
+              field === "oem"
+                ? [...(index.byOem.get(qSku) ?? []), ...prefixIndexes(index.byOem, qSku, 400)]
+                : field === "sku"
+                  ? [...(index.bySku.get(qSku) ?? []), ...prefixIndexes(index.bySku, qSku, 400)]
+                  : [
+                      ...(index.bySku.get(qSku) ?? []),
+                      ...(index.byOem.get(qSku) ?? []),
+                      ...prefixIndexes(index.bySku, qSku, 400),
+                    ],
+            )
+          : undefined;
 
   if (candidateIdx) {
     for (const i of candidateIdx) visit(i);

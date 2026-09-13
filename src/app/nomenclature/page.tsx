@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { OfferSpecs } from "@/components/offer-specs";
 import { OfferMedia } from "@/components/offer-media";
 import { NomenclatureEdit } from "@/components/nomenclature-edit";
+import { AddToOrderButtons } from "@/components/add-to-order";
 import { SearchPick } from "@/components/search-pick";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { formatMoney } from "@/lib/format";
@@ -20,6 +21,7 @@ import { isDisplayableImage } from "@/lib/media";
 import type { Offer } from "@/lib/types";
 
 type Scope = "all" | "stock" | "photo";
+type SearchField = "any" | "sku" | "oem" | "name" | "brand";
 
 export default function NomenclaturePage() {
   const { ready, suppliers, orders, settings } = useAvtoPrice();
@@ -28,6 +30,7 @@ export default function NomenclaturePage() {
   const [supplierId, setSupplierId] = useState("");
   const [category, setCategory] = useState("");
   const [scope, setScope] = useState<Scope>("all");
+  const [searchField, setSearchField] = useState<SearchField>("any");
   const [page, setPage] = useState(0);
   const [rows, setRows] = useState<Offer[]>([]);
   const [total, setTotal] = useState(0);
@@ -38,6 +41,7 @@ export default function NomenclaturePage() {
   const load = useCallback(() => {
     const params = new URLSearchParams();
     if (query.trim()) params.set("q", query.trim());
+    if (searchField !== "any") params.set("field", searchField);
     if (brand) params.set("brand", brand);
     if (supplierId) params.set("supplierId", supplierId);
     if (scope === "stock") params.set("inStock", "1");
@@ -56,7 +60,7 @@ export default function NomenclaturePage() {
         if (data.brands?.length) setBrands(data.brands);
       })
       .finally(() => setBusy(false));
-  }, [query, brand, supplierId, scope, page]);
+  }, [query, brand, supplierId, scope, page, searchField]);
 
   useEffect(() => {
     const timer = window.setTimeout(load, 250);
@@ -90,22 +94,58 @@ export default function NomenclaturePage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Номенклатура</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Все позиции прайса. В карточке — фото, вес, габариты, материал и применимость. Остаток
-          уменьшается, когда позиция лежит в корзине или заказе.
+          Все позиции прайса. В строке поиска — подпункты: артикул, OEM, название, бренд. В карточке
+          поля зависят от типа детали. Остаток падает, когда позиция в корзине, и списывается при
+          сборке заказа.
         </p>
       </div>
       <div className="grid gap-2 rounded-xl border p-3">
-        <div className="relative">
-          <Search className="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
-          <Input
-            className="pl-8"
-            placeholder="Артикул, OEM, бренд, название"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setPage(0);
-            }}
-          />
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
+            <Input
+              className="pl-8"
+              placeholder={
+                searchField === "sku"
+                  ? "Артикул / GUID"
+                  : searchField === "oem"
+                    ? "OEM / кросс"
+                    : searchField === "name"
+                      ? "Название"
+                      : searchField === "brand"
+                        ? "Бренд"
+                        : "Артикул, OEM, бренд, название"
+              }
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPage(0);
+              }}
+            />
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {(
+              [
+                ["any", "Везде"],
+                ["sku", "Артикул"],
+                ["oem", "OEM"],
+                ["name", "Название"],
+                ["brand", "Бренд"],
+              ] as const
+            ).map(([id, label]) => (
+              <Button
+                key={id}
+                size="sm"
+                variant={searchField === id ? "default" : "outline"}
+                onClick={() => {
+                  setSearchField(id);
+                  setPage(0);
+                }}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
         </div>
         <div className="flex flex-wrap gap-1">
           {(
@@ -205,9 +245,8 @@ export default function NomenclaturePage() {
                           <p className="text-xs text-muted-foreground">GUID {offer.guid}</p>
                         ) : null}
                         <p className="mt-1 text-xs text-muted-foreground">
-                          свободно {formatFreeStock(free, reserved)}
-                          {reserved ? ` · в заказах ${reserved} шт.` : ""}
-                          {` · прайс ${offer.stock} шт.`}
+                          Остаток {formatFreeStock(free, reserved)}
+                          {reserved ? ` · в корзине ${reserved} шт.` : ""}
                         </p>
                       </div>
                       <div className="flex flex-col items-end gap-2">
@@ -222,6 +261,7 @@ export default function NomenclaturePage() {
                           <Pencil />
                           Изменить
                         </Button>
+                        <AddToOrderButtons offer={offer} compact />
                       </div>
                     </div>
                     <OfferSpecs specs={offer.specs} defaultOpen />

@@ -16,20 +16,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { OfferMedia } from "@/components/offer-media";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
+import { specFieldsFor } from "@/lib/nomenclature-fields";
 import type { Offer } from "@/lib/types";
-
-const SPEC_FIELDS = [
-  { key: "Вес, кг", placeholder: "0.35" },
-  { key: "Длина, мм", placeholder: "250" },
-  { key: "Ширина, мм", placeholder: "80" },
-  { key: "Высота, мм", placeholder: "60" },
-  { key: "Материал", placeholder: "сталь / резина / пластик" },
-  { key: "Страна", placeholder: "Германия" },
-  { key: "EAN", placeholder: "штрихкод" },
-  { key: "ТН ВЭД", placeholder: "8708…" },
-  { key: "Ед. изм.", placeholder: "шт" },
-  { key: "Гарантия", placeholder: "12 мес." },
-] as const;
 
 export function NomenclatureEdit({
   offer,
@@ -79,6 +67,7 @@ function EditForm({
   const [images, setImages] = useState(offer.images ?? []);
   const [specs, setSpecs] = useState<Record<string, string>>({ ...(offer.specs ?? {}) });
   const [busy, setBusy] = useState(false);
+  const extra = specFieldsFor(name || offer.name, category || offer.category);
 
   function setSpec(key: string, value: string) {
     setSpecs((current) => ({ ...current, [key]: value }));
@@ -110,8 +99,8 @@ function EditForm({
       <DialogHeader>
         <DialogTitle>Карточка {offer.sku}</DialogTitle>
         <DialogDescription>
-          Поля как в справочнике запчастей: фото, вес, габариты, материал, применимость. Патч
-          переживает повторный импорт прайса.
+          Поля зависят от типа детали ({extra.label}): фото, вес, габариты, материал и узловые
+          характеристики. Патч переживает повторный импорт прайса.
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-3">
@@ -166,7 +155,10 @@ function EditForm({
           />
         </label>
         <div className="grid gap-3 sm:grid-cols-2">
-          {SPEC_FIELDS.map((field) => (
+          <p className="text-xs font-medium text-muted-foreground sm:col-span-2">
+            Характеристики · {extra.label}
+          </p>
+          {extra.fields.map((field) => (
             <label key={field.key} className="grid gap-1.5">
               <Label>{field.key}</Label>
               <Input

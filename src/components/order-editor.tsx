@@ -298,7 +298,7 @@ export function OrderEditor({
                   disabled={order.lines.length === 0}
                   onClick={() => {
                     void persist({ ...order, status: "assembled" }).then(() => {
-                      toast.success(`Заказ ${order.number} собран`);
+                      toast.success(`Заказ ${order.number} собран · остаток списан`);
                       onAssembled?.({ ...order, status: "assembled" });
                     });
                   }}
@@ -312,7 +312,7 @@ export function OrderEditor({
                   variant="outline"
                   onClick={() => {
                     void persist({ ...order, status: "draft" }).then(() => {
-                      toast.success(`${order.number} снова в корзине`);
+                      toast.success(`${order.number} снова в корзине · остаток возвращён`);
                       onReturnedToCart?.({ ...order, status: "draft" });
                     });
                   }}

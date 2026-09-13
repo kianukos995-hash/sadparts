@@ -30,6 +30,7 @@ export async function queryPriceOffers(
 
   const filter: CatalogBrowseFilter = {
     q: filters.q,
+    qField: filters.qField,
     brand: filters.brand,
     minPrice: filters.minPrice,
     maxPrice: filters.maxPrice,
@@ -69,8 +70,14 @@ export async function queryPriceOffers(
         if (filters.maxDays && (offer.deliveryDays || 99) > filters.maxDays) return false;
         if (filters.changedOnly && !offer.changedAt) return false;
         if (!q) return true;
+        const field = filters.qField || "any";
+        const sku = offer.sku.toLowerCase();
+        if (field === "sku") return sku.includes(q) || (offer.guid ?? "").toLowerCase().includes(q);
+        if (field === "oem") return offer.oem.toLowerCase().includes(q);
+        if (field === "name") return offer.name.toLowerCase().includes(q);
+        if (field === "brand") return offer.brand.toLowerCase().includes(q);
         return (
-          offer.sku.toLowerCase().includes(q) ||
+          sku.includes(q) ||
           offer.brand.toLowerCase().includes(q) ||
           offer.name.toLowerCase().includes(q) ||
           offer.oem.toLowerCase().includes(q)
@@ -116,6 +123,20 @@ export async function queryPriceOffers(
     brands,
     catalogRows,
   };
+}
+
+export async function findPriceOffer(
+  suppliers: Supplier[],
+  demoOffers: Offer[],
+  offerId: string,
+) {
+  const demo = demoOffers.find((item) => item.id === offerId);
+  if (demo) return demo;
+  const supplier = suppliers.find((item) => offerId.startsWith(`${item.id}:`));
+  if (!supplier) return null;
+  const token = offerId.slice(supplier.id.length + 1);
+  const chunk = await browseCatalog(supplier, { q: token, limit: 40 });
+  return chunk.offers.find((item) => item.id === offerId) ?? null;
 }
 
 export async function priceMeta(suppliers: Supplier[]) {
