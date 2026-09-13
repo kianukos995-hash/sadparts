@@ -1,9 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, ImageOff } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, ImageOff } from "lucide-react";
 import { isDisplayableImage, isRemoteRef } from "@/lib/media";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 function Thumb({
   src,
@@ -29,6 +37,79 @@ function Thumb({
   );
 }
 
+function PhotoViewer({
+  photos,
+  sku,
+  index,
+  open,
+  onOpenChange,
+  onIndexChange,
+}: {
+  photos: string[];
+  sku: string;
+  index: number;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onIndexChange: (index: number) => void;
+}) {
+  const current = photos[index] ?? photos[0];
+  const many = photos.length > 1;
+
+  function go(delta: number) {
+    if (!many || photos.length === 0) return;
+    const next = (index + delta + photos.length) % photos.length;
+    onIndexChange(next);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="sm:max-w-md"
+        onKeyDown={(event) => {
+          if (event.key === "ArrowLeft") {
+            event.preventDefault();
+            go(-1);
+          } else if (event.key === "ArrowRight") {
+            event.preventDefault();
+            go(1);
+          }
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>Просмотр фото</DialogTitle>
+          <DialogDescription>
+            {sku}
+            {many ? ` · ${index + 1} из ${photos.length}` : ""}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex max-h-[min(22rem,50vh)] items-center justify-center overflow-hidden rounded-lg border bg-muted/40">
+          {current ? (
+            // eslint-disable-next-line @next/next/no-img-element -- supplier CDNs and /api/media are arbitrary hosts
+            <img
+              src={current}
+              alt={sku}
+              className="max-h-[min(22rem,50vh)] w-full object-contain"
+              referrerPolicy="no-referrer"
+            />
+          ) : null}
+        </div>
+        {many ? (
+          <div className="flex items-center justify-between gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => go(-1)}>
+              <ChevronLeft />
+              Назад
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => go(1)}>
+              Далее
+              <ChevronRight />
+            </Button>
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function OfferMedia({
   images,
   sku,
@@ -47,24 +128,31 @@ export function OfferMedia({
       : size === "lg"
         ? "h-40 w-full max-w-xs"
         : "size-24";
+  const [open, setOpen] = useState(false);
+  const [index, setIndex] = useState(0);
+  const currentIndex = photos.length === 0 ? 0 : Math.min(index, photos.length - 1);
 
   return (
     <div className="grid gap-2">
       {photos.length > 0 ? (
         <div className="flex flex-wrap gap-2">
-          {photos.map((src) => (
-            <a
+          {photos.map((src, photoIndex) => (
+            <button
               key={src}
-              href={src}
-              target="_blank"
-              rel="noreferrer"
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setIndex(photoIndex);
+                setOpen(true);
+              }}
               className={cn(
-                "block overflow-hidden rounded-lg border bg-muted/40",
+                "block cursor-pointer overflow-hidden rounded-lg border bg-muted/40 hover:opacity-90",
                 box,
               )}
+              aria-label={`Просмотр фото ${sku}`}
             >
               <Thumb src={src} alt={sku} className="size-full object-contain" />
-            </a>
+            </button>
           ))}
         </div>
       ) : (
@@ -98,6 +186,16 @@ export function OfferMedia({
         </div>
       ) : photos.length === 0 && size !== "sm" ? (
         <p className="text-[11px] text-muted-foreground">Ссылок на фото в прайсе нет</p>
+      ) : null}
+      {photos.length > 0 ? (
+        <PhotoViewer
+          photos={photos}
+          sku={sku}
+          index={currentIndex}
+          open={open}
+          onOpenChange={setOpen}
+          onIndexChange={setIndex}
+        />
       ) : null}
     </div>
   );
