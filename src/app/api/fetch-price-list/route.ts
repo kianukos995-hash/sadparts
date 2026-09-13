@@ -1,157 +1,54 @@
 import { NextRequest } from "next/server";
-import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
-
-const MAX_BYTES = 8 * 1024 * 1024;
-const TIMEOUT_MS = 20_000;
-
-type AuthMode = "bearer" | "header" | "query";
-
-interface FetchBody {
-  url?: string;
-  apiKey?: string;
-  authMode?: AuthMode;
-  authHeaderName?: string;
-  authQueryParam?: string;
-}
-
-function isPrivateAddress(ip: string) {
-  if (ip === "127.0.0.1" || ip === "::1") return false;
-  if (ip.startsWith("10.")) return true;
-  if (ip.startsWith("192.168.")) return true;
-  if (ip.startsWith("169.254.")) return true;
-  const parts = ip.split(".").map(Number);
-  if (parts.length === 4 && parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) {
-    return true;
-  }
-  if (ip.toLowerCase().startsWith("fc") || ip.toLowerCase().startsWith("fd")) return true;
-  return false;
-}
-
-async function assertSafeUrl(raw: string, requestUrl: URL) {
-  let target: URL;
-  try {
-    target = raw.startsWith("/")
-      ? new URL(raw, `${requestUrl.protocol}//${requestUrl.host}`)
-      : new URL(raw);
-  } catch {
-    throw new Error("Некорректный URL прайс-листа");
-  }
-
-  if (target.protocol !== "http:" && target.protocol !== "https:") {
-    throw new Error("Разрешены только HTTP и HTTPS");
-  }
-
-  const host = target.hostname.toLowerCase();
-  if (host === "metadata.google.internal" || host.endsWith(".internal")) {
-    throw new Error("Этот хост недоступен для загрузки");
-  }
-
-  const sameHost = host === requestUrl.hostname;
-  if (!sameHost) {
-    const addresses =
-      isIP(host) > 0 ? [host] : (await lookup(host, { all: true })).map((item) => item.address);
-    if (addresses.some(isPrivateAddress)) {
-      throw new Error("Запросы к частным сетям запрещены");
-    }
-  }
-
-  return target;
-}
-
-function buildHeaders(body: FetchBody) {
-  const headers = new Headers({ Accept: "application/json, text/plain;q=0.8, */*;q=0.5" });
-  const key = body.apiKey?.trim();
-  if (!key) return headers;
-  if (body.authMode === "bearer") {
-    headers.set("Authorization", `Bearer ${key}`);
-  } else if (body.authMode === "header") {
-    headers.set(body.authHeaderName?.trim() || "X-Api-Key", key);
-  }
-  return headers;
-}
+import { fetchFeed } from "@/lib/safe-fetch";
+import { detectFeedKind, feedToTable } from "@/lib/parse-feed";
 
 export async function POST(request: NextRequest) {
-  let body: FetchBody;
+  let body: {
+    url?: string;
+    apiKey?: string;
+    authMode?: "bearer" | "header" | "query";
+    authHeaderName?: string;
+    authQueryParam?: string;
+    itemsPath?: string;
+    jsonOnly?: boolean;
+  };
   try {
-    body = (await request.json()) as FetchBody;
+    body = (await request.json()) as typeof body;
   } catch {
     return Response.json({ error: "Ожидался JSON" }, { status: 400 });
   }
-
   if (!body.url?.trim()) {
-    return Response.json({ error: "Укажите URL API поставщика" }, { status: 400 });
+    return Response.json({ error: "Укажите URL прайса" }, { status: 400 });
   }
-
-  let target: URL;
   try {
-    target = await assertSafeUrl(body.url.trim(), request.nextUrl);
+    const feed = await fetchFeed({
+      url: body.url,
+      apiKey: body.apiKey,
+      authMode: body.authMode,
+      authHeaderName: body.authHeaderName,
+      authQueryParam: body.authQueryParam,
+      origin: request.nextUrl,
+    });
+    const kind = detectFeedKind(feed.contentType, feed.body, feed.url);
+    if (body.jsonOnly) {
+      if (kind !== "json") {
+        return Response.json({ error: "Ответ поставщика не является JSON" }, { status: 502 });
+      }
+      try {
+        return Response.json({ payload: JSON.parse(feed.body) as unknown });
+      } catch {
+        return Response.json({ error: "Ответ поставщика не является JSON" }, { status: 502 });
+      }
+    }
+    const table = feedToTable(kind, feed.body, body.itemsPath);
+    if (table.total === 0) {
+      return Response.json({ error: "В источнике нет позиций" }, { status: 422 });
+    }
+    return Response.json({ kind, table });
   } catch (error) {
     return Response.json(
-      { error: error instanceof Error ? error.message : "Некорректный URL" },
-      { status: 400 },
+      { error: error instanceof Error ? error.message : "Не удалось загрузить прайс" },
+      { status: 502 },
     );
-  }
-
-  if (body.authMode === "query" && body.apiKey?.trim()) {
-    target.searchParams.set(body.authQueryParam?.trim() || "apikey", body.apiKey.trim());
-  }
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-  try {
-    const response = await fetch(target, {
-      method: "GET",
-      headers: buildHeaders(body),
-      redirect: "manual",
-      cache: "no-store",
-      signal: controller.signal,
-    });
-
-    if (response.status >= 300 && response.status < 400) {
-      return Response.json(
-        { error: `Поставщик вернул редирект (${response.status})` },
-        { status: 502 },
-      );
-    }
-
-    const length = Number(response.headers.get("content-length") ?? "0");
-    if (length > MAX_BYTES) {
-      return Response.json({ error: "Ответ поставщика слишком большой" }, { status: 413 });
-    }
-
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.byteLength > MAX_BYTES) {
-      return Response.json({ error: "Ответ поставщика слишком большой" }, { status: 413 });
-    }
-
-    const text = buffer.toString("utf8");
-    if (!response.ok) {
-      return Response.json(
-        {
-          error: `Поставщик ответил ${response.status}`,
-          details: text.slice(0, 400),
-        },
-        { status: 502 },
-      );
-    }
-
-    try {
-      return Response.json({ payload: JSON.parse(text) as unknown });
-    } catch {
-      return Response.json(
-        { error: "Ответ поставщика не является JSON" },
-        { status: 502 },
-      );
-    }
-  } catch (error) {
-    const message =
-      error instanceof Error && error.name === "AbortError"
-        ? "Превышено время ожидания ответа поставщика"
-        : "Не удалось связаться с API поставщика";
-    return Response.json({ error: message }, { status: 502 });
-  } finally {
-    clearTimeout(timer);
   }
 }

@@ -14,9 +14,9 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "АвтоПрайс — прайс-листы автозапчастей",
+  title: "SadParts Prices — прайсы автозапчастей",
   description:
-    "Ключи API поставщиков, синхронизация прайсов и загрузка CSV/Excel по автозапчастям.",
+    "Ключи API поставщиков, загрузка прайсов и Telegram-бот по каталогу автозапчастей.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

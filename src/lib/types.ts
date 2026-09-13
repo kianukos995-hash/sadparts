@@ -1,4 +1,5 @@
-export type SupplierSource = "api" | "file";
+export type SupplierSource = "api" | "file" | "url" | "paste" | "manual";
+export type ImportMode = "replace" | "merge";
 export type AuthMode = "bearer" | "header" | "query";
 export type AdapterKind = "generic" | "demo";
 export type SyncStatus = "ok" | "error";
@@ -69,6 +70,22 @@ export interface SyncLog {
   error?: string;
   source: SupplierSource;
   fileName?: string;
+  mode?: ImportMode;
+}
+
+export interface AppSettings {
+  telegramToken: string;
+  telegramUsername: string;
+  telegramPolling: boolean;
+  telegramOffset: number;
+  telegramSecret: string;
+}
+
+export interface PublicSettings {
+  telegramConfigured: boolean;
+  telegramUsername: string;
+  telegramPolling: boolean;
+  telegramTokenMasked: string;
 }
 
 export interface StoreSnapshot {

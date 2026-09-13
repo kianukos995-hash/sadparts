@@ -22,10 +22,10 @@ export default function ImportPage() {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Загрузка прайс-листа</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Добавить прайс</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Подставьте файл вместо API или догрузите позиции к уже существующему поставщику. Текущий
-          прайс этого поставщика будет заменён.
+          Файл, ссылка, JSON/XML, API поставщика или одна позиция вручную. Каталог общий с
+          Telegram-ботом.
         </p>
       </div>
       <ImportWizard />

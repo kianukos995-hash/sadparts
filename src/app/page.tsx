@@ -36,8 +36,8 @@ export default function HomePage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Обзор склада прайсов</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Ключи API поставщиков, синхронизация прайс-листов и ручная загрузка CSV/Excel по
-            автозапчастям.
+            Ключи API поставщиков, загрузка прайсов файлом, ссылкой или вставкой, Telegram-бот по
+            каталогу автозапчастей.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -47,7 +47,7 @@ export default function HomePage() {
           </Link>
           <Link href="/import" className={cn(buttonVariants({ variant: "outline" }))}>
             <Upload />
-            Загрузить прайс
+            Добавить прайс
           </Link>
         </div>
       </div>
@@ -152,8 +152,8 @@ export default function HomePage() {
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3">
         <p className="text-xs text-muted-foreground">
-          Демо-поставщики Росско, Автопитер и Exist уже подключены. Их ключи можно подставить в
-          свои коннекторы или заменить на боевые.
+          Демо-поставщики Росско, Автопитер и Exist уже подключены. Их ключи можно заменить на
+          боевые. Telegram-бот читает этот же каталог.
         </p>
         <Button variant="ghost" onClick={resetDemo}>
           Сбросить демо

@@ -35,11 +35,11 @@ export default function SuppliersPage() {
     setSyncingId(supplier.id);
     try {
       const result = await syncSupplier(supplier);
-      replaceOffers(supplier.id, result.offers, buildSyncLog(supplier, result, "api"));
+      await replaceOffers(supplier.id, result.offers, buildSyncLog(supplier, result, "api"));
       toast.success(`${supplier.name}: ${result.offers.length} позиций`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Ошибка синхронизации";
-      replaceOffers(supplier.id, [], buildSyncLog(supplier, { error: message }, "api"));
+      await replaceOffers(supplier.id, [], buildSyncLog(supplier, { error: message }, "api"));
       toast.error(message);
     } finally {
       setSyncingId(null);
@@ -142,8 +142,7 @@ export default function SuppliersPage() {
         open={open}
         onOpenChange={setOpen}
         onSave={(supplier) => {
-          upsertSupplier(supplier);
-          toast.success("Поставщик сохранён");
+          upsertSupplier(supplier).then(() => toast.success("Поставщик сохранён"));
         }}
       />
     </div>

@@ -1,6 +1,6 @@
 import { getByPath } from "@/lib/json-path";
 import { mapPayloadToOffers } from "@/lib/mapping";
-import type { Offer, Supplier, SyncLog } from "@/lib/types";
+import type { Offer, ParsedTable, Supplier, SyncLog } from "@/lib/types";
 
 export async function fetchSupplierPayload(supplier: Supplier) {
   const response = await fetch("/api/fetch-price-list", {
@@ -12,6 +12,7 @@ export async function fetchSupplierPayload(supplier: Supplier) {
       authMode: supplier.authMode,
       authHeaderName: supplier.authHeaderName,
       authQueryParam: supplier.authQueryParam,
+      jsonOnly: true,
     }),
   });
   const data = (await response.json()) as { payload?: unknown; error?: string };
@@ -19,6 +20,26 @@ export async function fetchSupplierPayload(supplier: Supplier) {
     throw new Error(data.error || "Не удалось получить прайс");
   }
   return data.payload;
+}
+
+export async function fetchFeedTable(input: {
+  url: string;
+  apiKey?: string;
+  authMode?: Supplier["authMode"];
+  authHeaderName?: string;
+  authQueryParam?: string;
+  itemsPath?: string;
+}) {
+  const response = await fetch("/api/fetch-price-list", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const data = (await response.json()) as { table?: ParsedTable; error?: string };
+  if (!response.ok || !data.table) {
+    throw new Error(data.error || "Не удалось получить прайс по ссылке");
+  }
+  return data.table;
 }
 
 export function payloadToOffers(payload: unknown, supplier: Supplier) {

@@ -1,4 +1,3 @@
-export const STORE_KEY = "avtoprice.store";
 export const STORE_VERSION = 1;
 
 export const DEMO_KEYS = {

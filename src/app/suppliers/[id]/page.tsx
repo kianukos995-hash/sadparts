@@ -35,11 +35,11 @@ export default function SupplierDetailPage() {
     setBusy("sync");
     try {
       const result = await syncSupplier(supplier);
-      replaceOffers(supplier.id, result.offers, buildSyncLog(supplier, result, "api"));
+      await replaceOffers(supplier.id, result.offers, buildSyncLog(supplier, result, "api"));
       toast.success(`Импортировано ${result.offers.length} позиций`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Ошибка синхронизации";
-      replaceOffers(supplier.id, [], buildSyncLog(supplier, { error: message }, "api"));
+      await replaceOffers(supplier.id, [], buildSyncLog(supplier, { error: message }, "api"));
       toast.error(message);
     } finally {
       setBusy(null);
@@ -193,8 +193,7 @@ export default function SupplierDetailPage() {
         onOpenChange={setEditing}
         initial={supplier}
         onSave={(next) => {
-          upsertSupplier(next);
-          toast.success("Изменения сохранены");
+          upsertSupplier(next).then(() => toast.success("Изменения сохранены"));
         }}
       />
     </div>
