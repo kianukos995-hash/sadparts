@@ -40,6 +40,8 @@ export function markupForPrice(
   client?: Client | null,
 ) {
   const band = findBand(buy, bands);
+  const keyMarkup = client?.markupPercent;
+  if (typeof keyMarkup === "number" && Number.isFinite(keyMarkup)) return keyMarkup;
   const override = client?.bandMarkups?.[band.id];
   if (typeof override === "number" && Number.isFinite(override)) return override;
   return Number.isFinite(band.markupPercent) ? band.markupPercent : fallback;

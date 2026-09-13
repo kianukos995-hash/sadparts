@@ -7,6 +7,38 @@ export type OrderStatus = "draft" | "assembled" | "sent";
 export type PaymentMethod = "cash" | "card" | "cashless";
 export type MoneyDirection = "income" | "expense";
 export type BillPayStatus = "unpaid" | "partial" | "paid";
+export type UserRole = "admin" | "manager" | "client" | "guest";
+export type AccountStatus = "pending_email" | "pending_key" | "active" | "blocked";
+export type PriceView = "clean" | "retail" | "cost";
+
+export interface PublicUser {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  status: AccountStatus;
+  clientId?: string;
+}
+
+export interface ActivityEvent {
+  id: string;
+  at: string;
+  userId?: string;
+  email?: string;
+  role?: UserRole;
+  clientId?: string;
+  action: string;
+  detail: string;
+  path?: string;
+  sku?: string;
+  brand?: string;
+  offerId?: string;
+  orderId?: string;
+  buyPrice?: number;
+  sellPrice?: number;
+  stock?: number;
+  deliveryDays?: number;
+}
 
 export const FIELD_KEYS = [
   "sku",
@@ -114,8 +146,13 @@ export interface Client {
   name: string;
   phone: string;
   inn: string;
+  email?: string;
   discountPercent: number;
+  markupPercent?: number;
   bandMarkups?: Record<string, number>;
+  accessKey?: string;
+  accountStatus?: AccountStatus;
+  priceView?: PriceView;
   notes: string;
   createdAt: string;
   telegramChatId?: string;
@@ -142,6 +179,9 @@ export interface OrderLine {
   guid?: string;
   stockId?: string;
   vendorCode?: string;
+  snapshotSell?: number;
+  snapshotStock?: number;
+  snapshotAt?: string;
 }
 
 export interface Order {
@@ -181,6 +221,8 @@ export interface AppSettings {
   markupPercent: number;
   moscowHubNote: string;
   priceBands: PriceBand[];
+  guestPriceBands: PriceBand[];
+  managerPriceBands: PriceBand[];
   sellerTitle: string;
   sellerAddress: string;
   vatPercent: number;
@@ -196,6 +238,8 @@ export interface PublicSettings {
   markupPercent: number;
   moscowHubNote: string;
   priceBands: PriceBand[];
+  guestPriceBands: PriceBand[];
+  managerPriceBands: PriceBand[];
   sellerTitle: string;
   sellerAddress: string;
   vatPercent: number;

@@ -54,6 +54,18 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\start-windows.ps1
 ```
 
-## Google Диск коллегам
+## Чтобы заходили люди из интернета
 
-Загрузите `sadparts-prices.zip` на Диск → доступ по ссылке. Коллега на Win11 делает те же шаги 1–4. Google Диск **не запускает** программу сам.
+1. Запустите `start-windows.bat` и не закрывайте окно.
+2. Поставьте [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) или ngrok.
+3. Пример:
+
+```powershell
+cloudflared tunnel --url http://127.0.0.1:43217
+```
+
+Получите ссылку `https://….trycloudflare.com` — её можно слать клиентам. Компьютер должен быть включён.
+
+Надёжнее: свой VPS + Docker, см. DEPLOY.md. Тогда сайт не зависит от вашего ПК.
+
+Вход для теста: admin@sadparts.local / Admin12345. Гость — кнопка на экране входа.

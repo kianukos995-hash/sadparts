@@ -32,6 +32,8 @@ export default function SettingsPage() {
   const [markup, setMarkup] = useState<string | null>(null);
   const [hubNote, setHubNote] = useState<string | null>(null);
   const [bands, setBands] = useState<PriceBand[] | null>(null);
+  const [guestBands, setGuestBands] = useState<PriceBand[] | null>(null);
+  const [managerBands, setManagerBands] = useState<PriceBand[] | null>(null);
   const [sellerTitle, setSellerTitle] = useState<string | null>(null);
   const [sellerAddress, setSellerAddress] = useState<string | null>(null);
   const [vat, setVat] = useState<string | null>(null);
@@ -41,6 +43,12 @@ export default function SettingsPage() {
   const markupValue = markup ?? String(settings.markupPercent);
   const noteValue = hubNote ?? settings.moscowHubNote;
   const bandsValue = bands ?? sanitizeBands(settings.priceBands?.length ? settings.priceBands : DEFAULT_PRICE_BANDS);
+  const guestBandsValue =
+    guestBands ??
+    sanitizeBands(settings.guestPriceBands?.length ? settings.guestPriceBands : DEFAULT_PRICE_BANDS);
+  const managerBandsValue =
+    managerBands ??
+    sanitizeBands(settings.managerPriceBands?.length ? settings.managerPriceBands : DEFAULT_PRICE_BANDS);
   const sampleBuy = 1000;
   const sampleMarkup = markupForPrice(
     sampleBuy,
@@ -111,8 +119,19 @@ export default function SettingsPage() {
               <p className="text-xs text-muted-foreground">
                 Пример на закуп {sampleBuy} ₽ и скидку клиента 8%. Коридор даёт наценку {sampleMarkup}%.
               </p>
-              <PriceFormula breakdown={sampleBreakdown} className="mt-1" />
+              <PriceFormula breakdown={sampleBreakdown} className="mt-1" view="cost" />
             </div>
+          </div>
+          <div className="sm:col-span-2">
+            <Label className="mb-2 block">Категории наценки для гостя (скидки нет)</Label>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Гость собирает заказ по рыночной наценке этих коридоров. Чистая цена, без подсказок закупа.
+            </p>
+            <PriceBandsEditor bands={guestBandsValue} onChange={setGuestBands} />
+          </div>
+          <div className="sm:col-span-2">
+            <Label className="mb-2 block">Категории наценки для менеджера</Label>
+            <PriceBandsEditor bands={managerBandsValue} onChange={setManagerBands} />
           </div>
           <div>
             <Button
@@ -123,6 +142,8 @@ export default function SettingsPage() {
                   markupPercent: Number.parseFloat(markupValue.replace(",", ".")) || 0,
                   moscowHubNote: noteValue,
                   priceBands: bandsValue,
+                  guestPriceBands: guestBandsValue,
+                  managerPriceBands: managerBandsValue,
                   sellerTitle: sellerTitleValue,
                   sellerAddress: sellerAddressValue,
                   vatPercent: Number.parseFloat(vatValue.replace(",", ".")) || 0,

@@ -2,33 +2,38 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ClipboardList,
   FileSpreadsheet,
+  History,
   KeyRound,
   LayoutGrid,
   BookOpen,
+  LogOut,
   Menu,
   PackagePlus,
   PackageSearch,
   Search,
-  Download,
   Send,
   Settings,
   ShoppingCart,
+  Shield,
   Wallet,
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import type { PublicSettings } from "@/lib/types";
+import type { PublicSettings, UserRole } from "@/lib/types";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
+import { useAuth } from "@/hooks/use-auth";
+import { ROLE_LABELS } from "@/lib/roles";
 
-const GROUPS = [
+const ALL_GROUPS = [
   {
     title: "Склад",
+    roles: ["admin", "manager"] as UserRole[],
     items: [
       { href: "/", label: "Обзор", icon: LayoutGrid },
       { href: "/catalog", label: "Каталог", icon: PackageSearch },
@@ -37,16 +42,27 @@ const GROUPS = [
     ],
   },
   {
+    title: "Клиенту",
+    roles: ["client", "guest"] as UserRole[],
+    items: [
+      { href: "/quote", label: "Проценка", icon: Search },
+      { href: "/cart", label: "Корзина", icon: ShoppingCart },
+      { href: "/orders", label: "Заказы", icon: ClipboardList },
+    ],
+  },
+  {
     title: "Сделки",
+    roles: ["admin", "manager"] as UserRole[],
     items: [
       { href: "/cart", label: "Корзина", icon: ShoppingCart },
       { href: "/orders", label: "Заказы", icon: ClipboardList },
-      { href: "/money", label: "Деньги", icon: Wallet },
+      { href: "/money", label: "Деньги", icon: Wallet, roles: ["admin"] as UserRole[] },
       { href: "/clients", label: "Клиенты", icon: Users },
     ],
   },
   {
     title: "Прайсы",
+    roles: ["admin"] as UserRole[],
     items: [
       { href: "/suppliers/files", label: "Поставщики через файлы", icon: FileSpreadsheet },
       { href: "/suppliers/api", label: "Поставщики через API", icon: KeyRound },
@@ -54,20 +70,26 @@ const GROUPS = [
     ],
   },
   {
-    title: "Связки",
+    title: "Контроль",
+    roles: ["admin", "manager"] as UserRole[],
     items: [
-      { href: "/telegram", label: "Telegram-бот", icon: Send },
-      { href: "/settings", label: "Настройки", icon: Settings },
-      { href: "/download", label: "Скачать проект", icon: Download },
+      { href: "/history", label: "История визитов", icon: History },
+      { href: "/staff", label: "Ключи и регистрации", icon: Shield, roles: ["admin"] as UserRole[] },
+      { href: "/telegram", label: "Telegram-бот", icon: Send, roles: ["admin"] as UserRole[] },
+      { href: "/settings", label: "Настройки", icon: Settings, roles: ["admin"] as UserRole[] },
     ],
   },
 ];
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+function NavLinks({ onNavigate, role }: { onNavigate?: () => void; role: UserRole }) {
   const pathname = usePathname();
+  const groups = ALL_GROUPS.filter((group) => group.roles.includes(role)).map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !item.roles || item.roles.includes(role)),
+  }));
   return (
     <div className="flex flex-col gap-5">
-      {GROUPS.map((group) => (
+      {groups.map((group) => (
         <div key={group.title} className="flex flex-col gap-1">
           <p className="px-3 text-[11px] font-medium tracking-[0.14em] text-zinc-500 uppercase">
             {group.title}
@@ -99,9 +121,9 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function Brand() {
+function Brand({ href = "/" }: { href?: string }) {
   return (
-    <Link href="/" className="flex items-center gap-2.5 px-2 py-1">
+    <Link href={href} className="flex items-center gap-2.5 px-2 py-1">
       <span className="flex size-9 items-center justify-center rounded-lg bg-amber-500 text-sm font-bold tracking-tight text-zinc-950">
         SP
       </span>
@@ -117,9 +139,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [bot, setBot] = useState<PublicSettings | null>(null);
   const { draft, drafts } = useAvtoPrice();
+  const { user, logout } = useAuth();
   const pathname = usePathname();
+  const role = user?.role ?? "guest";
   const draftCount = drafts.reduce((sum, order) => sum + order.lines.reduce((s, line) => s + line.qty, 0), 0);
   const printMode = pathname.startsWith("/orders/print");
+  const homeHref = useMemo(
+    () => (role === "client" || role === "guest" ? "/quote" : "/"),
+    [role],
+  );
 
   useEffect(() => {
     void fetch("/api/settings")
@@ -135,9 +163,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-full bg-background">
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-white/5 bg-zinc-950 px-3 py-4 md:flex">
-        <Brand />
+        <Brand href={homeHref} />
         <div className="mt-6 flex-1 overflow-y-auto">
-          <NavLinks />
+          <NavLinks role={role} />
         </div>
         <div className="grid gap-2">
           {draftCount > 0 ? (
@@ -150,11 +178,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
           ) : null}
           <div className="rounded-lg border border-white/10 px-3 py-2">
-            <p className="text-[11px] text-zinc-500">Telegram</p>
-            <p className="truncate text-xs text-zinc-200">
-              {bot?.telegramConfigured ? `@${bot.telegramUsername || "бот"}` : "не подключён"}
-            </p>
+            <p className="text-[11px] text-zinc-500">{ROLE_LABELS[role]}</p>
+            <p className="truncate text-xs text-zinc-200">{user?.email || user?.name}</p>
           </div>
+          {role === "admin" ? (
+            <div className="rounded-lg border border-white/10 px-3 py-2">
+              <p className="text-[11px] text-zinc-500">Telegram</p>
+              <p className="truncate text-xs text-zinc-200">
+                {bot?.telegramConfigured ? `@${bot.telegramUsername || "бот"}` : "не подключён"}
+              </p>
+            </div>
+          ) : null}
+          <Button
+            variant="outline"
+            className="justify-start border-white/15 bg-transparent text-zinc-200 hover:bg-white/10 hover:text-white"
+            onClick={() => void logout()}
+          >
+            <LogOut />
+            Выйти
+          </Button>
         </div>
       </aside>
 
@@ -163,17 +205,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Button variant="outline" size="icon-sm" className="md:hidden" onClick={() => setOpen(true)}>
             <Menu />
           </Button>
-          <div className="md:hidden">
+          <Link href={homeHref} className="md:hidden">
             <BrandMark />
-          </div>
+          </Link>
           <div className="ml-auto flex items-center gap-2">
-            <a
-              href="/sadparts-prices.zip"
-              className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-semibold text-zinc-950 hover:bg-amber-400"
-            >
-              <Download className="size-4" />
-              <span className="hidden sm:inline">Скачать ZIP</span>
-            </a>
             <Link
               href={draft ? `/cart?id=${draft.id}` : "/cart"}
               className={cn(
@@ -189,9 +224,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </span>
               ) : null}
             </Link>
-            <Link href="/settings" className="rounded-lg p-2 hover:bg-muted md:hidden">
-              <Settings className="size-4 text-muted-foreground" />
-            </Link>
+            <Button variant="outline" size="sm" onClick={() => void logout()}>
+              <LogOut />
+              <span className="hidden sm:inline">Выйти</span>
+            </Button>
           </div>
         </header>
         <main className="flex-1 px-4 py-5 md:px-8 md:py-7">{children}</main>
@@ -201,11 +237,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <SheetContent side="left" className="w-72 bg-zinc-950 p-4 text-white">
           <SheetHeader>
             <SheetTitle className="sr-only">Меню</SheetTitle>
-            <Brand />
+            <Brand href={homeHref} />
           </SheetHeader>
           <div className="mt-6">
-            <NavLinks onNavigate={() => setOpen(false)} />
+            <NavLinks role={role} onNavigate={() => setOpen(false)} />
           </div>
+          <Button
+            variant="outline"
+            className="mt-4 w-full justify-start border-white/15 bg-transparent text-zinc-200"
+            onClick={() => void logout()}
+          >
+            <LogOut />
+            Выйти
+          </Button>
         </SheetContent>
       </Sheet>
     </div>

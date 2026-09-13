@@ -34,5 +34,21 @@ export async function GET(request: NextRequest) {
     page: Number.parseInt(url.searchParams.get("page") ?? "0", 10) || 0,
     pageSize: Number.parseInt(url.searchParams.get("pageSize") ?? "40", 10) || 40,
   });
+  const q = url.searchParams.get("q") ?? "";
+  if (q.trim()) {
+    const { currentUser } = await import("@/lib/session");
+    const { logActivity } = await import("@/lib/activity");
+    const user = await currentUser(request);
+    void logActivity({
+      userId: user?.id,
+      email: user?.email,
+      role: user?.role,
+      clientId: user?.clientId,
+      action: "search",
+      detail: `Поиск «${q.trim()}», найдено ${result.total}`,
+      path: "/quote",
+      sku: q.trim(),
+    });
+  }
   return Response.json(result);
 }

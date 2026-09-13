@@ -37,6 +37,8 @@ const EMPTY_PUBLIC: PublicSettings = {
   markupPercent: 18,
   moscowHubNote: "",
   priceBands: DEFAULT_PRICE_BANDS,
+  guestPriceBands: DEFAULT_PRICE_BANDS,
+  managerPriceBands: DEFAULT_PRICE_BANDS,
   sellerTitle: "",
   sellerAddress: "",
   vatPercent: 0,
@@ -89,6 +91,8 @@ export interface AvtoPriceApi {
     markupPercent?: number;
     moscowHubNote?: string;
     priceBands?: PublicSettings["priceBands"];
+    guestPriceBands?: PublicSettings["guestPriceBands"];
+    managerPriceBands?: PublicSettings["managerPriceBands"];
     sellerTitle?: string;
     sellerAddress?: string;
     vatPercent?: number;
@@ -358,6 +362,8 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       markupPercent?: number;
       moscowHubNote?: string;
       priceBands?: PublicSettings["priceBands"];
+      guestPriceBands?: PublicSettings["guestPriceBands"];
+      managerPriceBands?: PublicSettings["managerPriceBands"];
       sellerTitle?: string;
       sellerAddress?: string;
       vatPercent?: number;

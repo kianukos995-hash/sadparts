@@ -7,7 +7,8 @@ import { normalizeSku } from "@/lib/format";
 import { removeCatalog } from "@/lib/file-catalog";
 import { CORE_PARTS } from "@/lib/mock-parts";
 import { createInitialStore, DEFAULT_CLIENTS } from "@/lib/seed";
-import { DEFAULT_PRICE_BANDS } from "@/lib/price-bands";
+import { DEFAULT_PRICE_BANDS, sanitizeBands } from "@/lib/price-bands";
+import { defaultGuestBands } from "@/lib/roles";
 import {
   nextBillNumber,
   roundCash,
@@ -46,6 +47,8 @@ export const EMPTY_SETTINGS: AppSettings = {
   vatPercent: 0,
   telegramNotifyChatId: "",
   telegramChats: [],
+  guestPriceBands: defaultGuestBands(),
+  managerPriceBands: DEFAULT_PRICE_BANDS,
 };
 
 const DEFAULT_DELIVERY: Record<string, { days: number; note: string }> = {
@@ -116,12 +119,43 @@ function migrateStore(store: StoreSnapshot): StoreSnapshot {
     ? store.supplierBills.map(normalizeBill)
     : [];
   const orders = dedupeOrders(Array.isArray(store.orders) ? store.orders : []);
+  let clients = Array.isArray(store.clients) ? store.clients : DEFAULT_CLIENTS;
+  if (!clients.some((item) => item.id === "cli-guest")) {
+    clients = [
+      ...clients,
+      {
+        id: "cli-guest",
+        name: "Гость",
+        phone: "",
+        inn: "",
+        email: "guest@sadparts.local",
+        discountPercent: 0,
+        priceView: "clean",
+        accountStatus: "active",
+        notes: "Гостевой вход: рыночная наценка без скидки.",
+        createdAt: "2026-03-01T09:00:00.000Z",
+      },
+    ];
+  }
+  clients = clients.map((client) => {
+    if (client.id === "cli-sto") {
+      return {
+        ...client,
+        email: client.email || "sto@sadparts.local",
+        accessKey: client.accessKey || "SP-TEST-4812",
+        markupPercent: client.markupPercent ?? 16,
+        accountStatus: "active",
+        priceView: client.priceView ?? "clean",
+      };
+    }
+    return client;
+  });
   return {
     ...store,
     version: STORE_VERSION,
     suppliers,
     offers,
-    clients: Array.isArray(store.clients) ? store.clients : DEFAULT_CLIENTS,
+    clients,
     orders: syncOrderPaidAmounts(orders, moneyMovements),
     moneyMovements,
     supplierBills,
@@ -546,6 +580,14 @@ async function readSettingsFile(): Promise<AppSettings> {
       ...EMPTY_SETTINGS,
       ...parsed,
       priceBands: parsed.priceBands?.length ? parsed.priceBands : DEFAULT_PRICE_BANDS,
+      guestPriceBands: parsed.guestPriceBands?.length
+        ? sanitizeBands(parsed.guestPriceBands)
+        : defaultGuestBands(),
+      managerPriceBands: parsed.managerPriceBands?.length
+        ? sanitizeBands(parsed.managerPriceBands)
+        : parsed.priceBands?.length
+          ? parsed.priceBands
+          : DEFAULT_PRICE_BANDS,
       telegramChats: Array.isArray(parsed.telegramChats) ? parsed.telegramChats : [],
     };
   } catch {

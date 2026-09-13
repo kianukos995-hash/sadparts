@@ -27,6 +27,7 @@ import { pairLabel, pairQuery } from "@/lib/pairs";
 import { PriceFormula } from "@/components/price-formula";
 import { findBand, formatBandLabel, markupForPrice } from "@/lib/price-bands";
 import { clientPriceBreakdown } from "@/lib/pricing";
+import { useViewerPricing } from "@/hooks/use-viewer-pricing";
 import type { Client, Offer, PriceBand, Supplier } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -96,6 +97,7 @@ function DrawerBody({
   onOpenChange: (open: boolean) => void;
 }) {
   const { patchOffer } = useAvtoPrice();
+  const viewer = useViewerPricing(initialClientId);
   const related = relatedOffers(offers, offer).sort((a, b) => a.price - b.price);
   const minPrice = related[0]?.price;
   const names = new Map(suppliers.map((supplier) => [supplier.id, supplier.name]));
@@ -103,16 +105,17 @@ function DrawerBody({
   const [cross, setCross] = useState((offer.crossOems ?? []).join(", "));
   const [notes, setNotes] = useState(offer.notes ?? "");
   const [cars, setCars] = useState(applicabilityOf(offer));
-  const [clientId, setClientId] = useState(initialClientId);
+  const [clientId, setClientId] = useState(viewer.locked ? viewer.clientId : initialClientId);
   const [brandOpen, setBrandOpen] = useState(false);
   const [pairHits, setPairHits] = useState<Offer[]>([]);
-  const client = clients.find((item) => item.id === clientId);
-  const band = findBand(offer.price, priceBands);
-  const breakdown = clientPriceBreakdown(offer.price, priceBands, markupPercent, client);
+  const client = viewer.locked ? viewer.client : clients.find((item) => item.id === clientId);
+  const bands = viewer.bands;
+  const band = findBand(offer.price, bands);
+  const breakdown = clientPriceBreakdown(offer.price, bands, markupPercent, client);
   const sell = breakdown.sell;
-  const warn = sellWarning(offer.price, priceBands, markupPercent, client);
+  const warn = sellWarning(offer.price, bands, markupPercent, client);
   const oems = offerOems(offer);
-  const markup = markupForPrice(offer.price, priceBands, markupPercent, client);
+  const markup = markupForPrice(offer.price, bands, markupPercent, client);
   const pair = pairQuery(offer.sku, offer.name);
 
   useEffect(() => {
@@ -148,11 +151,20 @@ function DrawerBody({
             {formatMoney(sell, offer.currency)}
           </p>
           <p className="text-sm text-muted-foreground">
-            Коридор {formatBandLabel(band)} · наценка {markup}%
-            {client?.discountPercent ? ` · скидка клиента ${client.discountPercent}%` : " · без скидки"}
+            {viewer.showCost
+              ? `Коридор ${formatBandLabel(band)} · наценка ${markup}%${client?.discountPercent ? ` · скидка ${client.discountPercent}%` : " · без скидки"}`
+              : viewer.view === "retail"
+                ? "Розница минус ваша скидка"
+                : "Цена с рыночной наценкой"}
           </p>
-          <PriceFormula breakdown={breakdown} currency={offer.currency} compact className="mt-1" />
-          {warn ? <p className="mt-1 text-xs text-amber-800">{warn}</p> : null}
+          <PriceFormula
+            breakdown={breakdown}
+            currency={offer.currency}
+            compact
+            className="mt-1"
+            view={viewer.view}
+          />
+          {warn && viewer.showCost ? <p className="mt-1 text-xs text-amber-800">{warn}</p> : null}
           <PriceChange offer={offer} />
         </div>
         <OfferMedia images={offer.images} sku={offer.sku} size="lg" />
@@ -165,7 +177,7 @@ function DrawerBody({
 
         <OfferSpecs specs={offer.specs} defaultOpen />
 
-        {clients.length > 0 ? (
+        {!viewer.locked && clients.length > 0 ? (
           <label className="grid gap-1.5 text-sm">
             <Label>Клиент для расчёта</Label>
             <select
@@ -183,6 +195,7 @@ function DrawerBody({
           </label>
         ) : null}
 
+        {viewer.showCost ? (
         <div className="grid gap-3 rounded-lg border p-3">
           <p className="text-sm font-medium">Карточка как в Автодилере</p>
           <label className="grid gap-1.5">
@@ -230,6 +243,7 @@ function DrawerBody({
             Сохранить название, кроссы, заметки
           </Button>
         </div>
+        ) : null}
 
         <div>
           <h3 className="mb-2 text-sm font-medium">Аналоги и предложения</h3>

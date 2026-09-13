@@ -3,7 +3,9 @@ import { randomBytes } from "node:crypto";
 import { maskToken, readSettings, writeSettings } from "@/lib/server-store";
 import { getBotProfile } from "@/lib/telegram";
 import { sanitizeBands } from "@/lib/price-bands";
+import { defaultGuestBands } from "@/lib/roles";
 import type { PublicSettings } from "@/lib/types";
+import { fail, requireUser } from "@/lib/session";
 
 function toPublic(settings: Awaited<ReturnType<typeof readSettings>>): PublicSettings {
   return {
@@ -14,6 +16,8 @@ function toPublic(settings: Awaited<ReturnType<typeof readSettings>>): PublicSet
     markupPercent: settings.markupPercent,
     moscowHubNote: settings.moscowHubNote,
     priceBands: settings.priceBands,
+    guestPriceBands: settings.guestPriceBands?.length ? settings.guestPriceBands : defaultGuestBands(),
+    managerPriceBands: settings.managerPriceBands?.length ? settings.managerPriceBands : settings.priceBands,
     sellerTitle: settings.sellerTitle,
     sellerAddress: settings.sellerAddress,
     vatPercent: settings.vatPercent,
@@ -27,6 +31,11 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  try {
+    await requireUser(request, ["admin"]);
+  } catch (error) {
+    return fail(error);
+  }
   let body: {
     token?: string;
     polling?: boolean;
@@ -34,6 +43,8 @@ export async function POST(request: NextRequest) {
     markupPercent?: number;
     moscowHubNote?: string;
     priceBands?: { id: string; min: number; max: number | null; markupPercent: number }[];
+    guestPriceBands?: { id: string; min: number; max: number | null; markupPercent: number }[];
+    managerPriceBands?: { id: string; min: number; max: number | null; markupPercent: number }[];
     sellerTitle?: string;
     sellerAddress?: string;
     vatPercent?: number;
@@ -76,6 +87,12 @@ export async function POST(request: NextRequest) {
   }
   if (Array.isArray(body.priceBands)) {
     tradePatch.priceBands = sanitizeBands(body.priceBands);
+  }
+  if (Array.isArray(body.guestPriceBands)) {
+    tradePatch.guestPriceBands = sanitizeBands(body.guestPriceBands);
+  }
+  if (Array.isArray(body.managerPriceBands)) {
+    tradePatch.managerPriceBands = sanitizeBands(body.managerPriceBands);
   }
 
   let token = current.telegramToken;

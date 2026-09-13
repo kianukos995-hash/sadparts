@@ -224,6 +224,53 @@ export default function ClientsPage() {
                 client={draft}
               />
             </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Наценка ключа, %">
+                <Input
+                  type="number"
+                  min={0}
+                  value={draft.markupPercent ?? ""}
+                  placeholder="коридоры склада"
+                  onChange={(event) =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      markupPercent:
+                        event.target.value === ""
+                          ? undefined
+                          : Number.parseFloat(event.target.value) || 0,
+                    }))
+                  }
+                />
+              </Field>
+              <Field label="Ключ доступа">
+                <Input
+                  value={draft.accessKey ?? ""}
+                  onChange={(event) => setDraft((prev) => ({ ...prev, accessKey: event.target.value }))}
+                />
+              </Field>
+              <Field label="Email аккаунта">
+                <Input
+                  type="email"
+                  value={draft.email ?? ""}
+                  onChange={(event) => setDraft((prev) => ({ ...prev, email: event.target.value }))}
+                />
+              </Field>
+              <Field label="Показ цены клиенту">
+                <select
+                  className="h-9 rounded-lg border bg-transparent px-3 text-sm"
+                  value={draft.priceView ?? "clean"}
+                  onChange={(event) =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      priceView: event.target.value as Client["priceView"],
+                    }))
+                  }
+                >
+                  <option value="clean">Чистая цена</option>
+                  <option value="retail">Розница − скидка = цена</option>
+                </select>
+              </Field>
+            </div>
             <div className="grid gap-2">
               <Label>Наценки по ценовым категориям</Label>
               {settings.priceBands.map((band) => {

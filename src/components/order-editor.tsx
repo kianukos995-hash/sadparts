@@ -19,7 +19,9 @@ import {
 } from "@/components/ui/table";
 import { OrderShareBar } from "@/components/order-share";
 import { PriceFormula } from "@/components/price-formula";
+import { RepriceBanner } from "@/components/reprice-banner";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
+import { useViewerPricing } from "@/hooks/use-viewer-pricing";
 import { formatDays, formatMoney } from "@/lib/format";
 import { copyClientVehicle } from "@/lib/order";
 import { clientLineTotal, clientPriceBreakdown } from "@/lib/pricing";
@@ -43,8 +45,9 @@ export function OrderEditor({
   listHref?: string;
 }) {
   const { suppliers, clients, settings, upsertOrder, removeOrder } = useAvtoPrice();
+  const viewer = useViewerPricing(order.clientId);
   const [markupOverride, setMarkupOverride] = useState("");
-  const client = clients.find((item) => item.id === order.clientId);
+  const client = viewer.client ?? clients.find((item) => item.id === order.clientId);
   const useBands = markupOverride.trim() === "";
   const markup = useBands ? null : Number.parseFloat(markupOverride.replace(",", ".")) || 0;
   const names = useMemo(
@@ -52,8 +55,8 @@ export function OrderEditor({
     [suppliers],
   );
   const priced = useMemo(
-    () => priceOrder(order, client, settings.priceBands, settings.markupPercent, markup),
-    [order, client, settings.priceBands, settings.markupPercent, markup],
+    () => priceOrder(order, client, viewer.bands, settings.markupPercent, markup),
+    [order, client, viewer.bands, settings.markupPercent, markup],
   );
 
   async function persist(next: Order) {
@@ -81,6 +84,7 @@ export function OrderEditor({
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
+        {order.status !== "draft" ? <RepriceBanner orderId={order.id} clientId={order.clientId} /> : null}
         <div className="grid gap-3 md:grid-cols-3">
           <label className="grid gap-1.5">
             <Label>Клиент</Label>
@@ -164,8 +168,10 @@ export function OrderEditor({
                 <TableHead className="hidden md:table-cell">OEM</TableHead>
                 <TableHead>Поставщик</TableHead>
                 <TableHead className="text-right">Кол-во</TableHead>
-                <TableHead className="hidden text-right sm:table-cell">Закуп</TableHead>
-                <TableHead className="text-right">Клиенту</TableHead>
+                {viewer.showCost ? (
+                  <TableHead className="hidden text-right sm:table-cell">Закуп</TableHead>
+                ) : null}
+                <TableHead className="text-right">Цена</TableHead>
                 <TableHead className="hidden text-right lg:table-cell">До Москвы</TableHead>
                 <TableHead />
               </TableRow>
@@ -174,7 +180,7 @@ export function OrderEditor({
               {order.lines.map((line) => {
                 const breakdown = clientPriceBreakdown(
                   line.buyPrice,
-                  settings.priceBands,
+                  viewer.bands,
                   settings.markupPercent,
                   client,
                   markup,
@@ -208,19 +214,26 @@ export function OrderEditor({
                         }}
                       />
                     </TableCell>
-                    <TableCell className="hidden text-right sm:table-cell">
-                      {formatMoney(line.buyPrice, line.currency)}
-                    </TableCell>
+                    {viewer.showCost ? (
+                      <TableCell className="hidden text-right sm:table-cell">
+                        {formatMoney(line.buyPrice, line.currency)}
+                      </TableCell>
+                    ) : null}
                     <TableCell className="text-right font-medium">
                       {formatMoney(breakdown.sell, line.currency)}
-                      <PriceFormula breakdown={breakdown} currency={line.currency} compact />
+                      <PriceFormula
+                        breakdown={breakdown}
+                        currency={line.currency}
+                        compact
+                        view={viewer.view}
+                      />
                       <p className="text-[11px] font-normal text-muted-foreground">
                         × {line.qty} ={" "}
                         {formatMoney(
                           clientLineTotal(
                             line.buyPrice,
                             line.qty,
-                            settings.priceBands,
+                            viewer.bands,
                             settings.markupPercent,
                             client,
                             markup,
@@ -270,10 +283,14 @@ export function OrderEditor({
         <div className="flex flex-col gap-3 rounded-lg bg-muted/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm text-muted-foreground">
-              {priced.totals.qty} шт. · закуп {formatMoney(priced.totals.buy)} + наценка{" "}
-              {formatMoney(priced.totals.markup)} − скидка {formatMoney(priced.totals.discount)}
+              {priced.totals.qty} шт.
+              {viewer.showCost
+                ? ` · закуп ${formatMoney(priced.totals.buy)} + наценка ${formatMoney(priced.totals.markup)} − скидка ${formatMoney(priced.totals.discount)}`
+                : viewer.view === "retail"
+                  ? ` · розница ${formatMoney(priced.totals.buy + priced.totals.markup)} − скидка ${formatMoney(priced.totals.discount)}`
+                  : ""}
             </p>
-            <p className="text-xl font-semibold">Клиенту {formatMoney(priced.totals.sell)}</p>
+            <p className="text-xl font-semibold">{formatMoney(priced.totals.sell)}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link

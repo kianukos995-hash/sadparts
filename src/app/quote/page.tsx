@@ -24,6 +24,7 @@ import { ClientCartBar } from "@/components/client-carts";
 import { SearchPick } from "@/components/search-pick";
 import { SortToggle, type SortDir } from "@/components/sort-toggle";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
+import { useViewerPricing } from "@/hooks/use-viewer-pricing";
 import { formatDays, formatMoney } from "@/lib/format";
 import { findDraftForClient } from "@/lib/order";
 import { applicabilityOf, sellWarning } from "@/lib/offer-extra";
@@ -61,8 +62,9 @@ function QuotePageInner() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [deliverySort, setDeliverySort] = useState<SortDir>("asc");
   const [priceSort, setPriceSort] = useState<SortDir>("");
+  const viewer = useViewerPricing(clientId);
 
-  const client = clients.find((item) => item.id === clientId);
+  const client = viewer.client ?? clients.find((item) => item.id === clientId);
   const targetOrder = orders.find((item) => item.id === orderId) ?? null;
   const names = useMemo(
     () => new Map(suppliers.map((item) => [item.id, item.name])),
@@ -80,6 +82,12 @@ function QuotePageInner() {
     }
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [searchParams, setActiveDraftId]);
+
+  useEffect(() => {
+    if (viewer.locked && viewer.clientId && clientId !== viewer.clientId) {
+      setClientId(viewer.clientId);
+    }
+  }, [viewer.locked, viewer.clientId, clientId]);
 
   const load = useCallback(() => {
     const params = new URLSearchParams();
@@ -350,8 +358,8 @@ function QuotePageInner() {
               <TableHead>Бренд</TableHead>
               <TableHead>Наименование</TableHead>
               <TableHead>Поставщик</TableHead>
-              <TableHead className="text-right">Закуп</TableHead>
-              <TableHead className="text-right">Клиенту</TableHead>
+              {viewer.showCost ? <TableHead className="text-right">Закуп</TableHead> : null}
+              <TableHead className="text-right">Цена</TableHead>
               <TableHead className="hidden text-right md:table-cell">Срок</TableHead>
               <TableHead className="text-right">Ост.</TableHead>
               <TableHead />
@@ -361,14 +369,14 @@ function QuotePageInner() {
             {displayed.map((offer) => {
               const breakdown = clientPriceBreakdown(
                 offer.price,
-                settings.priceBands,
+                viewer.bands,
                 settings.markupPercent,
                 client,
               );
               const sell = breakdown.sell;
               const warn = sellWarning(
                 offer.price,
-                settings.priceBands,
+                viewer.bands,
                 settings.markupPercent,
                 client,
               );
@@ -377,7 +385,25 @@ function QuotePageInner() {
                 <TableRow
                   key={offer.id}
                   className="cursor-pointer"
-                  onClick={() => setSelected(offer)}
+                  onClick={() => {
+                    setSelected(offer);
+                    void fetch("/api/activity/track", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        action: "view_offer",
+                        detail: `Проценка ${offer.sku} ${offer.brand}`,
+                        path: "/quote",
+                        sku: offer.sku,
+                        brand: offer.brand,
+                        offerId: offer.id,
+                        buyPrice: offer.price,
+                        sellPrice: sell,
+                        stock: offer.stock,
+                        deliveryDays: offer.deliveryDays,
+                      }),
+                    });
+                  }}
                   onContextMenu={offerContextAdd(offer, addToDraft, clientId, orderId)}
                 >
                   <TableCell className="font-mono text-xs">
@@ -395,13 +421,20 @@ function QuotePageInner() {
                     <PriceChange offer={offer} />
                   </TableCell>
                   <TableCell className="text-xs">{names.get(offer.supplierId)}</TableCell>
-                  <TableCell className="text-right">
-                    {formatMoney(offer.price, offer.currency)}
-                  </TableCell>
+                  {viewer.showCost ? (
+                    <TableCell className="text-right">
+                      {formatMoney(offer.price, offer.currency)}
+                    </TableCell>
+                  ) : null}
                   <TableCell className={cn("text-right", warn && "text-amber-800")}>
                     {formatMoney(sell, offer.currency)}
-                    <PriceFormula breakdown={breakdown} currency={offer.currency} compact />
-                    {warn ? <p className="text-[10px] font-normal">ниже закупа</p> : null}
+                    <PriceFormula
+                      breakdown={breakdown}
+                      currency={offer.currency}
+                      compact
+                      view={viewer.view}
+                    />
+                    {warn && viewer.showCost ? <p className="text-[10px] font-normal">ниже закупа</p> : null}
                   </TableCell>
                   <TableCell className="hidden text-right text-xs md:table-cell">
                     {formatDays(offer.deliveryDays)}
