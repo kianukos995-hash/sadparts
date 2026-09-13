@@ -1,41 +1,33 @@
 import { NextRequest } from "next/server";
-import { searchOffers } from "@/lib/search";
-import { rosskoSearch, isRosskoSupplier, ensureRosskoDelivery } from "@/lib/rossko";
-import { readStore, upsertSupplier } from "@/lib/server-store";
+import { queryPriceOffers } from "@/lib/catalog-query";
+import { readStore } from "@/lib/server-store";
 
 export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get("q")?.trim() ?? "";
-  if (query.length < 2) {
-    return Response.json({ offers: [], message: "Введите артикул, OEM или название" });
-  }
   const store = await readStore();
-  const local = searchOffers(store, query, 40).map((item) => item.offer);
-  const rosskoSuppliers = store.suppliers.filter((item) => item.active !== false && isRosskoSupplier(item));
-  const extra = [];
-  const notes: string[] = [];
-  for (const supplier of rosskoSuppliers) {
-    const result = await rosskoSearch(supplier, query);
-    extra.push(...result.offers);
-    if (result.message) notes.push(result.message);
-    if (result.live && !supplier.rosskoDeliveryId) {
-      try {
-        await upsertSupplier(await ensureRosskoDelivery(supplier));
-      } catch {
-        // ignore persist of delivery id
-      }
-    }
+  if (query.length < 2) {
+    const preview = await queryPriceOffers(store.suppliers, store.offers, {
+      q: "",
+      supplierId: request.nextUrl.searchParams.get("supplierId") || undefined,
+      page: 0,
+      pageSize: 40,
+    });
+    return Response.json({
+      offers: preview.offers,
+      total: preview.total,
+      message: preview.total ? `${preview.total} поз. в прайсах` : "Загрузите прайс поставщика",
+    });
   }
-  const seen = new Set(local.map((item) => item.id));
-  const merged = [...local];
-  for (const offer of extra) {
-    if (!seen.has(offer.id)) {
-      seen.add(offer.id);
-      merged.push(offer);
-    }
-  }
-  merged.sort((a, b) => a.price - b.price || a.deliveryDays - b.deliveryDays);
+  const result = await queryPriceOffers(store.suppliers, store.offers, {
+    q: query,
+    supplierId: request.nextUrl.searchParams.get("supplierId") || undefined,
+    live: request.nextUrl.searchParams.get("live") === "1",
+    page: 0,
+    pageSize: 80,
+  });
   return Response.json({
-    offers: merged.slice(0, 80),
-    message: notes[0],
+    offers: result.offers,
+    total: result.total,
+    message: result.offers.length ? undefined : "В прайсах нет совпадений",
   });
 }

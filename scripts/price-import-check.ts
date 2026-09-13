@@ -13,6 +13,7 @@ import { stringifyCell } from "../src/lib/json-path";
 import { collectRowImages, isDisplayableImage } from "../src/lib/media";
 import { parseExcelPrice } from "../src/lib/excel-price";
 import { readCatalog } from "../src/lib/file-catalog";
+import { pairQuery } from "../src/lib/pairs";
 
 const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
   let c = n;
@@ -210,6 +211,9 @@ async function main() {
   });
   assert(Math.abs(sell - 400 * 1.1 * 0.92) < 0.02, `sell ${sell}`);
   assert(markupForPrice(200, DEFAULT_PRICE_BANDS, 18) === 32, "коридор 0-300");
+  const pair = pairQuery("X", "Рычаг левый");
+  assert(pair.side === "L", `pair ${pair.side}`);
+  assert(/прав/i.test(pair.name), pair.name);
 
   const photoSupplier: Supplier = { ...supplier, id: "sup-test-media" };
   const packed = zipFiles([

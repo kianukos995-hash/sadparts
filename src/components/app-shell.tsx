@@ -10,6 +10,7 @@ import {
   Menu,
   PackagePlus,
   PackageSearch,
+  Search,
   Send,
   Settings,
   Truck,
@@ -27,6 +28,7 @@ const GROUPS = [
     items: [
       { href: "/", label: "Обзор", icon: LayoutGrid },
       { href: "/catalog", label: "Каталог", icon: PackageSearch },
+      { href: "/quote", label: "Проценка", icon: Search },
       { href: "/nomenclature", label: "Номенклатура", icon: BookOpen },
     ],
   },
@@ -106,8 +108,8 @@ function Brand() {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [bot, setBot] = useState<PublicSettings | null>(null);
-  const { draft } = useAvtoPrice();
-  const draftCount = draft?.lines.reduce((sum, line) => sum + line.qty, 0) ?? 0;
+  const { draft, drafts } = useAvtoPrice();
+  const draftCount = drafts.reduce((sum, order) => sum + order.lines.reduce((s, line) => s + line.qty, 0), 0);
 
   useEffect(() => {
     void fetch("/api/settings")
@@ -129,7 +131,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               href="/orders"
               className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100"
             >
-              Черновик заказа · {draftCount} шт.
+              Черновики · {drafts.length} зак. · {draftCount} шт.
+              {draft ? ` · ${draft.number}` : ""}
             </Link>
           ) : null}
           <div className="rounded-lg border border-white/10 px-3 py-2">

@@ -14,6 +14,7 @@ export default function HomePage() {
   const { ready, suppliers, offers, logs, resetDemo } = useAvtoPrice();
 
   const stats = useMemo(() => {
+    const fileRows = suppliers.reduce((sum, item) => sum + (item.catalogCount ?? 0), 0);
     const brands = new Set(offers.map((offer) => offer.brand));
     const inStock = offers.filter((offer) => offer.stock > 0).length;
     const avg =
@@ -23,7 +24,7 @@ export default function HomePage() {
     const stale = suppliers.filter(
       (supplier) => supplier.source === "api" && daysSince(supplier.lastSyncAt) > 1,
     );
-    return { brands: brands.size, inStock, avg, stale };
+    return { brands: brands.size, inStock, avg, stale, fileRows };
   }, [offers, suppliers]);
 
   if (!ready) {
@@ -41,9 +42,12 @@ export default function HomePage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/catalog" className={cn(buttonVariants())}>
+          <Link href="/quote" className={cn(buttonVariants())}>
             <PackageSearch />
-            Открыть каталог
+            Проценка
+          </Link>
+          <Link href="/catalog" className={cn(buttonVariants({ variant: "outline" }))}>
+            Каталог
           </Link>
           <Link href="/settings" className={cn(buttonVariants({ variant: "outline" }))}>
             Настройки и ключи API
@@ -57,7 +61,11 @@ export default function HomePage() {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat title="Поставщики" value={String(suppliers.length)} hint="активные источники" />
-        <Stat title="Позиции" value={String(offers.length)} hint={`${stats.inStock} в наличии`} />
+        <Stat
+          title="Позиции в прайсах"
+          value={String(stats.fileRows || offers.length)}
+          hint={`${stats.inStock} демо в наличии`}
+        />
         <Stat title="Бренды" value={String(stats.brands)} hint="в текущем каталоге" />
         <Stat
           title="Средняя цена"
@@ -116,7 +124,7 @@ export default function HomePage() {
                     </div>
                   </div>
                   <Badge variant={supplier.lastSyncStatus === "error" ? "destructive" : "secondary"}>
-                    {supplier.lastSyncCount ?? 0} поз.
+                    {supplier.catalogCount ?? supplier.lastSyncCount ?? 0} поз.
                   </Badge>
                 </Link>
               ))

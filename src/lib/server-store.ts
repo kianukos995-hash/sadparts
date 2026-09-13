@@ -101,8 +101,39 @@ function migrateStore(store: StoreSnapshot): StoreSnapshot {
     suppliers,
     offers,
     clients: Array.isArray(store.clients) ? store.clients : DEFAULT_CLIENTS,
-    orders: Array.isArray(store.orders) ? store.orders : [],
+    orders: dedupeOrders(Array.isArray(store.orders) ? store.orders : []),
   };
+}
+
+function dedupeOrders(orders: Order[]) {
+  const byId = new Map<string, Order>();
+  for (const order of orders) {
+    const current = byId.get(order.id);
+    if (!current || Date.parse(order.updatedAt) >= Date.parse(current.updatedAt)) {
+      byId.set(order.id, order);
+    }
+  }
+  const unique = Array.from(byId.values());
+  const used = new Set<string>();
+  return unique.map((order) => {
+    if (!used.has(order.number)) {
+      used.add(order.number);
+      return order;
+    }
+    const next = { ...order, number: nextUniqueNumber(unique, used) };
+    used.add(next.number);
+    return next;
+  });
+}
+
+function nextUniqueNumber(orders: Order[], used: Set<string>) {
+  let n = orders.length + 1;
+  let value = `SP-${String(n).padStart(4, "0")}`;
+  while (used.has(value)) {
+    n += 1;
+    value = `SP-${String(n).padStart(4, "0")}`;
+  }
+  return value;
 }
 
 async function persistStore(store: StoreSnapshot) {
@@ -249,7 +280,7 @@ export function touchSupplierSync(supplierId: string, log: SyncLog, count?: numb
   });
 }
 
-export function patchOffer(offerId: string, patch: Partial<Pick<Offer, "displayName" | "crossOems" | "name">>) {
+export function patchOffer(offerId: string, patch: Partial<Pick<Offer, "displayName" | "crossOems" | "name" | "notes" | "applicability">>) {
   return enqueue(async () => {
     const store = await readStoreFile();
     const next: StoreSnapshot = {
@@ -263,6 +294,8 @@ export function patchOffer(offerId: string, patch: Partial<Pick<Offer, "displayN
           name: patch.name?.trim() ? patch.name.trim() : offer.name,
           displayName:
             patch.displayName === undefined ? offer.displayName : patch.displayName.trim(),
+          notes: patch.notes === undefined ? offer.notes : patch.notes,
+          applicability: patch.applicability === undefined ? offer.applicability : patch.applicability,
           crossOems: crosses,
         };
       }),

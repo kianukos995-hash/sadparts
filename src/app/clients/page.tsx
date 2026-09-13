@@ -165,7 +165,7 @@ export default function ClientsPage() {
               <Input
                 type="number"
                 min={0}
-                max={90}
+                max={95}
                 value={draft.discountPercent}
                 onChange={(event) =>
                   setDraft((prev) => ({
@@ -174,6 +174,12 @@ export default function ClientsPage() {
                   }))
                 }
               />
+              {draft.discountPercent >= 20 ? (
+                <p className="text-xs text-amber-800">
+                  Большая скидка может опустить цену клиенту ниже закупа — программа предупредит, но
+                  сохранит.
+                </p>
+              ) : null}
             </Field>
             <div className="grid gap-2">
               <Label>Наценки по ценовым категориям</Label>
@@ -219,8 +225,13 @@ export default function ClientsPage() {
             <Button
               disabled={draft.name.trim().length < 2}
               onClick={() => {
+                const tooBig = draft.discountPercent >= 40;
                 void upsertClient({ ...draft, name: draft.name.trim() }).then(() => {
-                  toast.success("Клиент сохранён");
+                  if (tooBig) {
+                    toast.warning("Клиент сохранён. Скидка может дать цену ниже закупа — проверьте проценку.");
+                  } else {
+                    toast.success("Клиент сохранён");
+                  }
                   setOpen(false);
                 });
               }}

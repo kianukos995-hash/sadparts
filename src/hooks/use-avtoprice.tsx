@@ -1,7 +1,7 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { emptyDraft, findDraft, offerToLine } from "@/lib/order";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { emptyDraft, findDraft, findDrafts, offerToLine } from "@/lib/order";
 import { DEFAULT_PRICE_BANDS } from "@/lib/price-bands";
 import type {
   Client,
@@ -33,6 +33,9 @@ const EMPTY_PUBLIC: PublicSettings = {
   priceBands: DEFAULT_PRICE_BANDS,
 };
 
+const ORDERS_KEY = "sadparts-orders-v1";
+const DRAFT_KEY = "sadparts-active-draft";
+
 export interface AvtoPriceApi {
   ready: boolean;
   suppliers: Supplier[];
@@ -40,7 +43,10 @@ export interface AvtoPriceApi {
   logs: SyncLog[];
   clients: Client[];
   orders: Order[];
+  drafts: Order[];
   draft: Order | null;
+  activeDraftId: string;
+  setActiveDraftId: (id: string) => void;
   settings: PublicSettings;
   refresh: () => Promise<void>;
   upsertSupplier: (supplier: Supplier) => Promise<void>;
@@ -53,13 +59,14 @@ export interface AvtoPriceApi {
   ) => Promise<void>;
   patchOffer: (
     offerId: string,
-    patch: Partial<Pick<Offer, "displayName" | "crossOems" | "name">>,
+    patch: Partial<Pick<Offer, "displayName" | "crossOems" | "name" | "notes" | "applicability">>,
+    supplierId?: string,
   ) => Promise<void>;
   upsertClient: (client: Client) => Promise<void>;
   removeClient: (id: string) => Promise<void>;
   upsertOrder: (order: Order) => Promise<void>;
   removeOrder: (id: string) => Promise<void>;
-  addToDraft: (offer: Offer, qty?: number) => Promise<void>;
+  addToDraft: (offer: Offer, qty?: number, options?: { newOrder?: boolean; orderId?: string }) => Promise<Order>;
   saveTradeSettings: (patch: {
     markupPercent?: number;
     moscowHubNote?: string;
@@ -69,6 +76,37 @@ export interface AvtoPriceApi {
 }
 
 const AvtoPriceContext = createContext<AvtoPriceApi | null>(null);
+
+function loadLocalOrders(): Order[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(ORDERS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Order[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalOrders(orders: Order[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+}
+
+function mergeOrders(server: Order[], local: Order[]) {
+  const map = new Map<string, Order>();
+  for (const order of server) map.set(order.id, order);
+  for (const order of local) {
+    const current = map.get(order.id);
+    if (!current || Date.parse(order.updatedAt) >= Date.parse(current.updatedAt)) {
+      map.set(order.id, order);
+    }
+  }
+  return Array.from(map.values()).sort(
+    (a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
+  );
+}
 
 async function mutate(body: unknown) {
   const response = await fetch("/api/store/mutate", {
@@ -85,6 +123,19 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
   const [store, setStore] = useState<StoreSnapshot>(EMPTY_STORE);
   const [settings, setSettings] = useState<PublicSettings>(EMPTY_PUBLIC);
   const [ready, setReady] = useState(false);
+  const [activeDraftId, setActiveDraftIdState] = useState("");
+  const dirty = useRef(false);
+
+  const applyStore = useCallback((data: StoreSnapshot, local = loadLocalOrders()) => {
+    const orders = mergeOrders(data.orders ?? [], local);
+    saveLocalOrders(orders);
+    setStore({
+      ...data,
+      clients: data.clients ?? [],
+      orders,
+    });
+    return orders;
+  }, []);
 
   const refresh = useCallback(async () => {
     const [storeResponse, settingsResponse] = await Promise.all([
@@ -93,83 +144,136 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
     ]);
     const data = (await storeResponse.json()) as StoreSnapshot;
     const publicSettings = (await settingsResponse.json()) as PublicSettings;
-    setStore({
-      ...data,
-      clients: data.clients ?? [],
-      orders: data.orders ?? [],
-    });
+    const orders = applyStore(data);
     setSettings(publicSettings);
     setReady(true);
-  }, []);
+    setActiveDraftIdState((current) => {
+      if (current && orders.some((item) => item.id === current)) return current;
+      const saved = typeof window !== "undefined" ? window.localStorage.getItem(DRAFT_KEY) : "";
+      if (saved && orders.some((item) => item.id === saved)) return saved;
+      return findDraft(orders)?.id ?? "";
+    });
+  }, [applyStore]);
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect -- catalog is loaded from the server after mount */
+    /* eslint-disable react-hooks/set-state-in-effect -- store is loaded from the server after mount */
     void refresh();
     const timer = window.setInterval(() => {
-      void refresh();
-    }, 12_000);
-    return () => window.clearInterval(timer);
+      if (!dirty.current) void refresh();
+    }, 60_000);
+    const persist = () => {
+      dirty.current = false;
+    };
+    window.addEventListener("online", persist);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("online", persist);
+    };
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [refresh]);
 
-  const upsertSupplier = useCallback(async (supplier: Supplier) => {
-    setStore(await mutate({ action: "upsertSupplier", supplier }));
+  const setActiveDraftId = useCallback((id: string) => {
+    setActiveDraftIdState(id);
+    if (typeof window !== "undefined") window.localStorage.setItem(DRAFT_KEY, id);
   }, []);
 
+  const upsertSupplier = useCallback(async (supplier: Supplier) => {
+    applyStore(await mutate({ action: "upsertSupplier", supplier }));
+  }, [applyStore]);
+
   const removeSupplier = useCallback(async (id: string) => {
-    setStore(await mutate({ action: "removeSupplier", supplierId: id }));
-  }, []);
+    applyStore(await mutate({ action: "removeSupplier", supplierId: id }));
+  }, [applyStore]);
 
   const replaceOffers = useCallback(
     async (supplierId: string, offers: Offer[], log: SyncLog, mode: ImportMode = "replace") => {
-      setStore(await mutate({ action: "replaceOffers", supplierId, offers, log, mode }));
+      applyStore(await mutate({ action: "replaceOffers", supplierId, offers, log, mode }));
     },
-    [],
+    [applyStore],
   );
 
   const patchOffer = useCallback(
-    async (offerId: string, patch: Partial<Pick<Offer, "displayName" | "crossOems" | "name">>) => {
-      setStore(await mutate({ action: "patchOffer", offerId, patch }));
+    async (
+      offerId: string,
+      patch: Partial<Pick<Offer, "displayName" | "crossOems" | "name" | "notes" | "applicability">>,
+      supplierId?: string,
+    ) => {
+      const response = await fetch("/api/catalog/patch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ offerId, supplierId, patch }),
+      });
+      const data = (await response.json()) as { store?: StoreSnapshot; error?: string };
+      if (!response.ok) throw new Error(data.error || "Не сохранить позицию");
+      if (data.store) applyStore(data.store);
     },
-    [],
+    [applyStore],
   );
 
   const upsertClient = useCallback(async (client: Client) => {
-    setStore(await mutate({ action: "upsertClient", client }));
-  }, []);
+    applyStore(await mutate({ action: "upsertClient", client }));
+  }, [applyStore]);
 
   const removeClient = useCallback(async (id: string) => {
-    setStore(await mutate({ action: "removeClient", clientId: id }));
-  }, []);
+    applyStore(await mutate({ action: "removeClient", clientId: id }));
+  }, [applyStore]);
 
   const upsertOrder = useCallback(async (order: Order) => {
-    setStore(await mutate({ action: "upsertOrder", order }));
-  }, []);
+    dirty.current = true;
+    const next = { ...order, updatedAt: new Date().toISOString() };
+    setStore((prev) => {
+      const exists = prev.orders.some((item) => item.id === next.id);
+      const orders = exists
+        ? prev.orders.map((item) => (item.id === next.id ? next : item))
+        : [next, ...prev.orders];
+      saveLocalOrders(orders);
+      return { ...prev, orders };
+    });
+    try {
+      applyStore(await mutate({ action: "upsertOrder", order: next }));
+      dirty.current = false;
+    } catch (error) {
+      dirty.current = true;
+      throw error;
+    }
+  }, [applyStore]);
 
   const removeOrder = useCallback(async (id: string) => {
-    setStore(await mutate({ action: "removeOrder", orderId: id }));
-  }, []);
+    setStore((prev) => {
+      const orders = prev.orders.filter((item) => item.id !== id);
+      saveLocalOrders(orders);
+      return { ...prev, orders };
+    });
+    applyStore(await mutate({ action: "removeOrder", orderId: id }));
+  }, [applyStore]);
 
   const addToDraft = useCallback(
-    async (offer: Offer, qty = 1) => {
-      const draft =
-        findDraft(store.orders) ??
-        emptyDraft(store.orders, store.clients, settings.markupPercent);
-      const existing = draft.lines.find((line) => line.offerId === offer.id);
+    async (offer: Offer, qty = 1, options?: { newOrder?: boolean; orderId?: string }) => {
+      const drafts = findDrafts(store.orders);
+      let draft: Order;
+      if (options?.newOrder) {
+        draft = emptyDraft(store.orders, store.clients, settings.markupPercent);
+      } else if (options?.orderId) {
+        draft = drafts.find((item) => item.id === options.orderId) ?? emptyDraft(store.orders, store.clients, settings.markupPercent);
+      } else {
+        draft =
+          drafts.find((item) => item.id === activeDraftId) ??
+          findDraft(store.orders) ??
+          emptyDraft(store.orders, store.clients, settings.markupPercent);
+      }
       const line = offerToLine(offer, qty);
+      const existing = draft.lines.find((item) => item.offerId === offer.id);
       const lines = existing
         ? draft.lines.map((item) =>
             item.offerId === offer.id ? { ...item, qty: item.qty + line.qty } : item,
           )
         : [...draft.lines, line];
-      setStore(
-        await mutate({
-          action: "upsertOrder",
-          order: { ...draft, lines, updatedAt: new Date().toISOString() },
-        }),
-      );
+      const next = { ...draft, lines, updatedAt: new Date().toISOString() };
+      await upsertOrder(next);
+      setActiveDraftId(next.id);
+      return next;
     },
-    [store.orders, store.clients, settings.markupPercent],
+    [store.orders, store.clients, settings.markupPercent, activeDraftId, upsertOrder, setActiveDraftId],
   );
 
   const saveTradeSettings = useCallback(
@@ -191,8 +295,12 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
   );
 
   const resetDemo = useCallback(async () => {
-    setStore(await mutate({ action: "reset" }));
-  }, []);
+    window.localStorage.removeItem(ORDERS_KEY);
+    applyStore(await mutate({ action: "reset" }), []);
+  }, [applyStore]);
+
+  const drafts = useMemo(() => findDrafts(store.orders), [store.orders]);
+  const draft = drafts.find((item) => item.id === activeDraftId) ?? findDraft(store.orders);
 
   const value = useMemo<AvtoPriceApi>(
     () => ({
@@ -202,7 +310,10 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       logs: store.logs,
       clients: store.clients,
       orders: store.orders,
-      draft: findDraft(store.orders),
+      drafts,
+      draft,
+      activeDraftId: draft?.id ?? "",
+      setActiveDraftId,
       settings,
       refresh,
       upsertSupplier,
@@ -220,7 +331,10 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
     [
       ready,
       store,
+      drafts,
+      draft,
       settings,
+      setActiveDraftId,
       refresh,
       upsertSupplier,
       removeSupplier,

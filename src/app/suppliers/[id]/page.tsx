@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ArrowLeft, RefreshCw, Upload } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -16,18 +16,32 @@ import { AUTH_MODE_LABELS } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
 import { fetchSupplierPayload, payloadToOffers, buildSyncLog, syncSupplier } from "@/lib/sync";
 import { cn } from "@/lib/utils";
+import type { Offer } from "@/lib/types";
 
 export default function SupplierDetailPage() {
   const params = useParams<{ id: string }>();
   const { ready, suppliers, offers, logs, upsertSupplier, replaceOffers } = useAvtoPrice();
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState<"sync" | "test" | null>(null);
+  const [fileOffers, setFileOffers] = useState<Offer[]>([]);
+  const [fileTotal, setFileTotal] = useState(0);
 
   const supplier = suppliers.find((item) => item.id === params.id);
   const supplierOffers = useMemo(
-    () => offers.filter((offer) => offer.supplierId === params.id),
-    [offers, params.id],
+    () => (fileOffers.length ? fileOffers : offers.filter((offer) => offer.supplierId === params.id)),
+    [offers, params.id, fileOffers],
   );
+
+  useEffect(() => {
+    if (!params.id) return;
+    void fetch(`/api/catalog/browse?supplierId=${encodeURIComponent(params.id)}&pageSize=40`)
+      .then(async (response) => {
+        const data = (await response.json()) as { offers?: Offer[]; total?: number };
+        setFileOffers(data.offers ?? []);
+        setFileTotal(data.total ?? 0);
+      })
+      .catch(() => undefined);
+  }, [params.id]);
   const supplierLogs = logs.filter((log) => log.supplierId === params.id).slice(0, 8);
 
   async function runSync() {
@@ -201,15 +215,18 @@ export default function SupplierDetailPage() {
       </Card>
 
       <div>
-        <h2 className="mb-3 text-lg font-medium">Позиции поставщика</h2>
+        <h2 className="mb-3 text-lg font-medium">
+          Позиции прайса
+          {fileTotal ? ` · ${fileTotal.toLocaleString("ru-RU")}` : ""}
+        </h2>
         <PartsTable
           offers={supplierOffers.slice(0, 40)}
           suppliers={[supplier]}
-          empty="Прайс ещё не загружен."
+          empty="Прайс ещё не загружен. Нажмите «Загрузить файл»."
         />
-        {supplierOffers.length > 40 ? (
+        {fileTotal > 40 ? (
           <p className="mt-2 text-xs text-muted-foreground">
-            Показаны 40 из {supplierOffers.length}. Полный список — в каталоге.
+            Показаны 40 из {fileTotal.toLocaleString("ru-RU")}. Полный список — в каталоге и проценке.
           </p>
         ) : null}
       </div>

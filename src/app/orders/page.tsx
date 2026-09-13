@@ -19,7 +19,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
-import { findDraft } from "@/lib/order";
 import { formatDays, formatMoney } from "@/lib/format";
 import { clientLineTotal, clientSellPrice } from "@/lib/pricing";
 import { cn } from "@/lib/utils";
@@ -37,13 +36,14 @@ export default function OrdersPage() {
     suppliers,
     clients,
     orders,
+    drafts,
+    draft: storedDraft,
+    setActiveDraftId,
     settings,
     upsertOrder,
     removeOrder,
   } = useAvtoPrice();
   const [markupOverride, setMarkupOverride] = useState<string | null>(null);
-
-  const storedDraft = findDraft(orders);
 
   const client = clients.find((item) => item.id === storedDraft?.clientId);
   const discount = client?.discountPercent ?? 0;
@@ -94,10 +94,26 @@ export default function OrdersPage() {
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Заказы</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-            Скидка клиента и ценовые коридоры. Если задать наценку числом — она перекроет коридоры.
-        </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Черновики живут на диске и в браузере: обновление страницы их не съест. Несколько корзин —
+            несколько черновиков.
+          </p>
       </div>
+
+      {drafts.length > 1 ? (
+        <div className="flex flex-wrap gap-2">
+          {drafts.map((item) => (
+            <Button
+              key={item.id}
+              size="sm"
+              variant={item.id === storedDraft?.id ? "default" : "outline"}
+              onClick={() => setActiveDraftId(item.id)}
+            >
+              {item.number} · {item.lines.length} поз.
+            </Button>
+          ))}
+        </div>
+      ) : null}
 
       {draft ? (
       <Card>

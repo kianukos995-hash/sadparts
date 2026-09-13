@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     order?: Order;
     orderId?: string;
     offerId?: string;
-    patch?: Partial<Pick<Offer, "displayName" | "crossOems" | "name">>;
+    patch?: Partial<Pick<Offer, "displayName" | "crossOems" | "name" | "notes" | "applicability">>;
   };
   try {
     body = (await request.json()) as typeof body;

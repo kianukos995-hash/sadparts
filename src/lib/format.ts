@@ -22,6 +22,11 @@ export function formatDateTime(iso?: string) {
   }).format(new Date(iso));
 }
 
+export function formatSignedMoney(amount: number, currency = "RUB") {
+  const sign = amount > 0 ? "+" : "";
+  return `${sign}${formatMoney(amount, currency)}`;
+}
+
 export function formatStock(stock: number) {
   if (stock <= 0) return "нет";
   if (stock < 5) return `${stock} шт.`;

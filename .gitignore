@@ -38,6 +38,7 @@ yarn-error.log*
 /data/imports/
 /data/catalogs/
 /data/media/
+/data/patches/
 .sadparts-chrome/
 
 # vercel

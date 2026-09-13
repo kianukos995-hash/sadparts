@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Search, ShoppingCart } from "lucide-react";
-import { toast } from "sonner";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronDown, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -17,96 +16,86 @@ import { Button } from "@/components/ui/button";
 import { OfferDrawer } from "@/components/offer-drawer";
 import { OfferMedia } from "@/components/offer-media";
 import { OfferSpecs } from "@/components/offer-specs";
+import { BrandDialog, BrandMark } from "@/components/brand-mark";
+import { PriceChange } from "@/components/price-change";
+import { AddToOrderButtons, offerContextAdd } from "@/components/add-to-order";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
-import { formatDays, formatMoney, formatStock, normalizeSku } from "@/lib/format";
-import { groupByOem, offerOems, offerTitle, searchHaystack } from "@/lib/oem";
+import { formatDays, formatMoney, formatStock } from "@/lib/format";
+import { groupByOem, offerTitle } from "@/lib/oem";
+import { applicabilityOf } from "@/lib/offer-extra";
+import { pairLabel } from "@/lib/pairs";
 import { findBand, formatBandLabel } from "@/lib/price-bands";
 import { clientSellPrice } from "@/lib/pricing";
-import { CATEGORIES } from "@/lib/types";
 import type { Offer } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const PAGE_SIZE = 16;
+const PAGE_SIZE = 24;
 
 export default function CatalogPage() {
-  const { ready, suppliers, offers, clients, settings, addToDraft } = useAvtoPrice();
+  const { ready, suppliers, clients, settings, addToDraft } = useAvtoPrice();
   const [query, setQuery] = useState("");
-  const [liveOffers, setLiveOffers] = useState<Offer[] | null>(null);
-  const [liveNote, setLiveNote] = useState("");
+  const [offers, setOffers] = useState<Offer[]>([]);
+  const [total, setTotal] = useState(0);
+  const [catalogRows, setCatalogRows] = useState(0);
+  const [brands, setBrands] = useState<{ name: string; count: number }[]>([]);
+  const [note, setNote] = useState("");
   const [searching, setSearching] = useState(false);
   const [supplierId, setSupplierId] = useState("all");
-  const [category, setCategory] = useState("all");
   const [brand, setBrand] = useState("all");
   const [clientId, setClientId] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [maxDays, setMaxDays] = useState("");
   const [inStock, setInStock] = useState(false);
+  const [changedOnly, setChangedOnly] = useState(false);
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Offer | null>(null);
+  const [brandInfo, setBrandInfo] = useState<string | null>(null);
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
 
   const client = clients.find((item) => item.id === clientId);
   const bands = settings.priceBands;
 
-  const brands = useMemo(
-    () => Array.from(new Set((liveOffers ?? offers).map((offer) => offer.brand))).sort(),
-    [offers, liveOffers],
-  );
+  const load = useCallback(() => {
+    const params = new URLSearchParams();
+    if (query.trim()) params.set("q", query.trim());
+    if (supplierId !== "all") params.set("supplierId", supplierId);
+    if (brand !== "all") params.set("brand", brand);
+    if (maxPrice) params.set("maxPrice", maxPrice);
+    if (maxDays) params.set("maxDays", maxDays);
+    if (inStock) params.set("inStock", "1");
+    if (changedOnly) params.set("changed", "1");
+    params.set("page", String(page));
+    params.set("pageSize", String(PAGE_SIZE));
+    setSearching(true);
+    void fetch(`/api/catalog/browse?${params}`)
+      .then(async (response) => {
+        const data = (await response.json()) as {
+          offers?: Offer[];
+          total?: number;
+          catalogRows?: number;
+          brands?: { name: string; count: number }[];
+        };
+        setOffers(data.offers ?? []);
+        setTotal(data.total ?? 0);
+        setCatalogRows(data.catalogRows ?? 0);
+        if (data.brands?.length) setBrands(data.brands);
+        setNote("");
+      })
+      .catch(() => setNote("Не удалось прочитать прайс"))
+      .finally(() => setSearching(false));
+  }, [query, supplierId, brand, maxPrice, maxDays, inStock, changedOnly, page]);
 
   useEffect(() => {
-    const q = query.trim();
-    if (q.length < 2) return;
-    const timer = window.setTimeout(() => {
-      setSearching(true);
-      void fetch(`/api/search?q=${encodeURIComponent(q)}`)
-        .then(async (response) => {
-          const data = (await response.json()) as { offers?: Offer[]; message?: string };
-          setLiveOffers(data.offers ?? []);
-          setLiveNote(data.message ?? "");
-        })
-        .catch(() => setLiveNote("Поиск Росско недоступен"))
-        .finally(() => setSearching(false));
-    }, 350);
+    const timer = window.setTimeout(load, query ? 280 : 0);
     return () => window.clearTimeout(timer);
-  }, [query]);
+  }, [load, query]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const qSku = normalizeSku(query);
-    const priceCap = Number.parseFloat(maxPrice.replace(",", ".")) || 0;
-    const daysCap = Number.parseInt(maxDays, 10) || 0;
-    const live = query.trim().length >= 2 && liveOffers !== null;
-    const source = query.trim().length < 2 ? offers : (liveOffers ?? offers);
-    return source.filter((offer) => {
-      if (supplierId !== "all" && offer.supplierId !== supplierId) return false;
-      if (category !== "all" && offer.category !== category) return false;
-      if (brand !== "all" && offer.brand !== brand) return false;
-      if (inStock && offer.stock <= 0) return false;
-      if (priceCap > 0 && offer.price > priceCap) return false;
-      if (daysCap > 0 && (offer.deliveryDays || 99) > daysCap) return false;
-      if (!q || live) return true;
-      const oems = offerOems(offer);
-      if (qSku && (normalizeSku(offer.sku) === qSku || oems.includes(qSku))) return true;
-      return searchHaystack(offer).includes(q);
-    });
-  }, [offers, liveOffers, supplierId, category, brand, inStock, query, maxPrice, maxDays]);
-
-  const groups = useMemo(() => groupByOem(filtered), [filtered]);
-  const pages = Math.max(1, Math.ceil(groups.length / PAGE_SIZE));
-  const visible = groups.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+  const groups = useMemo(() => groupByOem(offers), [offers]);
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const names = useMemo(
     () => new Map(suppliers.map((supplier) => [supplier.id, supplier.name])),
     [suppliers],
   );
-
-  function resetPage() {
-    setPage(0);
-  }
-
-  async function addOffer(offer: Offer) {
-    await addToDraft(offer, Math.max(1, offer.multiplicity || 1));
-    toast.success(`${offer.sku} добавлен в заказ`);
-  }
 
   if (!ready) return <p className="text-sm text-muted-foreground">Собираю каталог…</p>;
 
@@ -115,9 +104,9 @@ export default function CatalogPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Каталог запчастей</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Закуп и цена клиенту по ценовым коридорам. Характеристики раскрываются в строке или в
-          номенклатуре.
-          {searching ? " Ищу у Росско…" : ""}
+          Общий вид прайсов: фото, бренд, применимость, парные L/R, заметки. Точечный поиск — в
+          проценке.
+          {searching ? " Читаю прайс…" : ""}
         </p>
       </div>
 
@@ -126,11 +115,11 @@ export default function CatalogPage() {
           <Search className="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
           <Input
             className="pl-8"
-            placeholder="Артикул, OEM, GUID Росско или название"
+            placeholder="Артикул, бренд, название, применимость"
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
-              resetPage();
+              setPage(0);
             }}
           />
         </div>
@@ -159,7 +148,7 @@ export default function CatalogPage() {
           onValueChange={(value) => {
             if (value) {
               setSupplierId(value);
-              resetPage();
+              setPage(0);
             }
           }}
         >
@@ -184,7 +173,7 @@ export default function CatalogPage() {
           onValueChange={(value) => {
             if (value) {
               setBrand(value);
-              resetPage();
+              setPage(0);
             }
           }}
         >
@@ -196,31 +185,8 @@ export default function CatalogPage() {
           <SelectContent>
             <SelectItem value="all">Все бренды</SelectItem>
             {brands.map((item) => (
-              <SelectItem key={item} value={item}>
-                {item}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={category}
-          onValueChange={(value) => {
-            if (value) {
-              setCategory(value);
-              resetPage();
-            }
-          }}
-        >
-          <SelectTrigger className="w-full">
-            <span className="flex flex-1 truncate text-left">
-              {category === "all" ? "Все категории" : category}
-            </span>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Все категории</SelectItem>
-            {CATEGORIES.map((item) => (
-              <SelectItem key={item} value={item}>
-                {item}
+              <SelectItem key={item.name} value={item.name}>
+                {item.name} · {item.count}
               </SelectItem>
             ))}
           </SelectContent>
@@ -230,7 +196,7 @@ export default function CatalogPage() {
           value={maxPrice}
           onChange={(event) => {
             setMaxPrice(event.target.value);
-            resetPage();
+            setPage(0);
           }}
         />
         <Input
@@ -238,7 +204,7 @@ export default function CatalogPage() {
           value={maxDays}
           onChange={(event) => {
             setMaxDays(event.target.value);
-            resetPage();
+            setPage(0);
           }}
         />
         <label className="flex items-center gap-2 text-sm">
@@ -246,28 +212,39 @@ export default function CatalogPage() {
             checked={inStock}
             onCheckedChange={(checked) => {
               setInStock(checked === true);
-              resetPage();
+              setPage(0);
             }}
           />
           <Label className="font-normal">Только в наличии</Label>
         </label>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox
+            checked={changedOnly}
+            onCheckedChange={(checked) => {
+              setChangedOnly(checked === true);
+              setPage(0);
+            }}
+          />
+          <Label className="font-normal">Только обновлённые цены</Label>
+        </label>
       </div>
 
       <p className="text-xs text-muted-foreground">
-        {groups.length} групп OEM · {filtered.length} предложений · {bands.length} ценовых коридоров
-        {liveNote ? ` · ${liveNote}` : ""}
+        {total.toLocaleString("ru-RU")} на странице фильтров · {catalogRows.toLocaleString("ru-RU")} в
+        файлах прайсов · {groups.length} групп
+        {note ? ` · ${note}` : ""}
       </p>
 
-      {visible.length === 0 ? (
+      {offers.length === 0 ? (
         <div className="rounded-xl border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
-          {offers.length === 0 && !liveOffers
-            ? "Введите артикул — Росско отдаёт цены через GetSearch, полный прайс грузится файлом."
+          {catalogRows === 0
+            ? "Прайс ещё не подхватился. Откройте Поставщики → загрузить файл."
             : "Нет позиций по этому фильтру."}
         </div>
       ) : (
         <div className="grid gap-3">
-          {visible.map((group) => {
-            const open = openGroups.has(group.key) || Boolean(query.trim());
+          {groups.map((group) => {
+            const open = openGroups.has(group.key) || Boolean(query.trim()) || groups.length <= 8;
             const best = group.offers[0];
             const bestSell = clientSellPrice(best.price, bands, settings.markupPercent, client);
             return (
@@ -321,11 +298,12 @@ export default function CatalogPage() {
                         client,
                       );
                       const band = findBand(offer.price, bands);
-                      const clientMarkup = client?.bandMarkups?.[band.id];
+                      const cars = applicabilityOf(offer);
                       return (
                         <div
                           key={offer.id}
                           className="flex flex-col gap-2 border-b px-4 py-3 last:border-b-0 sm:flex-row sm:items-start"
+                          onContextMenu={offerContextAdd(offer, addToDraft)}
                         >
                           <div className="shrink-0">
                             <OfferMedia images={offer.images} sku={offer.sku} size="sm" />
@@ -336,16 +314,25 @@ export default function CatalogPage() {
                             onClick={() => setSelected(offer)}
                           >
                             <p className="font-mono text-xs">{offer.sku}</p>
-                            <p className="text-sm">
-                              {offer.brand} · {offerTitle(offer)}
-                            </p>
+                            <div className="mt-0.5">
+                              <BrandMark brand={offer.brand} onOpen={(item) => setBrandInfo(item.name)} />
+                            </div>
+                            <p className="text-sm">{offerTitle(offer)}</p>
                             <p className="text-xs text-muted-foreground">
                               {names.get(offer.supplierId)} · {formatStock(offer.stock)} ·{" "}
                               {formatDays(offer.deliveryDays)} до Москвы
+                              {offer.pairSide ? ` · ${pairLabel(offer.pairSide)} сторона` : ""}
                             </p>
+                            {cars ? (
+                              <p className="mt-1 text-[11px] text-muted-foreground">Применимость: {cars}</p>
+                            ) : null}
+                            {offer.notes ? (
+                              <p className="text-[11px] text-amber-800">Заметка: {offer.notes}</p>
+                            ) : null}
+                            <PriceChange offer={offer} />
                             <OfferSpecs specs={offer.specs} compact />
                           </button>
-                          <div className="flex items-center justify-between gap-3 sm:justify-end">
+                          <div className="flex flex-col items-stretch gap-2 sm:items-end">
                             <div className="text-right">
                               <p
                                 className={cn(
@@ -356,18 +343,10 @@ export default function CatalogPage() {
                                 {formatMoney(sell, offer.currency)}
                               </p>
                               <p className="text-[11px] text-muted-foreground">
-                                закуп {formatMoney(offer.price, offer.currency)} ·{" "}
-                                {formatBandLabel(band)} +
-                                {typeof clientMarkup === "number"
-                                  ? clientMarkup
-                                  : band.markupPercent}
-                                %
+                                закуп {formatMoney(offer.price, offer.currency)} · {formatBandLabel(band)}
                               </p>
                             </div>
-                            <Button size="sm" variant="outline" onClick={() => void addOffer(offer)}>
-                              <ShoppingCart />
-                              В заказ
-                            </Button>
+                            <AddToOrderButtons offer={offer} compact />
                           </div>
                         </div>
                       );
@@ -400,17 +379,18 @@ export default function CatalogPage() {
 
       <OfferDrawer
         offer={selected}
-        offers={liveOffers ?? offers}
+        offers={offers}
         suppliers={suppliers}
         clients={clients}
         clientId={clientId}
         markupPercent={settings.markupPercent}
         priceBands={bands}
-        onAdd={(item) => void addOffer(item)}
+        onAdd={(item) => void addToDraft(item)}
         onOpenChange={(openState) => {
           if (!openState) setSelected(null);
         }}
       />
+      <BrandDialog brand={brandInfo} onOpenChange={(open) => !open && setBrandInfo(null)} />
     </div>
   );
 }

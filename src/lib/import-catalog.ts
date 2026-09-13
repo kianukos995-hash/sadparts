@@ -1,5 +1,5 @@
 import { isXlsxName, parseExcelPrice } from "@/lib/excel-price";
-import { offerToCatalogRow, readCatalog, writeCatalog } from "@/lib/file-catalog";
+import { applyImportDiff, offerToCatalogRow, readCatalog, writeCatalog } from "@/lib/file-catalog";
 import { copyPreviousCatalog, recordImportHistory } from "@/lib/import-history";
 import { guessColumnMap, rowToOffer } from "@/lib/mapping";
 import { uniqueUrls } from "@/lib/media";
@@ -17,7 +17,7 @@ import {
 } from "@/lib/zip";
 import type { ImportMode, Offer, Supplier } from "@/lib/types";
 
-const IMPORT_ROWS = 400_000;
+const IMPORT_ROWS = 800_000;
 
 function priceTitle(filename: string, innerName: string) {
   return guessPriceTitle(filename) || guessPriceTitle(innerName || filename);
@@ -67,14 +67,15 @@ function offersFromRecords(
 
 async function commitRows(supplier: Supplier, offers: Offer[], mode: ImportMode) {
   let catalogRows = offers.map(offerToCatalogRow);
+  const existing = await readCatalog(supplier.id);
   if (mode === "merge") {
-    const existing = await readCatalog(supplier.id);
     const byId = new Map(existing.rows.map((row) => [`${row.guid}:${row.sku}`, row]));
     for (const row of catalogRows) byId.set(`${row.guid}:${row.sku}`, row);
     catalogRows = Array.from(byId.values());
   }
-  await writeCatalog(supplier.id, catalogRows);
-  return catalogRows;
+  const diffed = applyImportDiff(existing.rows, catalogRows);
+  await writeCatalog(supplier.id, diffed.rows);
+  return { catalogRows: diffed.rows, changed: diffed.changed };
 }
 
 function tableFromText(name: string, text: string, filename: string) {
@@ -232,7 +233,10 @@ export async function importCatalogFile(
   }
 
   const previous = await copyPreviousCatalog(supplier.id);
-  const catalogRows = await commitRows(supplier, offers, mode);
+  const committed = await commitRows(supplier, offers, mode);
+  if (committed.changed) {
+    warnings.unshift(`обновлены цены/остатки: ${committed.changed} поз.`);
+  }
   const history = await recordImportHistory({
     id: previous.id,
     at: new Date().toISOString(),
@@ -240,17 +244,18 @@ export async function importCatalogFile(
     label: title,
     fileName: innerName || filename,
     mode,
-    imported: catalogRows.length,
+    imported: committed.catalogRows.length,
     skipped,
     snapshotFile: previous.snapshotFile || undefined,
     warnings: warnings.slice(0, 8),
   });
   return {
-    imported: catalogRows.length,
+    imported: committed.catalogRows.length,
     skipped,
     headers,
     warnings: warnings.slice(0, 8),
     label: title,
+    changed: committed.changed,
     history,
   };
 }

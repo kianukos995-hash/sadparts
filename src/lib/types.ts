@@ -73,6 +73,15 @@ export interface Offer {
   vendorCode?: string;
   specs?: Record<string, string>;
   images?: string[];
+  notes?: string;
+  applicability?: string;
+  prevPrice?: number;
+  prevStock?: number;
+  priceDelta?: number;
+  stockDelta?: number;
+  changedAt?: string;
+  pairSide?: "L" | "R";
+  pairSku?: string;
   updatedAt: string;
   source: SupplierSource;
 }

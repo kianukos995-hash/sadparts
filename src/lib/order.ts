@@ -49,3 +49,9 @@ export function emptyDraft(orders: Order[], clients: Client[], markupPercent: nu
 export function findDraft(orders: Order[]) {
   return orders.find((order) => order.status === "draft") ?? null;
 }
+
+export function findDrafts(orders: Order[]) {
+  return orders
+    .filter((order) => order.status === "draft")
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+}
