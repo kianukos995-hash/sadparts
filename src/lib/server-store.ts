@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { DEMO_KEYS, ROSSKO_API_BASE, STORE_VERSION } from "@/lib/constants";
 import { mergeCrosses } from "@/lib/cross-catalog";
+import type { OfferPatch } from "@/lib/offer-patches";
 import { normalizeSku } from "@/lib/format";
 import { removeCatalog } from "@/lib/file-catalog";
 import { CORE_PARTS } from "@/lib/mock-parts";
@@ -294,18 +295,21 @@ export function touchSupplierSync(
   });
 }
 
-export function patchOffer(offerId: string, patch: Partial<Pick<Offer, "displayName" | "crossOems" | "name" | "notes" | "applicability">>) {
+export function patchOffer(offerId: string, patch: OfferPatch) {
   return enqueue(async () => {
     const store = await readStoreFile();
     const next: StoreSnapshot = {
       ...store,
       offers: store.offers.map((offer) => {
         if (offer.id !== offerId) return offer;
-        const oem = offer.oem;
+        const oem = patch.oem?.trim() ? patch.oem.trim() : offer.oem;
         const crosses = patch.crossOems ? mergeCrosses(oem, patch.crossOems) : offer.crossOems;
         return {
           ...offer,
           name: patch.name?.trim() ? patch.name.trim() : offer.name,
+          brand: patch.brand === undefined ? offer.brand : patch.brand.trim(),
+          oem,
+          category: patch.category === undefined ? offer.category : patch.category.trim(),
           displayName:
             patch.displayName === undefined ? offer.displayName : patch.displayName.trim(),
           notes: patch.notes === undefined ? offer.notes : patch.notes,

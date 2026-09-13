@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Pencil, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { OfferSpecs } from "@/components/offer-specs";
 import { OfferMedia } from "@/components/offer-media";
+import { NomenclatureEdit } from "@/components/nomenclature-edit";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { formatMoney } from "@/lib/format";
 import { specEntries } from "@/lib/specs";
@@ -19,6 +21,7 @@ export default function NomenclaturePage() {
   const [query, setQuery] = useState("");
   const [live, setLive] = useState<Offer[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<Offer | null>(null);
 
   useEffect(() => {
     const q = query.trim();
@@ -35,7 +38,12 @@ export default function NomenclaturePage() {
     return () => window.clearTimeout(timer);
   }, [query]);
 
-  const source = live ?? offers;
+  const source = useMemo(() => {
+    const base = live ?? offers;
+    const byId = new Map(offers.map((item) => [item.id, item]));
+    return base.map((item) => byId.get(item.id) ?? item);
+  }, [live, offers]);
+
   const unique = useMemo(() => {
     const map = new Map<string, Offer>();
     for (const offer of source) {
@@ -70,7 +78,7 @@ export default function NomenclaturePage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Номенклатура</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Карточки артикулов: GUID, вес, применимость, фото из прайса или ссылка в интернет.
+          Карточки артикулов: GUID, вес, применимость, фото. Название, бренд и OEM можно править.
         </p>
       </div>
       <div className="relative">
@@ -99,32 +107,42 @@ export default function NomenclaturePage() {
       ) : (
         <div className="grid gap-3">
           {unique.map((offer) => {
-            const breakdown = clientPriceBreakdown(offer.price, settings.priceBands, settings.markupPercent);
+            const breakdown = clientPriceBreakdown(
+              offer.price,
+              settings.priceBands,
+              settings.markupPercent,
+            );
             const sell = breakdown.sell;
             return (
               <article key={offer.id} className="rounded-xl border p-4">
                 <div className="flex flex-wrap items-start gap-4">
                   <OfferMedia images={offer.images} sku={offer.sku} size="md" />
                   <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="font-mono text-xs text-muted-foreground">{offer.sku}</p>
-                    <h2 className="text-base font-medium">
-                      {offer.brand} · {offer.name}
-                    </h2>
-                    {offer.guid ? (
-                      <p className="text-xs text-muted-foreground">GUID {offer.guid}</p>
-                    ) : null}
-                  </div>
-                  <div className="text-right">
-                    <Badge variant="secondary">{formatMoney(sell)}</Badge>
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      закуп {formatMoney(offer.price)}
-                    </p>
-                    <PriceFormula breakdown={breakdown} compact />
-                  </div>
-                </div>
-                <OfferSpecs specs={offer.specs} defaultOpen />
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-mono text-xs text-muted-foreground">{offer.sku}</p>
+                        <h2 className="text-base font-medium">
+                          {offer.brand} · {offer.displayName || offer.name}
+                        </h2>
+                        {offer.guid ? (
+                          <p className="text-xs text-muted-foreground">GUID {offer.guid}</p>
+                        ) : null}
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <div className="text-right">
+                          <Badge variant="secondary">{formatMoney(sell)}</Badge>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            закуп {formatMoney(offer.price)}
+                          </p>
+                          <PriceFormula breakdown={breakdown} compact />
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => setEditing(offer)}>
+                          <Pencil />
+                          Изменить
+                        </Button>
+                      </div>
+                    </div>
+                    <OfferSpecs specs={offer.specs} defaultOpen />
                   </div>
                 </div>
               </article>
@@ -132,6 +150,13 @@ export default function NomenclaturePage() {
           })}
         </div>
       )}
+      <NomenclatureEdit
+        offer={editing}
+        open={Boolean(editing)}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null);
+        }}
+      />
     </div>
   );
 }

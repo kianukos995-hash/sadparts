@@ -11,9 +11,11 @@ import { cn } from "@/lib/utils";
 export function ClientCartBar({
   clientId,
   onClientId,
+  onSelectDraft,
 }: {
   clientId: string;
   onClientId: (id: string) => void;
+  onSelectDraft?: (id: string) => void;
 }) {
   const { clients, drafts, draft, orders, setActiveDraftId, upsertOrder, settings } = useAvtoPrice();
 
@@ -26,6 +28,7 @@ export function ClientCartBar({
     );
     await upsertOrder(created);
     setActiveDraftId(created.id);
+    onSelectDraft?.(created.id);
     if (created.clientId) onClientId(created.clientId);
     toast.success(`Корзина ${created.number}${client ? ` · ${client.name}` : ""}`);
   }
@@ -38,6 +41,9 @@ export function ClientCartBar({
           <Button size="sm" variant="outline" onClick={() => void newCart(clients.find((item) => item.id === clientId))}>
             Новая корзина
           </Button>
+          <Link href="/cart" className="text-sm text-muted-foreground hover:underline">
+            К корзине
+          </Link>
           <Link href="/orders" className="text-sm text-muted-foreground hover:underline">
             К заказам
           </Link>
@@ -60,6 +66,7 @@ export function ClientCartBar({
                 className={cn(!active && item.clientId === clientId && "border-amber-500")}
                 onClick={() => {
                   setActiveDraftId(item.id);
+                  onSelectDraft?.(item.id);
                   onClientId(item.clientId);
                 }}
               >

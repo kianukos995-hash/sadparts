@@ -13,6 +13,7 @@ import {
   Search,
   Send,
   Settings,
+  ShoppingCart,
   Truck,
   Users,
 } from "lucide-react";
@@ -35,6 +36,7 @@ const GROUPS = [
   {
     title: "Сделки",
     items: [
+      { href: "/cart", label: "Корзина", icon: ShoppingCart },
       { href: "/orders", label: "Заказы", icon: ClipboardList },
       { href: "/clients", label: "Клиенты", icon: Users },
     ],
@@ -134,10 +136,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="grid gap-2">
           {draftCount > 0 ? (
             <Link
-              href="/orders"
+              href={draft ? `/cart?id=${draft.id}` : "/cart"}
               className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100"
             >
-              Черновики · {drafts.length} зак. · {draftCount} шт.
+              Корзина · {drafts.length} зак. · {draftCount} шт.
               {draft ? ` · ${draft.number}` : ""}
             </Link>
           ) : null}

@@ -11,26 +11,32 @@ export function AddToOrderButtons({
   offer,
   compact,
   clientId,
+  orderId,
 }: {
   offer: Offer;
   compact?: boolean;
   clientId?: string;
+  orderId?: string;
 }) {
-  const { addToDraft, draft, clients } = useAvtoPrice();
+  const { addToDraft, draft, clients, orders } = useAvtoPrice();
   const client = clients.find((item) => item.id === clientId);
-  const label = client
-    ? compact
-      ? "В заказ"
-      : `В ${client.name}`
-    : compact
-      ? "В заказ"
-      : draft
-        ? `В ${draft.number}`
-        : "В заказ";
+  const target = orderId ? orders.find((item) => item.id === orderId) : null;
+  const label = target
+    ? `В ${target.number}`
+    : client
+      ? compact
+        ? "В корзину"
+        : `В ${client.name}`
+      : compact
+        ? "В корзину"
+        : draft
+          ? `В ${draft.number}`
+          : "В корзину";
 
   async function intoCurrent() {
     const next = await addToDraft(offer, Math.max(1, offer.multiplicity || 1), {
       clientId: clientId || undefined,
+      orderId: orderId || undefined,
     });
     toast.success(`${offer.sku} → ${next.number}`);
   }
@@ -40,7 +46,7 @@ export function AddToOrderButtons({
       newOrder: true,
       clientId: clientId || undefined,
     });
-    toast.success(`Новый заказ ${next.number}`);
+    toast.success(`Новая корзина ${next.number}`);
   }
 
   return (
@@ -61,11 +67,13 @@ export function offerContextAdd(
   offer: Offer,
   addToDraft: AvtoAdd,
   clientId?: string,
+  orderId?: string,
 ) {
   return async (event: MouseEvent) => {
     event.preventDefault();
     const next = await addToDraft(offer, Math.max(1, offer.multiplicity || 1), {
-      newOrder: true,
+      newOrder: !orderId,
+      orderId: orderId || undefined,
       clientId: clientId || undefined,
     });
     toast.success(`ПКМ: ${offer.sku} в ${next.number}`);

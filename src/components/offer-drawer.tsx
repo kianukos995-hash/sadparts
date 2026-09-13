@@ -36,6 +36,7 @@ export function OfferDrawer({
   suppliers,
   clients,
   clientId,
+  orderId,
   markupPercent,
   priceBands,
   onOpenChange,
@@ -45,6 +46,7 @@ export function OfferDrawer({
   suppliers: Supplier[];
   clients?: Client[];
   clientId?: string;
+  orderId?: string;
   markupPercent: number;
   priceBands?: PriceBand[];
   onAdd?: (offer: Offer) => void;
@@ -61,6 +63,7 @@ export function OfferDrawer({
             suppliers={suppliers}
             clients={clients ?? []}
             clientId={clientId ?? ""}
+            orderId={orderId}
             markupPercent={markupPercent}
             priceBands={priceBands ?? []}
             onOpenChange={onOpenChange}
@@ -77,6 +80,7 @@ function DrawerBody({
   suppliers,
   clients,
   clientId: initialClientId,
+  orderId,
   markupPercent,
   priceBands,
   onOpenChange,
@@ -86,6 +90,7 @@ function DrawerBody({
   suppliers: Supplier[];
   clients: Client[];
   clientId: string;
+  orderId?: string;
   markupPercent: number;
   priceBands: PriceBand[];
   onOpenChange: (open: boolean) => void;
@@ -270,7 +275,7 @@ function DrawerBody({
         ) : null}
 
         <div className="flex flex-wrap gap-2">
-          <AddToOrderButtons offer={offer} clientId={clientId} />
+          <AddToOrderButtons offer={offer} clientId={clientId} orderId={orderId} />
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Закрыть
           </Button>

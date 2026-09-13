@@ -5,7 +5,7 @@ import type { Offer } from "@/lib/types";
 const DIR = path.join(process.cwd(), "data", "patches");
 
 export type OfferPatch = Partial<
-  Pick<Offer, "displayName" | "crossOems" | "notes" | "applicability" | "name">
+  Pick<Offer, "displayName" | "crossOems" | "notes" | "applicability" | "name" | "brand" | "oem" | "category">
 >;
 
 type PatchFile = Record<string, OfferPatch>;

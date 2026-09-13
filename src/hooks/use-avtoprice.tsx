@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { copyClientVehicle, emptyDraft, findDraft, findDraftForClient, findDrafts, offerToLine } from "@/lib/order";
 import { DEFAULT_PRICE_BANDS } from "@/lib/price-bands";
+import type { OfferPatch } from "@/lib/offer-patches";
 import type {
   Client,
   ImportMode,
@@ -62,11 +63,7 @@ export interface AvtoPriceApi {
     log: SyncLog,
     mode?: ImportMode,
   ) => Promise<void>;
-  patchOffer: (
-    offerId: string,
-    patch: Partial<Pick<Offer, "displayName" | "crossOems" | "name" | "notes" | "applicability">>,
-    supplierId?: string,
-  ) => Promise<void>;
+  patchOffer: (offerId: string, patch: OfferPatch, supplierId?: string) => Promise<void>;
   upsertClient: (client: Client) => Promise<void>;
   removeClient: (id: string) => Promise<void>;
   upsertOrder: (order: Order) => Promise<void>;
@@ -208,7 +205,7 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
   const patchOffer = useCallback(
     async (
       offerId: string,
-      patch: Partial<Pick<Offer, "displayName" | "crossOems" | "name" | "notes" | "applicability">>,
+      patch: OfferPatch,
       supplierId?: string,
     ) => {
       const response = await fetch("/api/catalog/patch", {
@@ -272,6 +269,7 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
         draft = emptyDraft(store.orders, store.clients, settings.markupPercent, options.clientId);
       } else if (options?.orderId) {
         draft =
+          store.orders.find((item) => item.id === options.orderId) ??
           drafts.find((item) => item.id === options.orderId) ??
           emptyDraft(store.orders, store.clients, settings.markupPercent, options.clientId);
       } else if (options?.clientId) {

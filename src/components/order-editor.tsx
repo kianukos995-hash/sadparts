@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
-import { Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Search, Trash2 } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,16 +24,25 @@ import { formatDays, formatMoney } from "@/lib/format";
 import { copyClientVehicle } from "@/lib/order";
 import { clientLineTotal, clientPriceBreakdown } from "@/lib/pricing";
 import { priceOrder } from "@/lib/order-price";
+import { cn } from "@/lib/utils";
 import type { Order } from "@/lib/types";
 
 export function OrderEditor({
   order,
   onClose,
+  onAssembled,
+  onDeleted,
+  onReturnedToCart,
+  listHref,
 }: {
   order: Order;
   onClose?: () => void;
+  onAssembled?: (order: Order) => void;
+  onDeleted?: () => void;
+  onReturnedToCart?: (order: Order) => void;
+  listHref?: string;
 }) {
-  const { suppliers, clients, settings, upsertOrder } = useAvtoPrice();
+  const { suppliers, clients, settings, upsertOrder, removeOrder } = useAvtoPrice();
   const [markupOverride, setMarkupOverride] = useState("");
   const client = clients.find((item) => item.id === order.clientId);
   const useBands = markupOverride.trim() === "";
@@ -61,8 +71,13 @@ export function OrderEditor({
     <Card>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        <CardDescription>
+        <CardDescription className="flex flex-wrap items-center gap-2">
           {settings.moscowHubNote || "Срок в строке — дни до Москвы от поставщика."}
+          {listHref ? (
+            <Link href={listHref} className="text-foreground underline-offset-4 hover:underline">
+              К списку
+            </Link>
+          ) : null}
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
@@ -261,13 +276,20 @@ export function OrderEditor({
             <p className="text-xl font-semibold">Клиенту {formatMoney(priced.totals.sell)}</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link
+              href={`/quote?orderId=${order.id}${order.clientId ? `&clientId=${order.clientId}` : ""}`}
+              className={cn(buttonVariants({ variant: "outline" }))}
+            >
+              <Search />
+              Добавить из проценки
+            </Link>
             {order.status === "draft" ? (
               <>
                 <Button
                   variant="outline"
                   disabled={order.lines.length === 0}
                   onClick={() => {
-                    void persist({ ...order, lines: [] }).then(() => toast.success("Черновик очищен"));
+                    void persist({ ...order, lines: [] }).then(() => toast.success("Корзина очищена"));
                   }}
                 >
                   Очистить
@@ -275,9 +297,10 @@ export function OrderEditor({
                 <Button
                   disabled={order.lines.length === 0}
                   onClick={() => {
-                    void persist({ ...order, status: "assembled" }).then(() =>
-                      toast.success(`Заказ ${order.number} собран`),
-                    );
+                    void persist({ ...order, status: "assembled" }).then(() => {
+                      toast.success(`Заказ ${order.number} собран`);
+                      onAssembled?.({ ...order, status: "assembled" });
+                    });
                   }}
                 >
                   Собрать заказ
@@ -288,12 +311,13 @@ export function OrderEditor({
                 <Button
                   variant="outline"
                   onClick={() => {
-                    void persist({ ...order, status: "draft" }).then(() =>
-                      toast.success(`${order.number} снова черновик`),
-                    );
+                    void persist({ ...order, status: "draft" }).then(() => {
+                      toast.success(`${order.number} снова в корзине`);
+                      onReturnedToCart?.({ ...order, status: "draft" });
+                    });
                   }}
                 >
-                  Вернуть в черновик
+                  Вернуть в корзину
                 </Button>
                 {onClose ? (
                   <Button variant="outline" onClick={onClose}>
@@ -302,6 +326,19 @@ export function OrderEditor({
                 ) : null}
               </>
             )}
+            <Button
+              variant="ghost"
+              onClick={() => {
+                if (!confirm(`Удалить ${order.number}?`)) return;
+                void removeOrder(order.id).then(() => {
+                  toast.success("Удалено");
+                  onDeleted?.();
+                });
+              }}
+            >
+              <Trash2 />
+              Удалить
+            </Button>
           </div>
         </div>
         <OrderShareBar order={order} />

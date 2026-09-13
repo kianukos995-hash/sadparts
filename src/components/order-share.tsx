@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { FileSpreadsheet, MessageCircle, Printer, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,8 @@ import { whatsappOrderUrl } from "@/lib/order";
 import type { Order } from "@/lib/types";
 
 export function OrderShareBar({ order }: { order: Order }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const { clients, settings, refresh } = useAvtoPrice();
   const client = clients.find((item) => item.id === order.clientId);
   const priced = priceOrder(order, client, settings.priceBands, order.markupPercent || settings.markupPercent);
@@ -73,10 +76,15 @@ export function OrderShareBar({ order }: { order: Order }) {
         <Button
           variant="outline"
           disabled={disabled}
-          onClick={() => window.open(`/orders/print/${order.id}`, "_blank", "noopener")}
+          onClick={() => {
+            const from = pathname.startsWith("/cart")
+              ? `/cart?id=${order.id}`
+              : `/orders/${order.id}`;
+            router.push(`/orders/print/${order.id}?from=${encodeURIComponent(from)}`);
+          }}
         >
           <Printer />
-          Печать
+          Печать накладной
         </Button>
         <Button
           variant="outline"
