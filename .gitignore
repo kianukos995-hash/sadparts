@@ -35,6 +35,7 @@ yarn-error.log*
 
 # local catalog and bot settings
 /data/*.json
+.sadparts-chrome/
 
 # vercel
 .vercel

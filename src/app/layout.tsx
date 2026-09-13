@@ -13,10 +13,17 @@ const jetbrains = JetBrains_Mono({
   subsets: ["latin", "cyrillic"],
 });
 
+export const viewport = {
+  themeColor: "#f59e0b",
+};
+
 export const metadata: Metadata = {
   title: "SadParts Prices — прайсы автозапчастей",
   description:
-    "Ключи API поставщиков, загрузка прайсов и Telegram-бот по каталогу автозапчастей.",
+    "Ключи API поставщиков, поиск по артикулу и OEM, аналоги, заказы с наценкой и скидкой клиента.",
+  applicationName: "SadParts Prices",
+  manifest: "/manifest.webmanifest",
+  icons: { icon: "/icon.svg", apple: "/icon.svg" },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

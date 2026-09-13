@@ -9,7 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatMoney, formatStock } from "@/lib/format";
+import { formatDays, formatMoney, formatStock } from "@/lib/format";
 import type { Offer, Supplier } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -46,6 +46,7 @@ export function PartsTable({
           <TableHead className="hidden lg:table-cell">OEM</TableHead>
           <TableHead>Поставщик</TableHead>
           <TableHead className="text-right">Цена</TableHead>
+          <TableHead className="hidden text-right md:table-cell">До Москвы</TableHead>
           <TableHead className="text-right">Остаток</TableHead>
         </TableRow>
       </TableHeader>
@@ -62,7 +63,7 @@ export function PartsTable({
               <TableCell>{offer.brand}</TableCell>
               <TableCell>
                 <div className="flex flex-col">
-                  <span>{offer.name}</span>
+                  <span>{offer.displayName?.trim() || offer.name}</span>
                   <span className="text-xs text-muted-foreground lg:hidden">{offer.oem || "—"}</span>
                 </div>
               </TableCell>
@@ -81,6 +82,9 @@ export function PartsTable({
                     min
                   </span>
                 ) : null}
+              </TableCell>
+              <TableCell className="hidden text-right text-xs md:table-cell">
+                {formatDays(offer.deliveryDays)}
               </TableCell>
               <TableCell
                 className={cn(

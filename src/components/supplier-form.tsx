@@ -17,7 +17,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -43,6 +42,8 @@ function emptySupplier(): Supplier {
     notes: "",
     active: true,
     createdAt: new Date().toISOString(),
+    deliveryDaysMoscow: 2,
+    deliveryNote: "",
   };
 }
 
@@ -109,6 +110,7 @@ function SupplierFormFields({
         <TabsList>
           <TabsTrigger value="main">Основные</TabsTrigger>
           <TabsTrigger value="api">API</TabsTrigger>
+          <TabsTrigger value="delivery">Доставка</TabsTrigger>
           <TabsTrigger value="map">Поля прайса</TabsTrigger>
         </TabsList>
 
@@ -136,7 +138,9 @@ function SupplierFormFields({
                 }}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue />
+                  <span className="flex flex-1 truncate text-left">
+                    {draft.source === "file" ? "Только файл" : "API поставщика"}
+                  </span>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="api">API поставщика</SelectItem>
@@ -174,7 +178,9 @@ function SupplierFormFields({
                 disabled={draft.source === "file"}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue />
+                  <span className="flex flex-1 truncate text-left">
+                    {AUTH_MODE_LABELS[draft.authMode]}
+                  </span>
                 </SelectTrigger>
                 <SelectContent>
                   {(Object.keys(AUTH_MODE_LABELS) as AuthMode[]).map((mode) => (
@@ -213,6 +219,31 @@ function SupplierFormFields({
           <Field label="API-ключ">
             <KeyField value={draft.apiKey} onChange={(value) => update("apiKey", value)} />
           </Field>
+        </TabsContent>
+
+        <TabsContent value="delivery" className="mt-4 grid gap-3">
+          <Field label="Срок до Москвы, дней">
+            <Input
+              type="number"
+              min={0}
+              value={draft.deliveryDaysMoscow}
+              onChange={(event) =>
+                update("deliveryDaysMoscow", Math.max(0, Number.parseInt(event.target.value, 10) || 0))
+              }
+            />
+          </Field>
+          <Field label="Комментарий по доставке">
+            <Textarea
+              value={draft.deliveryNote}
+              onChange={(event) => update("deliveryNote", event.target.value)}
+              placeholder="Склад, ТК, отсечка отгрузки, экспресс"
+              rows={3}
+            />
+          </Field>
+          <p className="text-xs text-muted-foreground">
+            Эти дни подставляются в позиции, если в прайсе нет своего срока. В заказе срок до Москвы
+            берётся с предложения.
+          </p>
         </TabsContent>
 
         <TabsContent value="map" className="mt-4 grid gap-3 sm:grid-cols-2">

@@ -36,14 +36,17 @@ export default function HomePage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Обзор склада прайсов</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Ключи API поставщиков, загрузка прайсов файлом, ссылкой или вставкой, Telegram-бот по
-            каталогу автозапчастей.
+          Ключи API поставщиков, загрузка прайсов файлом, ссылкой или вставкой, заказы с наценкой и
+            скидкой клиента, Telegram-бот по каталогу.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link href="/catalog" className={cn(buttonVariants())}>
             <PackageSearch />
             Открыть каталог
+          </Link>
+          <Link href="/settings" className={cn(buttonVariants({ variant: "outline" }))}>
+            Настройки и ключи API
           </Link>
           <Link href="/import" className={cn(buttonVariants({ variant: "outline" }))}>
             <Upload />
@@ -106,7 +109,9 @@ export default function HomePage() {
                       <p className="text-sm font-medium">{supplier.name}</p>
                       <p className="text-xs text-muted-foreground">
                         {supplier.source === "api" ? "API" : "Файл"} ·{" "}
-                        {formatDateTime(supplier.lastSyncAt)}
+                        {supplier.deliveryDaysMoscow
+                          ? `${supplier.deliveryDaysMoscow} дн. до Москвы`
+                          : formatDateTime(supplier.lastSyncAt)}
                       </p>
                     </div>
                   </div>

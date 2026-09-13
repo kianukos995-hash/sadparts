@@ -117,7 +117,7 @@ export default function SupplierDetailPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card size="sm">
           <CardHeader>
             <CardDescription>Последняя загрузка</CardDescription>
@@ -127,6 +127,17 @@ export default function SupplierDetailPage() {
             {supplier.lastSyncStatus === "error"
               ? supplier.lastSyncError
               : `${supplier.lastSyncCount ?? supplierOffers.length} позиций`}
+          </CardContent>
+        </Card>
+        <Card size="sm">
+          <CardHeader>
+            <CardDescription>До Москвы</CardDescription>
+            <CardTitle>
+              {supplier.deliveryDaysMoscow ? `${supplier.deliveryDaysMoscow} дн.` : "не задан"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-muted-foreground">
+            {supplier.deliveryNote || "Комментарий по доставке не задан"}
           </CardContent>
         </Card>
         <Card size="sm">

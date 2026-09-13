@@ -1,17 +1,20 @@
-import { formatMoney, formatStock } from "@/lib/format";
+import { formatMoney, formatStock, normalizeSku } from "@/lib/format";
+import { offerOems, offerTitle, relatedOffers, searchHaystack } from "@/lib/oem";
 import type { Offer, StoreSnapshot, Supplier } from "@/lib/types";
 
 export function searchOffers(store: StoreSnapshot, query: string, limit = 8) {
-  const q = query.trim().toLowerCase();
+  const q = normalizeSku(query).toLowerCase() || query.trim().toLowerCase();
   if (!q) return [];
   const names = new Map(store.suppliers.map((supplier) => [supplier.id, supplier.name]));
   const scored = store.offers
     .map((offer) => {
-      const hay = [offer.sku, offer.brand, offer.name, offer.oem].join(" ").toLowerCase();
+      const hay = searchHaystack(offer);
+      const sku = normalizeSku(offer.sku).toLowerCase();
+      const oems = offerOems(offer).map((item) => item.toLowerCase());
       let score = 0;
-      if (offer.sku.toLowerCase() === q || offer.oem.toLowerCase() === q) score = 100;
-      else if (offer.sku.toLowerCase().includes(q) || offer.oem.toLowerCase().includes(q)) score = 70;
-      else if (hay.includes(q)) score = 40;
+      if (sku === q || oems.includes(q)) score = 100;
+      else if (sku.includes(q) || oems.some((oem) => oem.includes(q))) score = 70;
+      else if (hay.includes(query.trim().toLowerCase())) score = 40;
       return { offer, score, supplierName: names.get(offer.supplierId) ?? "поставщик" };
     })
     .filter((item) => item.score > 0)
@@ -20,12 +23,9 @@ export function searchOffers(store: StoreSnapshot, query: string, limit = 8) {
 }
 
 export function offersForPart(store: StoreSnapshot, offer: Offer) {
-  return store.offers
-    .filter((item) => {
-      if (item.sku === offer.sku && item.brand === offer.brand) return true;
-      return Boolean(offer.oem) && item.oem === offer.oem;
-    })
-    .sort((a, b) => a.price - b.price);
+  return relatedOffers(store.offers, offer).sort(
+    (a, b) => a.price - b.price || a.deliveryDays - b.deliveryDays,
+  );
 }
 
 export function formatTelegramAnswer(
@@ -39,16 +39,18 @@ export function formatTelegramAnswer(
   const names = new Map(store.suppliers.map((supplier: Supplier) => [supplier.id, supplier.name]));
   const first = hits[0].offer;
   const related = offersForPart(store, first);
+  const oems = offerOems(first);
   const lines = [
     "SadParts Prices",
     "",
     `${first.brand} · ${first.sku}`,
-    first.name,
-    first.oem ? `OEM ${first.oem}` : "",
+    offerTitle(first),
+    oems.length ? `OEM ${oems.join(" / ")}` : "",
     "",
     ...related.slice(0, 8).map((offer) => {
       const supplier = names.get(offer.supplierId) ?? "поставщик";
-      return `${supplier} — ${formatMoney(offer.price, offer.currency)}, ${formatStock(offer.stock)}${offer.warehouse ? ` (${offer.warehouse})` : ""}`;
+      const days = offer.deliveryDays ? `, ${offer.deliveryDays} дн. до Москвы` : "";
+      return `${supplier} — ${formatMoney(offer.price, offer.currency)}, ${formatStock(offer.stock)}${days}${offer.warehouse ? ` (${offer.warehouse})` : ""}`;
     }),
   ].filter((line, index, all) => line !== "" || all[index - 1] !== "");
   if (hits.length > 1 && related.length <= 1) {
@@ -67,7 +69,8 @@ export function formatSuppliers(store: StoreSnapshot) {
   const lines = ["SadParts Prices — поставщики", ""];
   store.suppliers.forEach((supplier) => {
     const count = store.offers.filter((offer) => offer.supplierId === supplier.id).length;
-    lines.push(`${supplier.name}: ${count} поз.`);
+    const days = supplier.deliveryDaysMoscow ? `, ${supplier.deliveryDaysMoscow} дн. до Москвы` : "";
+    lines.push(`${supplier.name}: ${count} поз.${days}`);
   });
   return lines.join("\n");
 }
@@ -75,7 +78,7 @@ export function formatSuppliers(store: StoreSnapshot) {
 export const TELEGRAM_HELP = [
   "SadParts Prices",
   "",
-  "Пришлите артикул, OEM или название — отвечу ценами из прайса.",
+  "Пришлите артикул, OEM или название — отвечу ценами, кроссами и сроком до Москвы.",
   "",
   "/search колодки — поиск",
   "/suppliers — список поставщиков",

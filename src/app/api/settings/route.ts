@@ -10,6 +10,8 @@ function toPublic(settings: Awaited<ReturnType<typeof readSettings>>): PublicSet
     telegramUsername: settings.telegramUsername,
     telegramPolling: settings.telegramPolling,
     telegramTokenMasked: maskToken(settings.telegramToken),
+    markupPercent: settings.markupPercent,
+    moscowHubNote: settings.moscowHubNote,
   };
 }
 
@@ -18,7 +20,13 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  let body: { token?: string; polling?: boolean; clear?: boolean };
+  let body: {
+    token?: string;
+    polling?: boolean;
+    clear?: boolean;
+    markupPercent?: number;
+    moscowHubNote?: string;
+  };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -35,12 +43,21 @@ export async function POST(request: NextRequest) {
   }
 
   const current = await readSettings();
+  const tradePatch: Partial<typeof current> = {};
+  if (typeof body.markupPercent === "number" && Number.isFinite(body.markupPercent)) {
+    tradePatch.markupPercent = Math.min(500, Math.max(0, body.markupPercent));
+  }
+  if (typeof body.moscowHubNote === "string") {
+    tradePatch.moscowHubNote = body.moscowHubNote;
+  }
+
   let token = current.telegramToken;
   if (typeof body.token === "string" && body.token.trim() && !body.token.includes("…")) {
     token = body.token.trim();
     try {
       const me = await getBotProfile(token);
       const next = await writeSettings({
+        ...tradePatch,
         telegramToken: token,
         telegramUsername: me.username ?? "",
         telegramSecret: current.telegramSecret || randomBytes(16).toString("hex"),
@@ -57,6 +74,7 @@ export async function POST(request: NextRequest) {
   }
 
   const next = await writeSettings({
+    ...tradePatch,
     telegramPolling: body.polling ?? current.telegramPolling,
   });
   return Response.json(toPublic(next));

@@ -4,17 +4,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  ClipboardList,
   LayoutGrid,
   Menu,
   PackagePlus,
   PackageSearch,
   Send,
+  Settings,
   Truck,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import type { PublicSettings } from "@/lib/types";
+import { useAvtoPrice } from "@/hooks/use-avtoprice";
 
 const GROUPS = [
   {
@@ -22,6 +26,13 @@ const GROUPS = [
     items: [
       { href: "/", label: "Обзор", icon: LayoutGrid },
       { href: "/catalog", label: "Каталог", icon: PackageSearch },
+    ],
+  },
+  {
+    title: "Сделки",
+    items: [
+      { href: "/orders", label: "Заказы", icon: ClipboardList },
+      { href: "/clients", label: "Клиенты", icon: Users },
     ],
   },
   {
@@ -33,7 +44,10 @@ const GROUPS = [
   },
   {
     title: "Связки",
-    items: [{ href: "/telegram", label: "Telegram-бот", icon: Send }],
+    items: [
+      { href: "/telegram", label: "Telegram-бот", icon: Send },
+      { href: "/settings", label: "Настройки", icon: Settings },
+    ],
   },
 ];
 
@@ -90,6 +104,8 @@ function Brand() {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [bot, setBot] = useState<PublicSettings | null>(null);
+  const { draft } = useAvtoPrice();
+  const draftCount = draft?.lines.reduce((sum, line) => sum + line.qty, 0) ?? 0;
 
   useEffect(() => {
     void fetch("/api/settings")
@@ -105,13 +121,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="mt-6 flex-1 overflow-y-auto">
           <NavLinks />
         </div>
-        <div className="rounded-lg border border-white/10 px-3 py-2">
-          <p className="text-[11px] text-zinc-500">Telegram</p>
-          <p className="truncate text-xs text-zinc-200">
-            {bot?.telegramConfigured
-              ? `@${bot.telegramUsername || "бот"}`
-              : "не подключён"}
-          </p>
+        <div className="grid gap-2">
+          {draftCount > 0 ? (
+            <Link
+              href="/orders"
+              className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100"
+            >
+              Черновик заказа · {draftCount} шт.
+            </Link>
+          ) : null}
+          <div className="rounded-lg border border-white/10 px-3 py-2">
+            <p className="text-[11px] text-zinc-500">Telegram</p>
+            <p className="truncate text-xs text-zinc-200">
+              {bot?.telegramConfigured ? `@${bot.telegramUsername || "бот"}` : "не подключён"}
+            </p>
+          </div>
         </div>
       </aside>
 
@@ -121,6 +145,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Menu />
           </Button>
           <BrandMark />
+          <Link href="/settings" className="ml-auto">
+            <Settings className="size-4 text-muted-foreground" />
+          </Link>
         </header>
         <main className="flex-1 px-4 py-5 md:px-8 md:py-7">{children}</main>
       </div>

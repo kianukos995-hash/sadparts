@@ -668,6 +668,9 @@ function ManualPane({
               stock: Math.max(0, Math.round(Number.parseFloat(stock) || 0)),
               warehouse: warehouse.trim(),
               multiplicity: 1,
+              deliveryDays: supplier.deliveryDaysMoscow || 2,
+              displayName: "",
+              crossOems: [],
               updatedAt: new Date().toISOString(),
               source: "manual" as const,
             };

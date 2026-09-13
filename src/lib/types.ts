@@ -3,6 +3,7 @@ export type ImportMode = "replace" | "merge";
 export type AuthMode = "bearer" | "header" | "query";
 export type AdapterKind = "generic" | "demo";
 export type SyncStatus = "ok" | "error";
+export type OrderStatus = "draft" | "assembled" | "sent";
 
 export const FIELD_KEYS = [
   "sku",
@@ -15,6 +16,7 @@ export const FIELD_KEYS = [
   "stock",
   "warehouse",
   "multiplicity",
+  "deliveryDays",
 ] as const;
 
 export type FieldKey = (typeof FIELD_KEYS)[number];
@@ -38,6 +40,8 @@ export interface Supplier {
   notes: string;
   active: boolean;
   createdAt: string;
+  deliveryDaysMoscow: number;
+  deliveryNote: string;
   lastSyncAt?: string;
   lastSyncStatus?: SyncStatus;
   lastSyncError?: string;
@@ -50,13 +54,16 @@ export interface Offer {
   sku: string;
   brand: string;
   name: string;
+  displayName?: string;
   oem: string;
+  crossOems: string[];
   category: string;
   price: number;
   currency: string;
   stock: number;
   warehouse: string;
   multiplicity: number;
+  deliveryDays: number;
   updatedAt: string;
   source: SupplierSource;
 }
@@ -73,12 +80,51 @@ export interface SyncLog {
   mode?: ImportMode;
 }
 
+export interface Client {
+  id: string;
+  name: string;
+  phone: string;
+  inn: string;
+  discountPercent: number;
+  notes: string;
+  createdAt: string;
+}
+
+export interface OrderLine {
+  id: string;
+  offerId: string;
+  supplierId: string;
+  sku: string;
+  brand: string;
+  name: string;
+  oem: string;
+  qty: number;
+  buyPrice: number;
+  currency: string;
+  deliveryDays: number;
+  warehouse: string;
+}
+
+export interface Order {
+  id: string;
+  number: string;
+  status: OrderStatus;
+  clientId: string;
+  markupPercent: number;
+  comment: string;
+  createdAt: string;
+  updatedAt: string;
+  lines: OrderLine[];
+}
+
 export interface AppSettings {
   telegramToken: string;
   telegramUsername: string;
   telegramPolling: boolean;
   telegramOffset: number;
   telegramSecret: string;
+  markupPercent: number;
+  moscowHubNote: string;
 }
 
 export interface PublicSettings {
@@ -86,6 +132,8 @@ export interface PublicSettings {
   telegramUsername: string;
   telegramPolling: boolean;
   telegramTokenMasked: string;
+  markupPercent: number;
+  moscowHubNote: string;
 }
 
 export interface StoreSnapshot {
@@ -93,6 +141,8 @@ export interface StoreSnapshot {
   suppliers: Supplier[];
   offers: Offer[];
   logs: SyncLog[];
+  clients: Client[];
+  orders: Order[];
 }
 
 export interface ParsedTable {
@@ -112,6 +162,7 @@ export const DEFAULT_COLUMN_MAP: ColumnMap = {
   stock: "stock",
   warehouse: "warehouse",
   multiplicity: "multiplicity",
+  deliveryDays: "deliveryDays",
 };
 
 export const CATEGORIES = [

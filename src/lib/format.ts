@@ -47,3 +47,11 @@ export function daysSince(iso?: string) {
   if (!iso) return Infinity;
   return (Date.now() - new Date(iso).getTime()) / 86_400_000;
 }
+
+export function formatDays(days?: number) {
+  const value = Math.round(days || 0);
+  if (value <= 0) return "—";
+  if (value === 1) return "1 день";
+  if (value < 5) return `${value} дня`;
+  return `${value} дней`;
+}

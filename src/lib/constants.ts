@@ -1,4 +1,4 @@
-export const STORE_VERSION = 1;
+export const STORE_VERSION = 2;
 
 export const DEMO_KEYS = {
   rossko: "rk_live_demo_rossko_91f2",
@@ -17,6 +17,7 @@ export const FIELD_LABELS: Record<string, string> = {
   stock: "Остаток",
   warehouse: "Склад",
   multiplicity: "Кратность",
+  deliveryDays: "Срок до Москвы, дн.",
 };
 
 export const AUTH_MODE_LABELS = {

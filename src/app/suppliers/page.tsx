@@ -18,7 +18,7 @@ import {
 import { SupplierFormDialog } from "@/components/supplier-form";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { AUTH_MODE_LABELS } from "@/lib/constants";
-import { formatDateTime, maskKey } from "@/lib/format";
+import { formatDateTime, formatDays, maskKey } from "@/lib/format";
 import { buildSyncLog, syncSupplier } from "@/lib/sync";
 import type { Supplier } from "@/lib/types";
 
@@ -77,6 +77,7 @@ export default function SuppliersPage() {
               <TableHead className="hidden md:table-cell">Источник</TableHead>
               <TableHead className="hidden lg:table-cell">Ключ</TableHead>
               <TableHead>Синхронизация</TableHead>
+              <TableHead className="hidden md:table-cell">До Москвы</TableHead>
               <TableHead className="text-right">Действия</TableHead>
             </TableRow>
           </TableHeader>
@@ -106,6 +107,12 @@ export default function SuppliersPage() {
                     {supplier.lastSyncStatus === "error"
                       ? supplier.lastSyncError
                       : `${supplier.lastSyncCount ?? 0} позиций`}
+                  </p>
+                </TableCell>
+                <TableCell className="hidden md:table-cell">
+                  <p className="text-sm">{formatDays(supplier.deliveryDaysMoscow)}</p>
+                  <p className="max-w-48 truncate text-xs text-muted-foreground">
+                    {supplier.deliveryNote || "—"}
                   </p>
                 </TableCell>
                 <TableCell className="text-right">

@@ -1,5 +1,6 @@
 import type { ColumnMap, FieldKey, Offer, Supplier } from "@/lib/types";
 import { DEFAULT_COLUMN_MAP } from "@/lib/types";
+import { mergeCrosses } from "@/lib/cross-catalog";
 import { normalizeSku, offerKey } from "@/lib/format";
 import { stringifyCell } from "@/lib/json-path";
 
@@ -14,6 +15,7 @@ const ALIASES: Record<FieldKey, string[]> = {
   stock: ["stock", "остаток", "наличие", "qty", "quantity", "count", "кол-во"],
   warehouse: ["warehouse", "склад", "stockname", "филиал"],
   multiplicity: ["multiplicity", "кратность", "min_order", "кратно"],
+  deliveryDays: ["deliverydays", "срок", "срокдоставки", "days", "delivery", "leadtime", "доставка"],
 };
 
 function normalizeHeader(value: string) {
@@ -68,19 +70,33 @@ export function rowToOffer(
     Math.round(parseNumber(readField(row, columnMap.multiplicity)) || 1),
   );
 
+  const deliveryFromRow = parseNumber(readField(row, columnMap.deliveryDays));
+  const crossRaw = ["cross", "кросс", "analogs", "analogues", "crosses"]
+    .map((key) => readField(row, key))
+    .filter(Boolean)
+    .join(";");
+  const crosses = crossRaw
+    .split(/[;,]/)
+    .map((item) => normalizeSku(item))
+    .filter(Boolean);
+  const oem = normalizeSku(readField(row, columnMap.oem));
+
   return {
     id: offerKey(supplier.id, sku),
     supplierId: supplier.id,
     sku,
     brand: readField(row, columnMap.brand) || "—",
     name,
-    oem: normalizeSku(readField(row, columnMap.oem)),
+    displayName: "",
+    oem,
+    crossOems: mergeCrosses(oem, crosses),
     category: readField(row, columnMap.category) || "Расходники",
     price,
     currency: readField(row, columnMap.currency) || "RUB",
     stock,
     warehouse: readField(row, columnMap.warehouse),
     multiplicity,
+    deliveryDays: deliveryFromRow > 0 ? Math.round(deliveryFromRow) : supplier.deliveryDaysMoscow || 2,
     updatedAt: now,
     source: supplier.source,
   };

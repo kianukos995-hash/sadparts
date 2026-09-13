@@ -6,7 +6,8 @@
     "dev": "next dev --hostname 0.0.0.0 --port 43217",
     "build": "next build",
     "start": "next start --hostname 0.0.0.0 --port 43217",
-    "lint": "eslint"
+    "lint": "eslint",
+    "desktop": "node scripts/desktop.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

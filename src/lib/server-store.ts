@@ -1,18 +1,42 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { createInitialStore } from "@/lib/seed";
-import type { AppSettings, ImportMode, Offer, StoreSnapshot, Supplier, SyncLog } from "@/lib/types";
+import { STORE_VERSION } from "@/lib/constants";
+import { mergeCrosses } from "@/lib/cross-catalog";
+import { createInitialStore, DEFAULT_CLIENTS } from "@/lib/seed";
+import type {
+  AppSettings,
+  Client,
+  ImportMode,
+  Offer,
+  Order,
+  StoreSnapshot,
+  Supplier,
+  SyncLog,
+} from "@/lib/types";
+import { DEFAULT_COLUMN_MAP } from "@/lib/types";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const STORE_FILE = path.join(DATA_DIR, "store.json");
 const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
 
-const EMPTY_SETTINGS: AppSettings = {
+export const EMPTY_SETTINGS: AppSettings = {
   telegramToken: "",
   telegramUsername: "",
   telegramPolling: true,
   telegramOffset: 0,
   telegramSecret: "",
+  markupPercent: 18,
+  moscowHubNote: "Срок до Москвы считается от склада поставщика + 1 день на хаб.",
+};
+
+const DEFAULT_DELIVERY: Record<string, { days: number; note: string }> = {
+  "sup-rossko": {
+    days: 1,
+    note: "Склад Подольск. До Москвы обычно на следующий рабочий день.",
+  },
+  "sup-autopiter": { days: 2, note: "Склад СПб. До Москвы 1–2 дня, экспресс — ночь." },
+  "sup-exist": { days: 3, note: "Региональный склад. До Москвы 2–4 дня." },
+  "sup-file": { days: 5, note: "Самовывоз / ТК. До Москвы обычно 4–6 дней после отгрузки." },
 };
 
 let storeQueue: Promise<unknown> = Promise.resolve();
@@ -36,22 +60,55 @@ function isStore(value: unknown): value is StoreSnapshot {
   );
 }
 
+function migrateStore(store: StoreSnapshot): StoreSnapshot {
+  const suppliers = store.suppliers.map((supplier) => {
+    const fallback = DEFAULT_DELIVERY[supplier.id];
+    return {
+      ...supplier,
+      deliveryDaysMoscow: supplier.deliveryDaysMoscow ?? fallback?.days ?? 2,
+      deliveryNote: supplier.deliveryNote ?? fallback?.note ?? "",
+      columnMap: { ...DEFAULT_COLUMN_MAP, ...supplier.columnMap },
+    };
+  });
+  const supplierDays = new Map(suppliers.map((item) => [item.id, item.deliveryDaysMoscow]));
+  const offers = store.offers.map((offer) => ({
+    ...offer,
+    displayName: offer.displayName ?? "",
+    crossOems: mergeCrosses(offer.oem, offer.crossOems ?? []),
+    deliveryDays: offer.deliveryDays || supplierDays.get(offer.supplierId) || 2,
+  }));
+  return {
+    ...store,
+    version: STORE_VERSION,
+    suppliers,
+    offers,
+    clients: Array.isArray(store.clients) ? store.clients : DEFAULT_CLIENTS,
+    orders: Array.isArray(store.orders) ? store.orders : [],
+  };
+}
+
+async function persistStore(store: StoreSnapshot) {
+  await mkdir(DATA_DIR, { recursive: true });
+  await writeFile(STORE_FILE, JSON.stringify(store, null, 2), "utf8");
+}
+
 async function readStoreFile(): Promise<StoreSnapshot> {
   try {
     const raw = await readFile(STORE_FILE, "utf8");
     const parsed: unknown = JSON.parse(raw);
-    if (isStore(parsed)) return parsed;
+    if (isStore(parsed)) {
+      const migrated = migrateStore(parsed);
+      if (parsed.version !== migrated.version || !Array.isArray(parsed.clients)) {
+        await persistStore(migrated);
+      }
+      return migrated;
+    }
   } catch {
     // first run
   }
   const initial = createInitialStore();
   await persistStore(initial);
   return initial;
-}
-
-async function persistStore(store: StoreSnapshot) {
-  await mkdir(DATA_DIR, { recursive: true });
-  await writeFile(STORE_FILE, JSON.stringify(store, null, 2), "utf8");
 }
 
 export function readStore() {
@@ -143,6 +200,86 @@ export function replaceOffers(
       ),
       offers,
       logs: [{ ...log, mode }, ...store.logs].slice(0, 80),
+    };
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function patchOffer(offerId: string, patch: Partial<Pick<Offer, "displayName" | "crossOems" | "name">>) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const next: StoreSnapshot = {
+      ...store,
+      offers: store.offers.map((offer) => {
+        if (offer.id !== offerId) return offer;
+        const oem = offer.oem;
+        const crosses = patch.crossOems ? mergeCrosses(oem, patch.crossOems) : offer.crossOems;
+        return {
+          ...offer,
+          name: patch.name?.trim() ? patch.name.trim() : offer.name,
+          displayName:
+            patch.displayName === undefined ? offer.displayName : patch.displayName.trim(),
+          crossOems: crosses,
+        };
+      }),
+    };
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function upsertClient(client: Client) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const exists = store.clients.some((item) => item.id === client.id);
+    const next: StoreSnapshot = {
+      ...store,
+      clients: exists
+        ? store.clients.map((item) => (item.id === client.id ? client : item))
+        : [client, ...store.clients],
+    };
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function removeClient(id: string) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const next: StoreSnapshot = {
+      ...store,
+      clients: store.clients.filter((item) => item.id !== id),
+      orders: store.orders.map((order) =>
+        order.clientId === id ? { ...order, clientId: "" } : order,
+      ),
+    };
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function upsertOrder(order: Order) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const exists = store.orders.some((item) => item.id === order.id);
+    const next: StoreSnapshot = {
+      ...store,
+      orders: exists
+        ? store.orders.map((item) => (item.id === order.id ? order : item))
+        : [order, ...store.orders],
+    };
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function removeOrder(id: string) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const next: StoreSnapshot = {
+      ...store,
+      orders: store.orders.filter((item) => item.id !== id),
     };
     await persistStore(next);
     return next;
