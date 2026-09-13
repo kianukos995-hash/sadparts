@@ -29,7 +29,7 @@ import { CATEGORIES, FIELD_KEYS } from "@/lib/types";
 import { AUTH_MODE_LABELS } from "@/lib/constants";
 
 export function ImportWizard() {
-  const { suppliers, replaceOffers } = useAvtoPrice();
+  const { suppliers, replaceOffers, refresh } = useAvtoPrice();
   const [supplierId, setSupplierId] = useState(
     suppliers.find((item) => item.source === "file")?.id ?? suppliers[0]?.id ?? "",
   );
@@ -69,7 +69,7 @@ export function ImportWizard() {
               <TabsTrigger value="manual">Вручную</TabsTrigger>
             </TabsList>
             <TabsContent value="file" className="mt-4">
-              <FilePane supplier={supplier} mode={mode} onImport={replaceOffers} />
+              <FilePane supplier={supplier} mode={mode} onImport={replaceOffers} onRefresh={refresh} />
             </TabsContent>
             <TabsContent value="url" className="mt-4">
               <UrlPane supplier={supplier} mode={mode} onImport={replaceOffers} />
@@ -101,8 +101,8 @@ export function ImportWizard() {
             Пример CSV
           </a>
           <p className="text-xs text-muted-foreground">
-            Также принимаются XLSX, JSON, XML и YML. Telegram-бот читает тот же каталог, что и эта
-            страница.
+            Также ZIP/CSV Росско (номенклатура, артикул, цена, наличие, срок, OEM). Полный прайс
+            остаётся на сервере. Telegram ищет и в нём, и через GetSearch.
           </p>
         </CardContent>
       </Card>
@@ -251,10 +251,12 @@ function FilePane({
   supplier,
   mode,
   onImport,
+  onRefresh,
 }: {
   supplier?: Supplier;
   mode: ImportMode;
   onImport: ImportFn;
+  onRefresh: () => Promise<void>;
 }) {
   const [fileName, setFileName] = useState("");
   const [table, setTable] = useState<ParsedTable | null>(null);
@@ -271,6 +273,23 @@ function FilePane({
       if (list.length === 1) {
         const file = list[0];
         setFileName(file.name);
+        const rosskoBulk =
+          Boolean(supplier) &&
+          (file.name.toLowerCase().endsWith(".zip") ||
+            file.size > 400_000 ||
+            supplier?.adapter === "rossko");
+        if (rosskoBulk && supplier) {
+          const form = new FormData();
+          form.set("file", file);
+          form.set("supplierId", supplier.id);
+          form.set("mode", mode);
+          const response = await fetch("/api/catalog/import", { method: "POST", body: form });
+          const data = (await response.json()) as { imported?: number; error?: string };
+          if (!response.ok) throw new Error(data.error || "Не удалось загрузить прайс");
+          await onRefresh();
+          toast.success(`Прайс на сервере: ${data.imported} позиций. Ищите по артикулу в каталоге.`);
+          return;
+        }
         const form = new FormData();
         form.set("file", file);
         const response = await fetch("/api/parse-price-list", { method: "POST", body: form });
@@ -320,11 +339,11 @@ function FilePane({
       >
         <Upload className="size-6 text-muted-foreground" />
         <span className="text-sm font-medium">Перетащите файлы или нажмите, чтобы выбрать</span>
-        <span className="text-xs text-muted-foreground">CSV, XLSX, JSON, XML/YML · можно несколько</span>
+        <span className="text-xs text-muted-foreground">CSV, ZIP, XLSX, JSON, XML/YML · можно несколько</span>
         <input
           type="file"
           multiple
-          accept=".csv,.xlsx,.xls,.json,.xml,.yml,text/csv,application/json,application/xml"
+          accept=".csv,.zip,.xlsx,.xls,.json,.xml,.yml,text/csv,application/json,application/xml,application/zip"
           className="sr-only"
           onChange={(event) => void onFiles(event.target.files ?? undefined)}
         />

@@ -34,6 +34,10 @@ export default function SupplierDetailPage() {
     if (!supplier) return;
     setBusy("sync");
     try {
+      if (supplier.adapter === "rossko") {
+        await testConnection();
+        return;
+      }
       const result = await syncSupplier(supplier);
       await replaceOffers(supplier.id, result.offers, buildSyncLog(supplier, result, "api"));
       toast.success(`Импортировано ${result.offers.length} позиций`);
@@ -50,6 +54,17 @@ export default function SupplierDetailPage() {
     if (!supplier) return;
     setBusy("test");
     try {
+      if (supplier.adapter === "rossko") {
+        const response = await fetch("/api/rossko", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "test", supplierId: supplier.id }),
+        });
+        const data = (await response.json()) as { error?: string };
+        if (!response.ok) throw new Error(data.error || "Ключи не приняты");
+        toast.success("GetCheckoutDetails: KEY1 и KEY2 приняты");
+        return;
+      }
       const payload = await fetchSupplierPayload(supplier);
       const result = payloadToOffers(payload, supplier);
       toast.success(`Ответ получен: ${result.offers.length} позиций, без записи в каталог`);
@@ -102,7 +117,7 @@ export default function SupplierDetailPage() {
               </Button>
               <Button disabled={busy !== null} onClick={() => void runSync()}>
                 <RefreshCw className={busy === "sync" ? "animate-spin" : ""} />
-                Забрать прайс
+                {supplier.adapter === "rossko" ? "Проверить KEY1/KEY2" : "Забрать прайс"}
               </Button>
             </>
           ) : (
@@ -126,7 +141,7 @@ export default function SupplierDetailPage() {
           <CardContent className="text-xs text-muted-foreground">
             {supplier.lastSyncStatus === "error"
               ? supplier.lastSyncError
-              : `${supplier.lastSyncCount ?? supplierOffers.length} позиций`}
+              : `${supplier.catalogCount ?? supplier.lastSyncCount ?? supplierOffers.length} позиций`}
           </CardContent>
         </Card>
         <Card size="sm">

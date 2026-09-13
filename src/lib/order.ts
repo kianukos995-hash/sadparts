@@ -17,6 +17,8 @@ export function offerToLine(offer: Offer, qty = 1): OrderLine {
     currency: offer.currency || "RUB",
     deliveryDays: offer.deliveryDays || 0,
     warehouse: offer.warehouse,
+    guid: offer.guid,
+    stockId: offer.stockId,
   };
 }
 

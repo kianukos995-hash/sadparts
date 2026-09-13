@@ -21,8 +21,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KeyField } from "@/components/key-field";
-import { AUTH_MODE_LABELS, FIELD_LABELS } from "@/lib/constants";
-import type { AuthMode, Supplier, SupplierSource } from "@/lib/types";
+import { AUTH_MODE_LABELS, ADAPTER_LABELS, FIELD_LABELS, ROSSKO_API_BASE } from "@/lib/constants";
+import type { AdapterKind, AuthMode, Supplier, SupplierSource } from "@/lib/types";
 import { DEFAULT_COLUMN_MAP, FIELD_KEYS } from "@/lib/types";
 
 function emptySupplier(): Supplier {
@@ -34,6 +34,7 @@ function emptySupplier(): Supplier {
     adapter: "generic",
     apiUrl: "",
     apiKey: "",
+    apiKey2: "",
     authMode: "header",
     authHeaderName: "X-Api-Key",
     authQueryParam: "apikey",
@@ -94,15 +95,17 @@ function SupplierFormFields({
     setDraft((prev) => ({ ...prev, [key]: value }));
   }
 
+  const rossko = draft.adapter === "rossko";
   const canSave =
-    draft.name.trim().length > 1 && (draft.source === "file" || Boolean(draft.apiUrl.trim()));
+    draft.name.trim().length > 1 &&
+    (draft.source === "file" || rossko || Boolean(draft.apiUrl.trim()));
 
   return (
     <>
       <DialogHeader>
         <DialogTitle>{initial ? "Поставщик" : "Новый поставщик"}</DialogTitle>
         <DialogDescription>
-          Ключ API уходит только на указанный URL поставщика при синхронизации прайса.
+          Ключ API уходит только на указанный URL поставщика. Для Росско нужны KEY1 и KEY2 из кабинета.
         </DialogDescription>
       </DialogHeader>
 
@@ -149,6 +152,31 @@ function SupplierFormFields({
               </Select>
             </Field>
           </div>
+          <Field label="Коннектор">
+            <Select
+              value={draft.adapter === "demo" ? "generic" : draft.adapter}
+              onValueChange={(value) => {
+                if (!value) return;
+                const adapter = value as AdapterKind;
+                setDraft((prev) => ({
+                  ...prev,
+                  adapter,
+                  apiUrl: adapter === "rossko" ? ROSSKO_API_BASE : prev.apiUrl,
+                  source: "api",
+                }));
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <span className="flex flex-1 truncate text-left">
+                  {ADAPTER_LABELS[draft.adapter === "demo" ? "generic" : draft.adapter]}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="generic">{ADAPTER_LABELS.generic}</SelectItem>
+                <SelectItem value="rossko">{ADAPTER_LABELS.rossko}</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
           <Field label="Комментарий">
             <Textarea
               value={draft.notes}
@@ -160,14 +188,52 @@ function SupplierFormFields({
         </TabsContent>
 
         <TabsContent value="api" className="mt-4 grid gap-3">
-          <Field label="URL прайс-листа">
+          <Field label={rossko ? "Базовый URL SOAP v2.1" : "URL прайс-листа"}>
             <Input
               value={draft.apiUrl}
               onChange={(event) => update("apiUrl", event.target.value)}
-              placeholder="https://api.supplier.ru/v1/prices"
+              placeholder={rossko ? ROSSKO_API_BASE : "https://api.supplier.ru/v1/prices"}
               disabled={draft.source === "file"}
             />
           </Field>
+          {rossko ? (
+            <>
+              <Field label="KEY1">
+                <KeyField
+                  value={draft.apiKey}
+                  onChange={(value) => update("apiKey", value)}
+                  placeholder="Первый секретный ключ"
+                />
+              </Field>
+              <Field label="KEY2">
+                <KeyField
+                  value={draft.apiKey2}
+                  onChange={(value) => update("apiKey2", value)}
+                  placeholder="Второй секретный ключ"
+                />
+              </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="delivery_id (из GetCheckoutDetails)">
+                  <Input
+                    value={draft.rosskoDeliveryId ?? ""}
+                    onChange={(event) => update("rosskoDeliveryId", event.target.value)}
+                    placeholder="подставится при проверке ключей"
+                  />
+                </Field>
+                <Field label="address_id">
+                  <Input
+                    value={draft.rosskoAddressId ?? ""}
+                    onChange={(event) => update("rosskoAddressId", event.target.value)}
+                  />
+                </Field>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                GetSearch ищет по артикулу, названию или GUID. Полный прайс (ZIP/CSV Росско) грузите
+                в «Добавить прайс» — это ~190 тыс. строк, они не едут в браузер целиком.
+              </p>
+            </>
+          ) : (
+            <>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Авторизация">
               <Select
@@ -219,6 +285,8 @@ function SupplierFormFields({
           <Field label="API-ключ">
             <KeyField value={draft.apiKey} onChange={(value) => update("apiKey", value)} />
           </Field>
+            </>
+          )}
         </TabsContent>
 
         <TabsContent value="delivery" className="mt-4 grid gap-3">
@@ -279,6 +347,7 @@ function SupplierFormFields({
               ...draft,
               name: draft.name.trim(),
               code: draft.code.trim() || draft.name.trim().slice(0, 8).toUpperCase(),
+              apiUrl: draft.adapter === "rossko" ? draft.apiUrl.trim() || ROSSKO_API_BASE : draft.apiUrl,
             });
           }}
         >

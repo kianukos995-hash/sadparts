@@ -1,4 +1,4 @@
-import { DEMO_KEYS, STORE_VERSION } from "@/lib/constants";
+import { DEMO_KEYS, ROSSKO_API_BASE, STORE_VERSION } from "@/lib/constants";
 import { mergeCrosses } from "@/lib/cross-catalog";
 import { offerKey } from "@/lib/format";
 import { CORE_PARTS, partPrice, partStock } from "@/lib/mock-parts";
@@ -75,16 +75,18 @@ export function createDemoSuppliers(): Supplier[] {
       name: "Росско",
       code: "ROSSKO",
       source: "api",
-      adapter: "demo",
+      adapter: "rossko",
       demoSlug: "rossko",
-      apiUrl: "/api/mock-suppliers/rossko",
+      apiUrl: ROSSKO_API_BASE,
       apiKey: DEMO_KEYS.rossko,
+      apiKey2: DEMO_KEYS.rossko2,
       authMode: "header",
       authHeaderName: "X-Api-Key",
       authQueryParam: "apikey",
       itemsPath: "items",
       columnMap: { ...DEFAULT_COLUMN_MAP },
-      notes: "Демо-коннектор. Формат JSON: items[]. Ключ передаётся заголовком X-Api-Key.",
+      notes:
+        "SOAP v2.1: GetSearch, GetCheckoutDetails, GetCheckout, GetOrders. KEY1 и KEY2 из кабинета. v1 msk.rossko.ru закрыт. Прайс ZIP/CSV кладётся в файловый каталог.",
       active: true,
       createdAt,
       deliveryDaysMoscow: 1,
@@ -102,6 +104,7 @@ export function createDemoSuppliers(): Supplier[] {
       demoSlug: "autopiter",
       apiUrl: "/api/mock-suppliers/autopiter",
       apiKey: DEMO_KEYS.autopiter,
+      apiKey2: "",
       authMode: "bearer",
       authHeaderName: "Authorization",
       authQueryParam: "token",
@@ -125,6 +128,7 @@ export function createDemoSuppliers(): Supplier[] {
       demoSlug: "exist",
       apiUrl: "/api/mock-suppliers/exist",
       apiKey: DEMO_KEYS.exist,
+      apiKey2: "",
       authMode: "query",
       authHeaderName: "X-Api-Key",
       authQueryParam: "key",
@@ -147,6 +151,7 @@ export function createDemoSuppliers(): Supplier[] {
       adapter: "generic",
       apiUrl: "",
       apiKey: "",
+      apiKey2: "",
       authMode: "header",
       authHeaderName: "X-Api-Key",
       authQueryParam: "apikey",

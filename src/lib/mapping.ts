@@ -5,17 +5,17 @@ import { normalizeSku, offerKey } from "@/lib/format";
 import { stringifyCell } from "@/lib/json-path";
 
 const ALIASES: Record<FieldKey, string[]> = {
-  sku: ["sku", "артикул", "art", "article", "номер", "код", "cat_number", "каталожный"],
+  sku: ["артикул", "partnumber", "sku", "article", "каталожныйномер"],
   brand: ["brand", "бренд", "производитель", "make", "producer", "manufacturer"],
-  name: ["name", "наименование", "название", "title", "описание", "desc"],
-  oem: ["oem", "оригинал", "ориг", "oe", "номер_производителя", "analog"],
+  name: ["описание", "name", "наименование", "название", "title", "desc"],
+  oem: ["оемномер", "oemномер", "oem", "оригинал", "ориг", "oe"],
   category: ["category", "категория", "группа", "group", "раздел"],
-  price: ["price", "цена", "cost", "руб", "стоимость"],
+  price: ["ценаруб", "price", "цена", "cost", "стоимость"],
   currency: ["currency", "валюта"],
-  stock: ["stock", "остаток", "наличие", "qty", "quantity", "count", "кол-во"],
+  stock: ["наличие", "stock", "остаток", "qty", "quantity", "count"],
   warehouse: ["warehouse", "склад", "stockname", "филиал"],
-  multiplicity: ["multiplicity", "кратность", "min_order", "кратно"],
-  deliveryDays: ["deliverydays", "срок", "срокдоставки", "days", "delivery", "leadtime", "доставка"],
+  multiplicity: ["кратностьотгрузки", "multiplicity", "кратность", "min_order", "кратно"],
+  deliveryDays: ["срокпоставкидн", "deliverydays", "срок", "срокдоставки", "days", "delivery", "leadtime"],
 };
 
 function normalizeHeader(value: string) {
@@ -23,6 +23,7 @@ function normalizeHeader(value: string) {
 }
 
 export function guessColumnMap(headers: string[]): ColumnMap {
+  if (isRosskoPriceHeaders(headers)) return rosskoFileColumnMap(headers);
   const map = { ...DEFAULT_COLUMN_MAP };
   const normalized = headers.map((header) => ({
     raw: header,
@@ -30,13 +31,52 @@ export function guessColumnMap(headers: string[]): ColumnMap {
   }));
 
   (Object.keys(ALIASES) as FieldKey[]).forEach((field) => {
-    const hit = normalized.find((header) =>
-      ALIASES[field].some((alias) => header.key.includes(normalizeHeader(alias))),
-    );
-    if (hit) map[field] = hit.raw;
+    let best: { raw: string; score: number } | undefined;
+    for (const header of normalized) {
+      for (const alias of ALIASES[field]) {
+        const key = normalizeHeader(alias);
+        let score = 0;
+        if (header.key === key) score = 3;
+        else if (header.key.startsWith(key) || key.startsWith(header.key)) score = 2;
+        else if (key.length >= 5 && header.key.includes(key)) score = 1;
+        if (score && (!best || score > best.score)) best = { raw: header.raw, score };
+      }
+    }
+    if (best) map[field] = best.raw;
   });
 
   return map;
+}
+
+export function isRosskoPriceHeaders(headers: string[]) {
+  const keys = headers.map(normalizeHeader);
+  return keys.some((key) => key.includes("номенклатура")) && keys.some((key) => key === "артикул");
+}
+
+export function rosskoFileColumnMap(headers: string[]): ColumnMap {
+  const byKey = new Map(headers.map((header) => [normalizeHeader(header), header]));
+  const pick = (...needles: string[]) => {
+    for (const needle of needles) {
+      const hit = byKey.get(normalizeHeader(needle));
+      if (hit) return hit;
+      const includes = headers.find((header) => normalizeHeader(header).includes(normalizeHeader(needle)));
+      if (includes) return includes;
+    }
+    return "";
+  };
+  return {
+    sku: pick("Артикул"),
+    brand: pick("Бренд"),
+    name: pick("Описание"),
+    oem: pick("OEМ Номер", "OEM Номер", "OEM"),
+    category: pick("Применимость"),
+    price: pick("Цена, руб."),
+    currency: "",
+    stock: pick("Наличие"),
+    warehouse: "",
+    multiplicity: pick("Кратность отгрузки"),
+    deliveryDays: pick("Срок поставки, дн."),
+  };
 }
 
 function readField(row: Record<string, unknown>, column: string) {
@@ -54,6 +94,19 @@ function parseNumber(value: string) {
   return Number.isFinite(num) ? num : 0;
 }
 
+function parseOptionalNumber(value: string) {
+  const cleaned = value.replace(/\s/g, "").replace(",", ".");
+  if (!cleaned) return undefined;
+  const num = Number.parseFloat(cleaned);
+  return Number.isFinite(num) ? num : undefined;
+}
+
+function parseStock(value: string) {
+  const range = value.replace(/\s/g, "").match(/^(\d+)(?:-\d+)?$/);
+  if (range) return Number.parseInt(range[1], 10);
+  return Math.max(0, Math.round(parseNumber(value)));
+}
+
 export function rowToOffer(
   row: Record<string, unknown>,
   supplier: Supplier,
@@ -64,13 +117,13 @@ export function rowToOffer(
   if (!sku) return null;
   const name = readField(row, columnMap.name) || sku;
   const price = parseNumber(readField(row, columnMap.price));
-  const stock = Math.max(0, Math.round(parseNumber(readField(row, columnMap.stock))));
+  const stock = parseStock(readField(row, columnMap.stock));
   const multiplicity = Math.max(
     1,
     Math.round(parseNumber(readField(row, columnMap.multiplicity)) || 1),
   );
 
-  const deliveryFromRow = parseNumber(readField(row, columnMap.deliveryDays));
+  const deliveryFromRow = parseOptionalNumber(readField(row, columnMap.deliveryDays));
   const crossRaw = ["cross", "кросс", "analogs", "analogues", "crosses"]
     .map((key) => readField(row, key))
     .filter(Boolean)
@@ -80,9 +133,12 @@ export function rowToOffer(
     .map((item) => normalizeSku(item))
     .filter(Boolean);
   const oem = normalizeSku(readField(row, columnMap.oem));
+  const guid = normalizeSku(
+    readField(row, "Номенклатура") || readField(row, "guid") || readField(row, "GUID"),
+  );
 
   return {
-    id: offerKey(supplier.id, sku),
+    id: offerKey(supplier.id, guid || sku),
     supplierId: supplier.id,
     sku,
     brand: readField(row, columnMap.brand) || "—",
@@ -96,7 +152,9 @@ export function rowToOffer(
     stock,
     warehouse: readField(row, columnMap.warehouse),
     multiplicity,
-    deliveryDays: deliveryFromRow > 0 ? Math.round(deliveryFromRow) : supplier.deliveryDaysMoscow || 2,
+    deliveryDays:
+      deliveryFromRow === undefined ? supplier.deliveryDaysMoscow || 2 : Math.max(0, Math.round(deliveryFromRow)),
+    guid,
     updatedAt: now,
     source: supplier.source,
   };

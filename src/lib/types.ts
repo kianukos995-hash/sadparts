@@ -1,7 +1,7 @@
 export type SupplierSource = "api" | "file" | "url" | "paste" | "manual";
 export type ImportMode = "replace" | "merge";
 export type AuthMode = "bearer" | "header" | "query";
-export type AdapterKind = "generic" | "demo";
+export type AdapterKind = "generic" | "demo" | "rossko";
 export type SyncStatus = "ok" | "error";
 export type OrderStatus = "draft" | "assembled" | "sent";
 
@@ -32,6 +32,7 @@ export interface Supplier {
   demoSlug?: string;
   apiUrl: string;
   apiKey: string;
+  apiKey2: string;
   authMode: AuthMode;
   authHeaderName: string;
   authQueryParam: string;
@@ -46,6 +47,9 @@ export interface Supplier {
   lastSyncStatus?: SyncStatus;
   lastSyncError?: string;
   lastSyncCount?: number;
+  catalogCount?: number;
+  rosskoDeliveryId?: string;
+  rosskoAddressId?: string;
 }
 
 export interface Offer {
@@ -64,6 +68,8 @@ export interface Offer {
   warehouse: string;
   multiplicity: number;
   deliveryDays: number;
+  guid?: string;
+  stockId?: string;
   updatedAt: string;
   source: SupplierSource;
 }
@@ -103,6 +109,8 @@ export interface OrderLine {
   currency: string;
   deliveryDays: number;
   warehouse: string;
+  guid?: string;
+  stockId?: string;
 }
 
 export interface Order {
@@ -115,6 +123,9 @@ export interface Order {
   createdAt: string;
   updatedAt: string;
   lines: OrderLine[];
+  externalIds?: string[];
+  externalStatus?: string;
+  externalMessage?: string;
 }
 
 export interface AppSettings {

@@ -1,10 +1,11 @@
 import ExcelJS from "exceljs";
 import { feedToTable, matrixToTable, parseCsvText, xmlToTable } from "@/lib/parse-feed";
 import { stringifyCell } from "@/lib/json-path";
+import { extractFirstZipFile } from "@/lib/zip";
 
 export const runtime = "nodejs";
 
-const MAX_BYTES = 8 * 1024 * 1024;
+const MAX_BYTES = 20 * 1024 * 1024;
 
 async function parseExcel(buffer: Buffer) {
   const workbook = new ExcelJS.Workbook();
@@ -55,7 +56,9 @@ export async function POST(request: Request) {
           ? xmlToTable(buffer.toString("utf8"))
           : name.endsWith(".json")
             ? feedToTable("json", buffer.toString("utf8"), itemsPath)
-            : parseCsvText(buffer.toString("utf8"));
+            : name.endsWith(".zip")
+              ? parseCsvText(extractFirstZipFile(buffer).body.subarray(0, 32_000).toString("utf8"))
+              : parseCsvText(buffer.toString("utf8"));
 
     if (table.headers.length === 0) {
       return Response.json({ error: "В файле нет строк" }, { status: 422 });
@@ -63,7 +66,7 @@ export async function POST(request: Request) {
     return Response.json(table);
   } catch {
     return Response.json(
-      { error: "Не удалось разобрать файл. Нужен CSV, XLSX, JSON или XML/YML." },
+      { error: "Не удалось разобрать файл. Нужен CSV, ZIP, XLSX, JSON или XML/YML." },
       { status: 422 },
     );
   }

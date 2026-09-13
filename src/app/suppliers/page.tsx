@@ -28,6 +28,26 @@ export default function SuppliersPage() {
   const [syncingId, setSyncingId] = useState<string | null>(null);
 
   async function runSync(supplier: Supplier) {
+    if (supplier.adapter === "rossko") {
+      setSyncingId(supplier.id);
+      try {
+        const response = await fetch("/api/rossko", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "test", supplierId: supplier.id }),
+        });
+        const data = (await response.json()) as { error?: string; details?: { deliveries: { name: string }[] } };
+        if (!response.ok) throw new Error(data.error || "Ключи Росско не приняты");
+        toast.success(
+          `KEY1/KEY2 работают. Доставка: ${(data.details?.deliveries ?? []).map((item) => item.name).join(", ") || "ок"}`,
+        );
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Ошибка Росско");
+      } finally {
+        setSyncingId(null);
+      }
+      return;
+    }
     if (supplier.source !== "api") {
       toast.error("У этого поставщика нет API — загрузите файл");
       return;
@@ -106,7 +126,7 @@ export default function SuppliersPage() {
                   <p className="text-xs text-muted-foreground">
                     {supplier.lastSyncStatus === "error"
                       ? supplier.lastSyncError
-                      : `${supplier.lastSyncCount ?? 0} позиций`}
+                      : `${supplier.catalogCount ?? supplier.lastSyncCount ?? 0} позиций`}
                   </p>
                 </TableCell>
                 <TableCell className="hidden md:table-cell">

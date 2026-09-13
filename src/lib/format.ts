@@ -39,8 +39,9 @@ export function normalizeSku(value: string) {
   return value.replace(/\s+/g, "").toUpperCase();
 }
 
-export function offerKey(supplierId: string, sku: string) {
-  return `${supplierId}:${normalizeSku(sku)}`;
+export function offerKey(supplierId: string, sku: string, extra = "") {
+  const base = `${supplierId}:${normalizeSku(sku)}`;
+  return extra ? `${base}:${extra}` : base;
 }
 
 export function daysSince(iso?: string) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Search, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,9 @@ const PAGE_SIZE = 16;
 export default function CatalogPage() {
   const { ready, suppliers, offers, clients, settings, addToDraft } = useAvtoPrice();
   const [query, setQuery] = useState("");
+  const [liveOffers, setLiveOffers] = useState<Offer[] | null>(null);
+  const [liveNote, setLiveNote] = useState("");
+  const [searching, setSearching] = useState(false);
   const [supplierId, setSupplierId] = useState("all");
   const [category, setCategory] = useState("all");
   const [brand, setBrand] = useState("all");
@@ -39,28 +42,47 @@ export default function CatalogPage() {
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
 
   const brands = useMemo(
-    () => Array.from(new Set(offers.map((offer) => offer.brand))).sort(),
-    [offers],
+    () => Array.from(new Set((liveOffers ?? offers).map((offer) => offer.brand))).sort(),
+    [offers, liveOffers],
   );
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) return;
+    const timer = window.setTimeout(() => {
+      setSearching(true);
+      void fetch(`/api/search?q=${encodeURIComponent(q)}`)
+        .then(async (response) => {
+          const data = (await response.json()) as { offers?: Offer[]; message?: string };
+          setLiveOffers(data.offers ?? []);
+          setLiveNote(data.message ?? "");
+        })
+        .catch(() => setLiveNote("Поиск Росско недоступен"))
+        .finally(() => setSearching(false));
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [query]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const qSku = normalizeSku(query);
     const priceCap = Number.parseFloat(maxPrice.replace(",", ".")) || 0;
     const daysCap = Number.parseInt(maxDays, 10) || 0;
-    return offers.filter((offer) => {
+    const live = query.trim().length >= 2 && liveOffers !== null;
+    const source = query.trim().length < 2 ? offers : (liveOffers ?? offers);
+    return source.filter((offer) => {
       if (supplierId !== "all" && offer.supplierId !== supplierId) return false;
       if (category !== "all" && offer.category !== category) return false;
       if (brand !== "all" && offer.brand !== brand) return false;
       if (inStock && offer.stock <= 0) return false;
       if (priceCap > 0 && offer.price > priceCap) return false;
       if (daysCap > 0 && (offer.deliveryDays || 99) > daysCap) return false;
-      if (!q) return true;
+      if (!q || live) return true;
       const oems = offerOems(offer);
       if (qSku && (normalizeSku(offer.sku) === qSku || oems.includes(qSku))) return true;
       return searchHaystack(offer).includes(q);
     });
-  }, [offers, supplierId, category, brand, inStock, query, maxPrice, maxDays]);
+  }, [offers, liveOffers, supplierId, category, brand, inStock, query, maxPrice, maxDays]);
 
   const groups = useMemo(() => groupByOem(filtered), [filtered]);
   const pages = Math.max(1, Math.ceil(groups.length / PAGE_SIZE));
@@ -86,8 +108,8 @@ export default function CatalogPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Каталог запчастей</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Поиск по артикулу и OEM, группы аналогов, фильтры по цене, сроку до Москвы, бренду и
-          поставщику.
+          Поиск по артикулу и OEM. Для Росско: живой GetSearch (KEY1/KEY2) плюс прайс с диска.
+          {searching ? " Ищу у Росско…" : ""}
         </p>
       </div>
 
@@ -96,7 +118,7 @@ export default function CatalogPage() {
           <Search className="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
           <Input
             className="pl-8"
-            placeholder="Артикул, OEM, кросс или название"
+            placeholder="Артикул, OEM, GUID Росско или название"
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
@@ -205,12 +227,13 @@ export default function CatalogPage() {
 
       <p className="text-xs text-muted-foreground">
         {groups.length} групп OEM · {filtered.length} предложений · наценка {settings.markupPercent}%
+        {liveNote ? ` · ${liveNote}` : ""}
       </p>
 
       {visible.length === 0 ? (
         <div className="rounded-xl border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
-          {offers.length === 0
-            ? "Каталог пуст. Синхронизируйте API или загрузите файл."
+          {offers.length === 0 && !liveOffers
+            ? "Введите артикул — Росско отдаёт цены через GetSearch, полный прайс грузится файлом."
             : "Нет позиций по этому фильтру."}
         </div>
       ) : (
@@ -333,7 +356,7 @@ export default function CatalogPage() {
 
       <OfferDrawer
         offer={selected}
-        offers={offers}
+        offers={liveOffers ?? offers}
         suppliers={suppliers}
         clients={clients}
         markupPercent={settings.markupPercent}

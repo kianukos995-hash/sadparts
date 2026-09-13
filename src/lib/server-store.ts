@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { STORE_VERSION } from "@/lib/constants";
+import { DEMO_KEYS, ROSSKO_API_BASE, STORE_VERSION } from "@/lib/constants";
 import { mergeCrosses } from "@/lib/cross-catalog";
+import { removeCatalog } from "@/lib/file-catalog";
 import { createInitialStore, DEFAULT_CLIENTS } from "@/lib/seed";
 import type {
   AppSettings,
@@ -63,8 +64,12 @@ function isStore(value: unknown): value is StoreSnapshot {
 function migrateStore(store: StoreSnapshot): StoreSnapshot {
   const suppliers = store.suppliers.map((supplier) => {
     const fallback = DEFAULT_DELIVERY[supplier.id];
+    const rossko = supplier.id === "sup-rossko" || supplier.demoSlug === "rossko";
     return {
       ...supplier,
+      apiKey2: supplier.apiKey2 ?? (rossko ? DEMO_KEYS.rossko2 : ""),
+      adapter: rossko ? "rossko" : supplier.adapter,
+      apiUrl: rossko ? ROSSKO_API_BASE : supplier.apiUrl,
       deliveryDaysMoscow: supplier.deliveryDaysMoscow ?? fallback?.days ?? 2,
       deliveryNote: supplier.deliveryNote ?? fallback?.note ?? "",
       columnMap: { ...DEFAULT_COLUMN_MAP, ...supplier.columnMap },
@@ -75,7 +80,9 @@ function migrateStore(store: StoreSnapshot): StoreSnapshot {
     ...offer,
     displayName: offer.displayName ?? "",
     crossOems: mergeCrosses(offer.oem, offer.crossOems ?? []),
-    deliveryDays: offer.deliveryDays || supplierDays.get(offer.supplierId) || 2,
+    deliveryDays: Number.isFinite(offer.deliveryDays)
+      ? offer.deliveryDays
+      : supplierDays.get(offer.supplierId) || 2,
   }));
   return {
     ...store,
@@ -154,6 +161,7 @@ export function removeSupplier(id: string) {
       offers: store.offers.filter((item) => item.supplierId !== id),
       logs: store.logs.filter((item) => item.supplierId !== id),
     };
+    await removeCatalog(id);
     await persistStore(next);
     return next;
   });
@@ -200,6 +208,30 @@ export function replaceOffers(
       ),
       offers,
       logs: [{ ...log, mode }, ...store.logs].slice(0, 80),
+    };
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function touchSupplierSync(supplierId: string, log: SyncLog, count?: number) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const next: StoreSnapshot = {
+      ...store,
+      suppliers: store.suppliers.map((supplier) =>
+        supplier.id === supplierId
+          ? {
+              ...supplier,
+              lastSyncAt: log.at,
+              lastSyncStatus: log.status,
+              lastSyncError: log.error,
+              lastSyncCount: log.status === "ok" ? (count ?? log.imported) : supplier.lastSyncCount,
+              catalogCount: log.status === "ok" ? (count ?? log.imported) : supplier.catalogCount,
+            }
+          : supplier,
+      ),
+      logs: [{ ...log }, ...store.logs].slice(0, 80),
     };
     await persistStore(next);
     return next;

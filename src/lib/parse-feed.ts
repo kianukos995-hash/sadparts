@@ -39,9 +39,13 @@ export function recordsToTable(records: Record<string, unknown>[]): ParsedTable 
 }
 
 export function parseCsvText(text: string): ParsedTable {
-  const parsed = Papa.parse<string[]>(text, {
+  const stripped = text.replace(/^\uFEFF/, "");
+  const first = stripped.split(/\r?\n/, 1)[0] ?? "";
+  const semicolons = (first.match(/;/g) ?? []).length;
+  const commas = (first.match(/,/g) ?? []).length;
+  const parsed = Papa.parse<string[]>(stripped, {
     skipEmptyLines: "greedy",
-    delimiter: "",
+    delimiter: semicolons > commas ? ";" : "",
   });
   const matrix = parsed.data.map((row) => row.map((cell) => String(cell ?? "").trim()));
   return matrixToTable(matrix);

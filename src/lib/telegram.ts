@@ -1,5 +1,6 @@
 import { readSettings, readStore, writeSettings } from "@/lib/server-store";
 import { formatSuppliers, formatTelegramAnswer, searchOffers, TELEGRAM_HELP } from "@/lib/search";
+import { isRosskoSupplier, rosskoSearch } from "@/lib/rossko";
 
 const API = "https://api.telegram.org";
 
@@ -74,7 +75,21 @@ export async function handleTelegramText(text: string, chatId: number, token: st
     return;
   }
   const hits = searchOffers(store, query);
-  await sendTelegramMessage(token, chatId, formatTelegramAnswer(store, hits, query));
+  const names = new Map(store.suppliers.map((item) => [item.id, item.name]));
+  for (const supplier of store.suppliers.filter(isRosskoSupplier)) {
+    try {
+      const extra = await rosskoSearch(supplier, query);
+      extra.offers.forEach((offer) => {
+        if (!hits.some((hit) => hit.offer.id === offer.id)) {
+          hits.push({ offer, score: 90, supplierName: names.get(offer.supplierId) ?? "Росско" });
+        }
+      });
+    } catch {
+      // file catalog already included when demo/live fails
+    }
+  }
+  hits.sort((a, b) => b.score - a.score || a.offer.price - b.offer.price);
+  await sendTelegramMessage(token, chatId, formatTelegramAnswer(store, hits.slice(0, 8), query));
 }
 
 export async function processUpdates(updates: TelegramUpdate[]) {
