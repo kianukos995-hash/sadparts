@@ -1,50 +1,61 @@
+import { isXlsxName, parseExcelPrice } from "@/lib/excel-price";
 import { offerToCatalogRow, readCatalog, writeCatalog } from "@/lib/file-catalog";
 import { copyPreviousCatalog, recordImportHistory } from "@/lib/import-history";
 import { guessColumnMap, rowToOffer } from "@/lib/mapping";
+import { uniqueUrls } from "@/lib/media";
+import { attachOfferMedia, saveZipMedia, type MediaIndex } from "@/lib/media-store";
 import { parseCsvText, xmlToTable } from "@/lib/parse-feed";
 import { guessPriceTitle } from "@/lib/price-bands";
 import { isRosskoSoapXml } from "@/lib/rossko-soap";
-import { decodePriceText, extractBestZipFile } from "@/lib/zip";
+import {
+  decodePriceText,
+  extractBestZipFile,
+  extractZipEntries,
+  isZipBuffer,
+  zipLooksLikeXlsx,
+  type ZipEntry,
+} from "@/lib/zip";
 import type { ImportMode, Offer, Supplier } from "@/lib/types";
 
 const IMPORT_ROWS = 400_000;
-
-function payloadBuffer(buffer: Buffer, filename: string) {
-  const lower = filename.toLowerCase();
-  if (lower.endsWith(".zip")) return extractBestZipFile(buffer);
-  return { name: filename, body: buffer };
-}
-
-function decodeText(buffer: Buffer, filename: string) {
-  const { name, body } = payloadBuffer(buffer, filename);
-  return { name, text: decodePriceText(body) };
-}
 
 function priceTitle(filename: string, innerName: string) {
   return guessPriceTitle(filename) || guessPriceTitle(innerName || filename);
 }
 
-function offersFromRecords(supplier: Supplier, rows: Record<string, string>[], headers: string[]) {
+function offersFromRecords(
+  supplier: Supplier,
+  rows: Record<string, string>[],
+  headers: string[],
+  media?: MediaIndex,
+  extraImages?: Map<number, string[]>,
+) {
   const map = guessColumnMap(headers.length ? headers : Object.keys(rows[0] ?? {}));
   const mappedSupplier = { ...supplier, columnMap: map, source: "file" as const };
   const offers: Offer[] = [];
   let skipped = 0;
   const skipReasons: string[] = [];
-  for (const row of rows) {
+  rows.forEach((row, index) => {
     try {
       const offer = rowToOffer(row, mappedSupplier, map);
-      if (offer) offers.push(offer);
-      else {
+      if (!offer) {
         skipped += 1;
         if (skipReasons.length < 6) skipReasons.push("нет артикула");
+        return;
       }
+      offer.images = attachOfferMedia(
+        uniqueUrls([...(offer.images ?? []), ...(extraImages?.get(index) ?? [])]),
+        offer.sku,
+        media,
+      );
+      offers.push(offer);
     } catch (error) {
       skipped += 1;
       if (skipReasons.length < 6) {
         skipReasons.push(error instanceof Error ? error.message : "строка не разобралась");
       }
     }
-  }
+  });
   return {
     offers,
     skipped,
@@ -66,19 +77,60 @@ async function commitRows(supplier: Supplier, offers: Offer[], mode: ImportMode)
   return catalogRows;
 }
 
-export function previewCatalogFile(buffer: Buffer, filename: string) {
-  const decoded = decodeText(buffer, filename);
-  const text = decoded.text;
-  const title = priceTitle(filename, decoded.name);
+function tableFromText(name: string, text: string, filename: string) {
   if (
     isRosskoSoapXml(text) ||
-    decoded.name.toLowerCase().endsWith(".xml") ||
+    name.toLowerCase().endsWith(".xml") ||
     filename.toLowerCase().endsWith(".xml")
   ) {
+    return xmlToTable(text);
+  }
+  return parseCsvText(text, IMPORT_ROWS);
+}
+
+function zipPreviewNotes(entries: ZipEntry[]) {
+  const images = entries.filter((entry) => /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i.test(entry.name)).length;
+  const fonts = entries.filter((entry) => /\.(ttf|otf|woff2?|eot)$/i.test(entry.name)).length;
+  const notes: string[] = [];
+  if (images) notes.push(`в архиве ${images} фото — подгрузятся к артикулам`);
+  if (fonts) notes.push(`${fonts} шрифт(ов) в файле: текст читается, шрифт Excel/TTF на экран не ставится`);
+  return notes;
+}
+
+export function previewCatalogFile(buffer: Buffer, filename: string) {
+  const title = priceTitle(filename, filename);
+  if (filename.toLowerCase().endsWith(".zip") || isZipBuffer(buffer)) {
+    if (zipLooksLikeXlsx(extractZipEntries(buffer)) || isXlsxName(filename)) {
+      return {
+        title,
+        innerName: filename,
+        headers: [] as string[],
+        rows: [] as Record<string, string>[],
+        total: 0,
+        warnings: ["Excel-книга: откройте превью через загрузку — читаем любой шрифт ячеек и фото"],
+      };
+    }
+    const entries = extractZipEntries(buffer);
+    const best = extractBestZipFile(buffer);
+    const text = decodePriceText(best.body);
+    const table = tableFromText(best.name, text, filename);
+    const notes = zipPreviewNotes(entries);
+    return {
+      title,
+      innerName: best.name,
+      headers: table.headers,
+      rows: table.rows.slice(0, 25),
+      total: table.total,
+      warnings: [...(table.warnings ?? []), ...notes],
+    };
+  }
+
+  const text = decodePriceText(buffer);
+  if (isRosskoSoapXml(text) || filename.toLowerCase().endsWith(".xml")) {
     const table = xmlToTable(text);
     return {
       title,
-      innerName: decoded.name,
+      innerName: filename,
       headers: table.headers,
       rows: table.rows.slice(0, 25),
       total: table.total,
@@ -90,12 +142,31 @@ export function previewCatalogFile(buffer: Buffer, filename: string) {
   const table = parseCsvText(sampleLines, 40);
   return {
     title,
-    innerName: decoded.name,
+    innerName: filename,
     headers: table.headers,
     rows: table.rows.slice(0, 25),
     total: Math.max(table.total, lineCount),
     warnings: table.warnings,
   };
+}
+
+export async function previewCatalogFileAsync(buffer: Buffer, filename: string) {
+  if (isXlsxName(filename) || (isZipBuffer(buffer) && zipLooksLikeXlsx(extractZipEntries(buffer)))) {
+    const excel = await parseExcelPrice(buffer);
+    const photos = [...excel.imagesByDataRow.values()].reduce((sum, list) => sum + list.length, 0);
+    return {
+      title: priceTitle(filename, filename),
+      innerName: filename,
+      headers: excel.table.headers,
+      rows: excel.table.rows.slice(0, 25),
+      total: excel.table.total,
+      warnings: [
+        excel.fontsNoted ? "Текст ячеек читается при любом шрифте Excel" : "",
+        photos ? `на листе ${photos} фото/ссылок` : "",
+      ].filter(Boolean),
+    };
+  }
+  return previewCatalogFile(buffer, filename);
 }
 
 export async function importCatalogFile(
@@ -105,32 +176,52 @@ export async function importCatalogFile(
   mode: ImportMode,
   label?: string,
 ) {
-  const decoded = decodeText(buffer, filename);
-  const text = decoded.text;
-  const title = (label ?? "").trim() || priceTitle(filename, decoded.name);
+  const title = (label ?? "").trim() || priceTitle(filename, filename);
   let offers: Offer[] = [];
   let skipped = 0;
   let headers: string[] = [];
   const warnings: string[] = [];
+  let innerName = filename;
 
-  if (
-    isRosskoSoapXml(text) ||
-    decoded.name.toLowerCase().endsWith(".xml") ||
-    filename.toLowerCase().endsWith(".xml")
-  ) {
-    const table = xmlToTable(text);
+  const zipEntries = isZipBuffer(buffer) ? extractZipEntries(buffer) : [];
+  const asXlsx = isXlsxName(filename) || zipLooksLikeXlsx(zipEntries);
+
+  if (asXlsx) {
+    const excel = await parseExcelPrice(buffer, supplier.id);
+    innerName = filename;
+    const mapped = offersFromRecords(
+      supplier,
+      excel.table.rows,
+      excel.table.headers,
+      undefined,
+      excel.imagesByDataRow,
+    );
+    offers = mapped.offers;
+    skipped = mapped.skipped;
+    headers = mapped.headers;
+    warnings.push("Excel: шрифты ячеек не мешают чтению", ...mapped.skipReasons);
+  } else if (filename.toLowerCase().endsWith(".zip") || (zipEntries.length > 0 && !asXlsx)) {
+    const best = extractBestZipFile(buffer);
+    innerName = best.name;
+    const text = decodePriceText(best.body);
+    const table = tableFromText(best.name, text, filename);
+    const media = await saveZipMedia(supplier.id, zipEntries);
+    const mapped = offersFromRecords(supplier, table.rows, table.headers, media);
+    offers = mapped.offers;
+    skipped = mapped.skipped;
+    headers = mapped.headers;
+    warnings.push(...(table.warnings ?? []), ...mapped.skipReasons);
+    if (media.saved) warnings.push(`подгружено фото из архива: ${media.saved}`);
+    if (media.fonts) warnings.push(`шрифты в ZIP (${media.fonts}) пропущены — текст прайса всё равно читается`);
+  } else {
+    const text = decodePriceText(buffer);
+    const table = tableFromText(filename, text, filename);
+    innerName = filename;
     const mapped = offersFromRecords(supplier, table.rows, table.headers);
     offers = mapped.offers;
     skipped = mapped.skipped;
     headers = mapped.headers;
-    warnings.push(...mapped.skipReasons);
-  } else {
-    const parsed = parseCsvText(text, IMPORT_ROWS);
-    const mapped = offersFromRecords(supplier, parsed.rows, parsed.headers);
-    offers = mapped.offers;
-    skipped = mapped.skipped;
-    headers = mapped.headers;
-    warnings.push(...(parsed.warnings ?? []), ...mapped.skipReasons);
+    warnings.push(...(table.warnings ?? []), ...mapped.skipReasons);
   }
 
   if (offers.length === 0) {
@@ -147,7 +238,7 @@ export async function importCatalogFile(
     at: new Date().toISOString(),
     supplierId: supplier.id,
     label: title,
-    fileName: decoded.name || filename,
+    fileName: innerName || filename,
     mode,
     imported: catalogRows.length,
     skipped,

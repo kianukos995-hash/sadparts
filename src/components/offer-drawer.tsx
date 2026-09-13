@@ -14,6 +14,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { OfferSpecs } from "@/components/offer-specs";
+import { OfferMedia } from "@/components/offer-media";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { formatDateTime, formatDays, formatMoney, formatStock } from "@/lib/format";
 import { offerOems, offerTitle, relatedOffers } from "@/lib/oem";
@@ -125,6 +126,7 @@ function DrawerBody({
             {client?.discountPercent ? ` · скидка ${client.discountPercent}%` : ""}
           </p>
         </div>
+        <OfferMedia images={offer.images} sku={offer.sku} size="lg" />
         <dl className="grid grid-cols-2 gap-3 text-sm">
           <Info label="Остаток" value={formatStock(offer.stock)} />
           <Info label="Склад" value={offer.warehouse || "—"} />

@@ -4,6 +4,7 @@ import { mergeCrosses } from "@/lib/cross-catalog";
 import { normalizeSku, offerKey } from "@/lib/format";
 import { stringifyCell } from "@/lib/json-path";
 import { extractSpecs } from "@/lib/specs";
+import { collectRowImages } from "@/lib/media";
 
 const ALIASES: Record<FieldKey, string[]> = {
   sku: ["артикул", "partnumber", "sku", "article", "каталожныйномер"],
@@ -165,6 +166,7 @@ export function rowToOffer(
     stockId: stockId || undefined,
     vendorCode: vendor || undefined,
     specs: extractSpecs(row, columnMap),
+    images: collectRowImages(row).images,
     updatedAt: now,
     source: supplier.source,
   };

@@ -1,28 +1,19 @@
-import ExcelJS from "exceljs";
-import { feedToTable, matrixToTable, parseCsvText, xmlToTable } from "@/lib/parse-feed";
-import { stringifyCell } from "@/lib/json-path";
-import { decodePriceText, extractBestZipFile } from "@/lib/zip";
+import { parseExcelPrice } from "@/lib/excel-price";
+import { feedToTable, parseCsvText, xmlToTable } from "@/lib/parse-feed";
+import { decodePriceText, extractBestZipFile, extractZipEntries, isZipBuffer, zipLooksLikeXlsx } from "@/lib/zip";
 
 export const runtime = "nodejs";
 
 const MAX_BYTES = 80 * 1024 * 1024;
 
 async function parseExcel(buffer: Buffer) {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
-  const sheet = workbook.worksheets[0];
-  if (!sheet) return matrixToTable([]);
-  const matrix: string[][] = [];
-  sheet.eachRow({ includeEmpty: false }, (row) => {
-    const values = Array.isArray(row.values) ? row.values.slice(1) : [];
-    matrix.push(values.map((cell) => stringifyCell(cell)));
-  });
-  return matrixToTable(matrix);
+  const excel = await parseExcelPrice(buffer);
+  return excel.table;
 }
 
 function tableFromBuffer(buffer: Buffer, filename: string, itemsPath: string) {
   const name = filename.toLowerCase();
-  if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+  if (name.endsWith(".xlsx") || name.endsWith(".xls") || (isZipBuffer(buffer) && zipLooksLikeXlsx(extractZipEntries(buffer)))) {
     return parseExcel(buffer);
   }
   const payload = name.endsWith(".zip") ? extractBestZipFile(buffer) : { name: filename, body: buffer };

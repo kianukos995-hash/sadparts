@@ -15,6 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { OfferDrawer } from "@/components/offer-drawer";
+import { OfferMedia } from "@/components/offer-media";
 import { OfferSpecs } from "@/components/offer-specs";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { formatDays, formatMoney, formatStock, normalizeSku } from "@/lib/format";
@@ -326,6 +327,9 @@ export default function CatalogPage() {
                           key={offer.id}
                           className="flex flex-col gap-2 border-b px-4 py-3 last:border-b-0 sm:flex-row sm:items-start"
                         >
+                          <div className="shrink-0">
+                            <OfferMedia images={offer.images} sku={offer.sku} size="sm" />
+                          </div>
                           <button
                             type="button"
                             className="min-w-0 flex-1 text-left"

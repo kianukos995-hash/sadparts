@@ -147,8 +147,17 @@ export function extractBestZipFile(buffer: Buffer): ZipEntry {
   return entries[0];
 }
 
-export function extractFirstZipFile(buffer: Buffer) {
-  return extractBestZipFile(buffer);
+export function isZipBuffer(buffer: Buffer) {
+  return buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b;
+}
+
+export function zipLooksLikeXlsx(entries: ZipEntry[]) {
+  return entries.some(
+    (entry) =>
+      entry.name === "[Content_Types].xml" ||
+      entry.name.startsWith("xl/") ||
+      entry.name === "xl/workbook.xml",
+  );
 }
 
 function countCyr(text: string) {

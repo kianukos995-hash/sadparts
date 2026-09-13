@@ -21,6 +21,7 @@ export interface CatalogRow {
   vendor?: string;
   stockId?: string;
   specs?: Record<string, string>;
+  images?: string[];
 }
 
 interface CatalogIndex {
@@ -158,6 +159,7 @@ export function catalogRowToOffer(supplier: Supplier, row: CatalogRow, now = new
     stockId: row.stockId,
     vendorCode: row.vendor,
     specs: row.specs,
+    images: row.images,
     updatedAt: now,
     source: "file",
   };
@@ -178,5 +180,6 @@ export function offerToCatalogRow(offer: Offer): CatalogRow {
     vendor: offer.vendorCode,
     stockId: offer.stockId,
     specs: offer.specs,
+    images: offer.images,
   };
 }

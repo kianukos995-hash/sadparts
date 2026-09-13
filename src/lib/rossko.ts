@@ -2,6 +2,7 @@ import { DEMO_KEYS, ROSSKO_API_BASE } from "@/lib/constants";
 import { offerKey, normalizeSku } from "@/lib/format";
 import { mergeCrosses } from "@/lib/cross-catalog";
 import { searchCatalog } from "@/lib/file-catalog";
+import { uniqueUrls } from "@/lib/media";
 import {
   checkoutPartnumber,
   rosskoGetCheckout,
@@ -197,6 +198,7 @@ function mergeOffers(offers: Offer[]) {
       map.set(offer.id, {
         ...offer,
         specs: offer.specs && Object.keys(offer.specs).length ? offer.specs : current?.specs,
+        images: uniqueUrls([...(current?.images ?? []), ...(offer.images ?? [])]),
       });
     }
     else if (!current) map.set(offer.id, offer);

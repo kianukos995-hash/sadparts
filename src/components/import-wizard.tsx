@@ -110,8 +110,8 @@ export function ImportWizard() {
             Кривой CSV (для проверки)
           </a>
           <p className="text-xs text-muted-foreground">
-            ZIP/CSV Росско и кривые выгрузки: лишняя шапка, кавычки, windows-1251. Сначала просмотр и
-            имя прайса, потом запись. Откат — в истории ниже.
+            ZIP/CSV/Excel: любой шрифт в ячейках читается. Фото из колонки, ZIP или гиперссылки
+            подставляются в карточку; если это страница в интернете — будет ссылка.
           </p>
         </CardContent>
       </Card>
@@ -262,6 +262,8 @@ function isBulkPrice(file: File, supplier?: Supplier) {
   return (
     name.endsWith(".zip") ||
     name.endsWith(".xml") ||
+    name.endsWith(".xlsx") ||
+    name.endsWith(".xls") ||
     file.size > 400_000 ||
     supplier?.adapter === "rossko"
   );

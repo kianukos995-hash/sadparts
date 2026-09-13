@@ -72,6 +72,7 @@ export interface Offer {
   stockId?: string;
   vendorCode?: string;
   specs?: Record<string, string>;
+  images?: string[];
   updatedAt: string;
   source: SupplierSource;
 }

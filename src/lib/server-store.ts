@@ -2,7 +2,9 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { DEMO_KEYS, ROSSKO_API_BASE, STORE_VERSION } from "@/lib/constants";
 import { mergeCrosses } from "@/lib/cross-catalog";
+import { normalizeSku } from "@/lib/format";
 import { removeCatalog } from "@/lib/file-catalog";
+import { CORE_PARTS } from "@/lib/mock-parts";
 import { createInitialStore, DEFAULT_CLIENTS } from "@/lib/seed";
 import { DEFAULT_PRICE_BANDS } from "@/lib/price-bands";
 import type {
@@ -78,14 +80,21 @@ function migrateStore(store: StoreSnapshot): StoreSnapshot {
     };
   });
   const supplierDays = new Map(suppliers.map((item) => [item.id, item.deliveryDaysMoscow]));
-  const offers = store.offers.map((offer) => ({
-    ...offer,
-    displayName: offer.displayName ?? "",
-    crossOems: mergeCrosses(offer.oem, offer.crossOems ?? []),
-    deliveryDays: Number.isFinite(offer.deliveryDays)
-      ? offer.deliveryDays
-      : supplierDays.get(offer.supplierId) || 2,
-  }));
+  const demoPhotos = new Map(
+    CORE_PARTS.filter((part) => part.image).map((part) => [normalizeSku(part.sku), part.image!]),
+  );
+  const offers = store.offers.map((offer) => {
+    const demoPhoto = demoPhotos.get(normalizeSku(offer.sku.split("@")[0] ?? offer.sku));
+    return {
+      ...offer,
+      displayName: offer.displayName ?? "",
+      crossOems: mergeCrosses(offer.oem, offer.crossOems ?? []),
+      deliveryDays: Number.isFinite(offer.deliveryDays)
+        ? offer.deliveryDays
+        : supplierDays.get(offer.supplierId) || 2,
+      images: offer.images?.length ? offer.images : demoPhoto ? [demoPhoto] : offer.images,
+    };
+  });
   return {
     ...store,
     version: STORE_VERSION,

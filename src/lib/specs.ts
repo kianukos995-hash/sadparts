@@ -1,5 +1,6 @@
 import type { ColumnMap } from "@/lib/types";
 import { stringifyCell } from "@/lib/json-path";
+import { isPhotoHeader } from "@/lib/media";
 
 const SKIP = new Set([
   "",
@@ -56,7 +57,7 @@ export function extractSpecs(row: Record<string, unknown>, columnMap: ColumnMap)
   const specs: Record<string, string> = {};
   for (const [raw, value] of Object.entries(row)) {
     const key = headerKey(raw);
-    if (!key || used.has(key) || SKIP.has(key)) continue;
+    if (!key || used.has(key) || SKIP.has(key) || isPhotoHeader(raw)) continue;
     const text = stringifyCell(value).trim();
     if (!text || text === "0") continue;
     specs[raw.replace(/^"|"$/g, "").trim()] = text;

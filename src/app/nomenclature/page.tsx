@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { OfferSpecs } from "@/components/offer-specs";
+import { OfferMedia } from "@/components/offer-media";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { formatMoney } from "@/lib/format";
 import { specEntries } from "@/lib/specs";
@@ -43,7 +44,13 @@ export default function NomenclaturePage() {
     const q = query.trim().toLowerCase();
     return Array.from(map.values())
       .filter((offer) => {
-        if (!q) return specEntries(offer.specs).length > 0 || Boolean(offer.guid);
+        if (!q) {
+          return (
+            specEntries(offer.specs).length > 0 ||
+            Boolean(offer.guid) ||
+            (offer.images?.length ?? 0) > 0
+          );
+        }
         return (
           offer.sku.toLowerCase().includes(q) ||
           offer.name.toLowerCase().includes(q) ||
@@ -62,8 +69,7 @@ export default function NomenclaturePage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Номенклатура</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Карточки артикулов отдельно от склада: GUID, вес, применимость, ТН ВЭД, сертификаты.
-          Цены считаются в каталоге, здесь — свойства позиции.
+          Карточки артикулов: GUID, вес, применимость, фото из прайса или ссылка в интернет.
         </p>
       </div>
       <div className="relative">
@@ -95,6 +101,9 @@ export default function NomenclaturePage() {
             const sell = clientSellPrice(offer.price, settings.priceBands, settings.markupPercent);
             return (
               <article key={offer.id} className="rounded-xl border p-4">
+                <div className="flex flex-wrap items-start gap-4">
+                  <OfferMedia images={offer.images} sku={offer.sku} size="md" />
+                  <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
                     <p className="font-mono text-xs text-muted-foreground">{offer.sku}</p>
@@ -113,6 +122,8 @@ export default function NomenclaturePage() {
                   </div>
                 </div>
                 <OfferSpecs specs={offer.specs} defaultOpen />
+                  </div>
+                </div>
               </article>
             );
           })}

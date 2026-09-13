@@ -7,6 +7,7 @@ export interface CorePart {
   oem: string;
   category: Category;
   basePrice: number;
+  image?: string;
 }
 
 export const CORE_PARTS: CorePart[] = [
@@ -17,6 +18,7 @@ export const CORE_PARTS: CorePart[] = [
     oem: "4E0698151C",
     category: "Тормозная система",
     basePrice: 4860,
+    image: "/samples/photos/brake-pad.svg",
   },
   {
     sku: "P85124",
@@ -25,6 +27,7 @@ export const CORE_PARTS: CorePart[] = [
     oem: "4E0698151C",
     category: "Тормозная система",
     basePrice: 6120,
+    image: "/samples/photos/brake-pad.svg",
   },
   {
     sku: "GDB1550",
@@ -49,6 +52,7 @@ export const CORE_PARTS: CorePart[] = [
     oem: "06D115562",
     category: "Фильтры",
     basePrice: 890,
+    image: "/samples/photos/filter.svg",
   },
   {
     sku: "OC90",
@@ -89,6 +93,7 @@ export const CORE_PARTS: CorePart[] = [
     oem: "GS55502M4",
     category: "Масла и жидкости",
     basePrice: 4890,
+    image: "/samples/photos/oil.svg",
   },
   {
     sku: "153669",

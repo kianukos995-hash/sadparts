@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { importCatalogFile, previewCatalogFile } from "@/lib/import-catalog";
+import { importCatalogFile, previewCatalogFileAsync } from "@/lib/import-catalog";
 import { listImportHistory, rollbackImport } from "@/lib/import-history";
 import { readStore, touchSupplierSync } from "@/lib/server-store";
 import type { ImportMode } from "@/lib/types";
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
     if (action === "preview") {
-      const preview = previewCatalogFile(buffer, file.name);
+      const preview = await previewCatalogFileAsync(buffer, file.name);
       return Response.json(preview);
     }
     const result = await importCatalogFile(supplier, buffer, file.name, mode, label);

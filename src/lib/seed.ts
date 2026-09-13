@@ -244,6 +244,7 @@ export function createDemoOffers(suppliers: Supplier[]): Offer[] {
         warehouse: config.warehouse,
         multiplicity: 1,
         deliveryDays: supplier.deliveryDaysMoscow,
+        images: part.image ? [part.image] : undefined,
         updatedAt,
         source: "api",
       });
