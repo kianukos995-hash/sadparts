@@ -6,6 +6,7 @@ export async function POST(request: NextRequest) {
   let body: {
     url?: string;
     apiKey?: string;
+    apiKey2?: string;
     authMode?: "bearer" | "header" | "query";
     authHeaderName?: string;
     authQueryParam?: string;
@@ -24,6 +25,7 @@ export async function POST(request: NextRequest) {
     const feed = await fetchFeed({
       url: body.url,
       apiKey: body.apiKey,
+      apiKey2: body.apiKey2,
       authMode: body.authMode,
       authHeaderName: body.authHeaderName,
       authQueryParam: body.authQueryParam,

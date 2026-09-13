@@ -14,6 +14,7 @@ import { collectRowImages, isDisplayableImage } from "../src/lib/media";
 import { parseExcelPrice } from "../src/lib/excel-price";
 import { readCatalog } from "../src/lib/file-catalog";
 import { pairQuery } from "../src/lib/pairs";
+import { resolveColumnMap } from "../src/lib/mapping";
 
 const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
   let c = n;
@@ -265,7 +266,47 @@ async function main() {
     String(xlsxCatalog.rows[0]?.images),
   );
 
-  for (const id of [supplier.id, photoSupplier.id, "sup-test-xlsx"]) {
+  const customHeaders = ["Код", "Производитель", "Название", "Цена закуп", "Остаток"];
+  const resolved = resolveColumnMap(
+    customHeaders,
+    {
+      ...DEFAULT_COLUMN_MAP,
+      sku: "Код",
+      brand: "Производитель",
+      name: "Название",
+      price: "Цена закуп",
+      stock: "Остаток",
+    },
+  );
+  assert(resolved.map.sku === "Код", `sku map ${resolved.map.sku}`);
+  assert(resolved.usedSaved.includes("sku"), String(resolved.usedSaved));
+  const mappedSupplier: Supplier = {
+    ...supplier,
+    id: "sup-test-keys",
+    columnMap: {
+      ...DEFAULT_COLUMN_MAP,
+      sku: "Код",
+      brand: "Производитель",
+      name: "Название",
+      price: "Цена закуп",
+      stock: "Остаток",
+    },
+  };
+  const keyed = await importCatalogFile(
+    mappedSupplier,
+    Buffer.from("Код;Производитель;Название;Цена закуп;Остаток\nW712;MANN;Фильтр;890;12\n"),
+    "keys.csv",
+    "replace",
+    "Карта ключей",
+  );
+  assert(keyed.imported === 1, `keys imported ${keyed.imported}`);
+  assert(keyed.map.sku === "Код", `used ${keyed.map.sku}`);
+  const keyedCatalog = await readCatalog("sup-test-keys");
+  assert(keyedCatalog.rows[0]?.sku === "W712", keyedCatalog.rows[0]?.sku);
+  assert(keyedCatalog.rows[0]?.price === 890, String(keyedCatalog.rows[0]?.price));
+  assert(keyedCatalog.rows[0]?.brand === "MANN", keyedCatalog.rows[0]?.brand);
+
+  for (const id of [supplier.id, photoSupplier.id, "sup-test-xlsx", "sup-test-keys"]) {
     try {
       await unlink(path.join(process.cwd(), "data", "catalogs", `${id}.jsonl`));
     } catch {

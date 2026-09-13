@@ -9,6 +9,7 @@ export async function fetchSupplierPayload(supplier: Supplier) {
     body: JSON.stringify({
       url: supplier.apiUrl,
       apiKey: supplier.apiKey,
+      apiKey2: supplier.apiKey2,
       authMode: supplier.authMode,
       authHeaderName: supplier.authHeaderName,
       authQueryParam: supplier.authQueryParam,
@@ -25,6 +26,7 @@ export async function fetchSupplierPayload(supplier: Supplier) {
 export async function fetchFeedTable(input: {
   url: string;
   apiKey?: string;
+  apiKey2?: string;
   authMode?: Supplier["authMode"];
   authHeaderName?: string;
   authQueryParam?: string;

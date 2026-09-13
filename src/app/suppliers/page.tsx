@@ -15,12 +15,25 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { PriceListUpload } from "@/components/price-list-upload";
 import { SupplierFormDialog } from "@/components/supplier-form";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { AUTH_MODE_LABELS } from "@/lib/constants";
 import { formatDateTime, formatDays, maskKey } from "@/lib/format";
 import { buildSyncLog, syncSupplier } from "@/lib/sync";
 import type { Supplier } from "@/lib/types";
+
+function keySummary(supplier: Supplier) {
+  if (supplier.adapter === "rossko") {
+    return `KEY1 ${maskKey(supplier.apiKey)} · KEY2 ${maskKey(supplier.apiKey2)}`;
+  }
+  if (supplier.source === "api") {
+    const second = supplier.apiKey2.trim() ? ` · KEY2 ${maskKey(supplier.apiKey2)}` : "";
+    return `${maskKey(supplier.apiKey)}${second}`;
+  }
+  const mapped = Object.values(supplier.columnMap ?? {}).filter(Boolean).length;
+  return mapped ? `карта ${mapped} полей` : "файл";
+}
 
 export default function SuppliersPage() {
   const { ready, suppliers, upsertSupplier, removeSupplier, replaceOffers } = useAvtoPrice();
@@ -49,7 +62,7 @@ export default function SuppliersPage() {
       return;
     }
     if (supplier.source !== "api") {
-      toast.error("У этого поставщика нет API — загрузите файл");
+      toast.error("У этого поставщика нет API — нажмите «Добавить прайс» и выберите файл");
       return;
     }
     setSyncingId(supplier.id);
@@ -74,7 +87,7 @@ export default function SuppliersPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Поставщики</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            API-ключи, адреса прайсов и тип авторизации. Ключи маскируются в списке.
+            «Добавить прайс» грузит CSV/ZIP/XLSX в карточку. KEY1/KEY2 и карта колонок учитываются при разборе.
           </p>
         </div>
         <Button onClick={() => setOpen(true)}>
@@ -95,7 +108,7 @@ export default function SuppliersPage() {
             <TableRow>
               <TableHead>Название</TableHead>
               <TableHead className="hidden md:table-cell">Источник</TableHead>
-              <TableHead className="hidden lg:table-cell">Ключ</TableHead>
+              <TableHead className="hidden lg:table-cell">Ключи</TableHead>
               <TableHead>Синхронизация</TableHead>
               <TableHead className="hidden md:table-cell">До Москвы</TableHead>
               <TableHead className="text-right">Действия</TableHead>
@@ -119,7 +132,7 @@ export default function SuppliersPage() {
                   </div>
                 </TableCell>
                 <TableCell className="hidden font-mono text-xs lg:table-cell">
-                  {supplier.source === "api" ? maskKey(supplier.apiKey) : "—"}
+                  {keySummary(supplier)}
                 </TableCell>
                 <TableCell>
                   <p className="text-sm">{formatDateTime(supplier.lastSyncAt)}</p>
@@ -136,15 +149,19 @@ export default function SuppliersPage() {
                   </p>
                 </TableCell>
                 <TableCell className="text-right">
-                  <div className="flex justify-end gap-1">
+                  <div className="flex flex-wrap justify-end gap-1">
+                    <PriceListUpload supplier={supplier} />
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={syncingId === supplier.id || supplier.source !== "api"}
+                      disabled={
+                        syncingId === supplier.id ||
+                        (supplier.source !== "api" && supplier.adapter !== "rossko")
+                      }
                       onClick={() => void runSync(supplier)}
                     >
                       <RefreshCw className={syncingId === supplier.id ? "animate-spin" : ""} />
-                      Синхр.
+                      {supplier.adapter === "rossko" ? "Ключи" : "Синхр."}
                     </Button>
                     <Button
                       variant="ghost"

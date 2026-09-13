@@ -1,5 +1,5 @@
 import type { ColumnMap, FieldKey, Offer, Supplier } from "@/lib/types";
-import { DEFAULT_COLUMN_MAP } from "@/lib/types";
+import { DEFAULT_COLUMN_MAP, FIELD_KEYS } from "@/lib/types";
 import { mergeCrosses } from "@/lib/cross-catalog";
 import { normalizeSku, offerKey } from "@/lib/format";
 import { stringifyCell } from "@/lib/json-path";
@@ -7,21 +7,63 @@ import { extractSpecs } from "@/lib/specs";
 import { collectRowImages } from "@/lib/media";
 
 const ALIASES: Record<FieldKey, string[]> = {
-  sku: ["артикул", "partnumber", "sku", "article", "каталожныйномер"],
-  brand: ["brand", "бренд", "производитель", "make", "producer", "manufacturer"],
-  name: ["описание", "name", "наименование", "название", "title", "desc"],
-  oem: ["оемномер", "oemномер", "oem", "оригинал", "ориг", "oe"],
-  category: ["category", "категория", "группа", "group", "раздел"],
-  price: ["ценаруб", "price", "цена", "cost", "стоимость"],
+  sku: ["артикул", "partnumber", "sku", "article", "каталожныйномер", "код", "partno", "pn", "номердетали"],
+  brand: ["brand", "бренд", "производитель", "make", "producer", "manufacturer", "марка"],
+  name: ["описание", "name", "наименование", "название", "title", "desc", "товар"],
+  oem: ["оемномер", "oemномер", "oem", "оригинал", "ориг", "oe", "oeномер"],
+  category: ["category", "категория", "группа", "group", "раздел", "применимость"],
+  price: ["ценаруб", "price", "цена", "cost", "стоимость", "закуп", "ценазакупки", "ценазакуп", "optprice"],
   currency: ["currency", "валюта"],
-  stock: ["наличие", "stock", "остаток", "qty", "quantity", "count"],
-  warehouse: ["warehouse", "склад", "stockname", "филиал"],
-  multiplicity: ["кратностьотгрузки", "multiplicity", "кратность", "min_order", "кратно"],
-  deliveryDays: ["срокпоставкидн", "deliverydays", "срок", "срокдоставки", "days", "delivery", "leadtime"],
+  stock: ["наличие", "stock", "остаток", "qty", "quantity", "count", "количество", "остатки"],
+  warehouse: ["warehouse", "склад", "stockname", "филиал", "складпоставщика"],
+  multiplicity: ["кратностьотгрузки", "multiplicity", "кратность", "min_order", "кратно", "минпартия"],
+  deliveryDays: ["срокпоставкидн", "deliverydays", "срок", "срокдоставки", "days", "delivery", "leadtime", "срокдн"],
 };
 
-function normalizeHeader(value: string) {
+export function normalizeHeader(value: string) {
   return value.toLowerCase().replace(/[\s._-]+/g, "");
+}
+
+export function matchHeader(headers: string[], column: string) {
+  if (!column) return undefined;
+  const key = normalizeHeader(column);
+  return headers.find((header) => normalizeHeader(header) === key);
+}
+
+export function resolveColumnMap(
+  headers: string[],
+  saved?: Partial<ColumnMap> | null,
+  extra?: Partial<ColumnMap> | null,
+): { map: ColumnMap; usedSaved: FieldKey[]; usedExtra: FieldKey[]; guessed: FieldKey[] } {
+  const map = guessColumnMap(headers);
+  const usedSaved: FieldKey[] = [];
+  const usedExtra: FieldKey[] = [];
+
+  function overlay(partial: Partial<ColumnMap> | null | undefined, bucket: FieldKey[]) {
+    if (!partial) return;
+    for (const field of FIELD_KEYS) {
+      const hit = matchHeader(headers, partial[field] ?? "");
+      if (!hit) continue;
+      map[field] = hit;
+      bucket.push(field);
+    }
+  }
+
+  overlay(saved, usedSaved);
+  overlay(extra, usedExtra);
+  const locked = new Set<FieldKey>([...usedSaved, ...usedExtra]);
+  return {
+    map,
+    usedSaved,
+    usedExtra,
+    guessed: FIELD_KEYS.filter((field) => !locked.has(field) && Boolean(map[field])),
+  };
+}
+
+export function describeColumnMap(map: ColumnMap) {
+  return FIELD_KEYS.filter((field) => map[field])
+    .map((field) => `${field}←${map[field]}`)
+    .join(", ");
 }
 
 export function guessColumnMap(headers: string[]): ColumnMap {

@@ -256,7 +256,12 @@ export function replaceOffers(
   });
 }
 
-export function touchSupplierSync(supplierId: string, log: SyncLog, count?: number) {
+export function touchSupplierSync(
+  supplierId: string,
+  log: SyncLog,
+  count?: number,
+  extra?: Partial<Pick<Supplier, "columnMap">>,
+) {
   return enqueue(async () => {
     const store = await readStoreFile();
     const next: StoreSnapshot = {
@@ -265,6 +270,7 @@ export function touchSupplierSync(supplierId: string, log: SyncLog, count?: numb
         supplier.id === supplierId
           ? {
               ...supplier,
+              ...extra,
               lastSyncAt: log.at,
               lastSyncStatus: log.status,
               lastSyncError: log.error,

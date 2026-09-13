@@ -162,7 +162,6 @@ function SupplierFormFields({
                   ...prev,
                   adapter,
                   apiUrl: adapter === "rossko" ? ROSSKO_API_BASE : prev.apiUrl,
-                  source: "api",
                 }));
               }}
             >
@@ -282,8 +281,15 @@ function SupplierFormFields({
               disabled={draft.source === "file"}
             />
           </Field>
-          <Field label="API-ключ">
+          <Field label="API-ключ / KEY1">
             <KeyField value={draft.apiKey} onChange={(value) => update("apiKey", value)} />
+          </Field>
+          <Field label="KEY2 (если поставщик отдаёт второй ключ)">
+            <KeyField
+              value={draft.apiKey2}
+              onChange={(value) => update("apiKey2", value)}
+              placeholder="Второй ключ, пароль или secret"
+            />
           </Field>
             </>
           )}
@@ -330,8 +336,9 @@ function SupplierFormFields({
             </Field>
           ))}
           <p className="text-xs text-muted-foreground sm:col-span-2">
-            Имена полей JSON или заголовки колонок файла. При загрузке CSV/XLSX колонки подставляются
-            автоматически.
+            Имена полей JSON или заголовки колонок файла: артикул, бренд, наименование, OEM, категория,
+            цена, валюта, остаток, склад, кратность, срок. При загрузке файла сохранённые ключи имеют
+            приоритет, остальные колонки угадываются.
           </p>
         </TabsContent>
       </Tabs>

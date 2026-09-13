@@ -1,8 +1,10 @@
 import { NextRequest } from "next/server";
 import { importCatalogFile, previewCatalogFileAsync } from "@/lib/import-catalog";
 import { listImportHistory, rollbackImport } from "@/lib/import-history";
+import { describeColumnMap } from "@/lib/mapping";
 import { readStore, touchSupplierSync } from "@/lib/server-store";
-import type { ImportMode } from "@/lib/types";
+import type { ColumnMap, FieldKey, ImportMode } from "@/lib/types";
+import { FIELD_KEYS } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -46,23 +48,34 @@ export async function POST(request: NextRequest) {
   const supplierId = String(form.get("supplierId") ?? "");
   const mode = (String(form.get("mode") ?? "replace") === "merge" ? "merge" : "replace") as ImportMode;
   const label = String(form.get("label") ?? "");
+  const overlayMap = parseColumnMap(form.get("columnMap"));
   if (!(file instanceof File)) {
-    return Response.json({ error: "Прикрепите ZIP, CSV или XML прайса" }, { status: 400 });
+    return Response.json({ error: "Прикрепите ZIP, CSV, XLSX или XML прайса" }, { status: 400 });
+  }
+  if (!file.size) {
+    return Response.json({ error: "Файл пустой — выберите прайс ещё раз" }, { status: 400 });
   }
   if (file.size > MAX_BYTES) {
     return Response.json({ error: "Файл больше 80 МБ" }, { status: 413 });
   }
   const store = await readStore();
   const supplier = store.suppliers.find((item) => item.id === supplierId);
-  if (!supplier) return Response.json({ error: "Поставщик не найден" }, { status: 404 });
+  if (!supplier) return Response.json({ error: "Поставщик не найден. Откройте карточку и повторите." }, { status: 404 });
 
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
+    if (buffer.byteLength === 0) {
+      return Response.json({ error: "Файл не доехал: 0 байт. Проверьте выбор файла." }, { status: 400 });
+    }
     if (action === "preview") {
       const preview = await previewCatalogFileAsync(buffer, file.name);
-      return Response.json(preview);
+      return Response.json({
+        ...preview,
+        bytes: buffer.byteLength,
+        keys: keyFlags(supplier),
+      });
     }
-    const result = await importCatalogFile(supplier, buffer, file.name, mode, label);
+    const result = await importCatalogFile(supplier, buffer, file.name, mode, label, overlayMap);
     const log = {
       id: result.history.id,
       supplierId: supplier.id,
@@ -74,12 +87,17 @@ export async function POST(request: NextRequest) {
       label: result.label,
       mode,
     };
-    const next = await touchSupplierSync(supplier.id, log, result.imported);
+    const next = await touchSupplierSync(supplier.id, log, result.imported, { columnMap: result.map });
     return Response.json({
       imported: result.imported,
       skipped: result.skipped,
       warnings: result.warnings,
       label: result.label,
+      fileName: file.name,
+      bytes: buffer.byteLength,
+      map: result.map,
+      mapNote: describeColumnMap(result.map),
+      keys: keyFlags(supplier),
       store: next,
     });
   } catch (error) {
@@ -88,4 +106,31 @@ export async function POST(request: NextRequest) {
       { status: 422 },
     );
   }
+}
+
+function parseColumnMap(raw: FormDataEntryValue | null): Partial<ColumnMap> | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const map: Partial<ColumnMap> = {};
+    for (const field of FIELD_KEYS) {
+      const value = parsed[field];
+      if (typeof value === "string" && value.trim()) map[field] = value;
+    }
+    return Object.keys(map).length ? map : null;
+  } catch {
+    return null;
+  }
+}
+
+function keyFlags(supplier: { adapter: string; apiKey: string; apiKey2: string; authHeaderName: string; authQueryParam: string; columnMap: ColumnMap }) {
+  const mapped = FIELD_KEYS.filter((field: FieldKey) => Boolean(supplier.columnMap[field]));
+  return {
+    key1: Boolean(supplier.apiKey.trim()),
+    key2: Boolean(supplier.apiKey2.trim()),
+    rossko: supplier.adapter === "rossko",
+    authHeaderName: supplier.authHeaderName || "",
+    authQueryParam: supplier.authQueryParam || "",
+    mappedFields: mapped,
+  };
 }

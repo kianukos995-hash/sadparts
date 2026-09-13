@@ -1,7 +1,7 @@
 import { isXlsxName, parseExcelPrice } from "@/lib/excel-price";
 import { applyImportDiff, offerToCatalogRow, readCatalog, writeCatalog } from "@/lib/file-catalog";
 import { copyPreviousCatalog, recordImportHistory } from "@/lib/import-history";
-import { guessColumnMap, rowToOffer } from "@/lib/mapping";
+import { describeColumnMap, resolveColumnMap, rowToOffer } from "@/lib/mapping";
 import { uniqueUrls } from "@/lib/media";
 import { attachOfferMedia, saveZipMedia, type MediaIndex } from "@/lib/media-store";
 import { parseCsvText, xmlToTable } from "@/lib/parse-feed";
@@ -15,7 +15,7 @@ import {
   zipLooksLikeXlsx,
   type ZipEntry,
 } from "@/lib/zip";
-import type { ImportMode, Offer, Supplier } from "@/lib/types";
+import type { ColumnMap, ImportMode, Offer, Supplier } from "@/lib/types";
 
 const IMPORT_ROWS = 800_000;
 
@@ -29,8 +29,11 @@ function offersFromRecords(
   headers: string[],
   media?: MediaIndex,
   extraImages?: Map<number, string[]>,
+  overlayMap?: Partial<ColumnMap> | null,
 ) {
-  const map = guessColumnMap(headers.length ? headers : Object.keys(rows[0] ?? {}));
+  const headerList = headers.length ? headers : Object.keys(rows[0] ?? {});
+  const resolved = resolveColumnMap(headerList, supplier.columnMap, overlayMap);
+  const map = resolved.map;
   const mappedSupplier = { ...supplier, columnMap: map, source: "file" as const };
   const offers: Offer[] = [];
   let skipped = 0;
@@ -56,11 +59,15 @@ function offersFromRecords(
       }
     }
   });
+  const mapNote = describeColumnMap(map);
   return {
     offers,
     skipped,
-    headers: headers.length ? headers : Object.keys(rows[0] ?? {}),
+    headers: headerList,
     map,
+    mapNote,
+    usedSaved: resolved.usedSaved,
+    usedExtra: resolved.usedExtra,
     skipReasons,
   };
 }
@@ -176,11 +183,13 @@ export async function importCatalogFile(
   filename: string,
   mode: ImportMode,
   label?: string,
+  overlayMap?: Partial<ColumnMap> | null,
 ) {
   const title = (label ?? "").trim() || priceTitle(filename, filename);
   let offers: Offer[] = [];
   let skipped = 0;
   let headers: string[] = [];
+  let map: ColumnMap = { ...supplier.columnMap };
   const warnings: string[] = [];
   let innerName = filename;
 
@@ -196,10 +205,12 @@ export async function importCatalogFile(
       excel.table.headers,
       undefined,
       excel.imagesByDataRow,
+      overlayMap,
     );
     offers = mapped.offers;
     skipped = mapped.skipped;
     headers = mapped.headers;
+    map = mapped.map;
     warnings.push("Excel: шрифты ячеек не мешают чтению", ...mapped.skipReasons);
   } else if (filename.toLowerCase().endsWith(".zip") || (zipEntries.length > 0 && !asXlsx)) {
     const best = extractBestZipFile(buffer);
@@ -207,10 +218,11 @@ export async function importCatalogFile(
     const text = decodePriceText(best.body);
     const table = tableFromText(best.name, text, filename);
     const media = await saveZipMedia(supplier.id, zipEntries);
-    const mapped = offersFromRecords(supplier, table.rows, table.headers, media);
+    const mapped = offersFromRecords(supplier, table.rows, table.headers, media, undefined, overlayMap);
     offers = mapped.offers;
     skipped = mapped.skipped;
     headers = mapped.headers;
+    map = mapped.map;
     warnings.push(...(table.warnings ?? []), ...mapped.skipReasons);
     if (media.saved) warnings.push(`подгружено фото из архива: ${media.saved}`);
     if (media.fonts) warnings.push(`шрифты в ZIP (${media.fonts}) пропущены — текст прайса всё равно читается`);
@@ -218,12 +230,16 @@ export async function importCatalogFile(
     const text = decodePriceText(buffer);
     const table = tableFromText(filename, text, filename);
     innerName = filename;
-    const mapped = offersFromRecords(supplier, table.rows, table.headers);
+    const mapped = offersFromRecords(supplier, table.rows, table.headers, undefined, undefined, overlayMap);
     offers = mapped.offers;
     skipped = mapped.skipped;
     headers = mapped.headers;
+    map = mapped.map;
     warnings.push(...(table.warnings ?? []), ...mapped.skipReasons);
   }
+
+  const mapNote = describeColumnMap(map);
+  if (mapNote) warnings.push(`ключи колонок: ${mapNote}`);
 
   if (offers.length === 0) {
     throw new Error(
@@ -253,6 +269,7 @@ export async function importCatalogFile(
     imported: committed.catalogRows.length,
     skipped,
     headers,
+    map,
     warnings: warnings.slice(0, 8),
     label: title,
     changed: committed.changed,

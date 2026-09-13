@@ -9,6 +9,7 @@ export type AuthMode = "bearer" | "header" | "query";
 export interface FetchFeedInput {
   url: string;
   apiKey?: string;
+  apiKey2?: string;
   authMode?: AuthMode;
   authHeaderName?: string;
   authQueryParam?: string;
@@ -58,9 +59,12 @@ function buildHeaders(input: FetchFeedInput) {
     Accept: "application/json, application/xml, text/csv, text/plain;q=0.8, */*;q=0.5",
   });
   const key = input.apiKey?.trim();
-  if (!key) return headers;
-  if (input.authMode === "bearer") headers.set("Authorization", `Bearer ${key}`);
-  else if (input.authMode === "header") headers.set(input.authHeaderName?.trim() || "X-Api-Key", key);
+  const key2 = input.apiKey2?.trim();
+  if (key) {
+    if (input.authMode === "bearer") headers.set("Authorization", `Bearer ${key}`);
+    else if (input.authMode === "header") headers.set(input.authHeaderName?.trim() || "X-Api-Key", key);
+  }
+  if (key2) headers.set("X-Api-Key-2", key2);
   return headers;
 }
 
@@ -68,6 +72,9 @@ export async function fetchFeed(input: FetchFeedInput) {
   const target = await resolveSafeUrl(input.url.trim(), input.origin);
   if (input.authMode === "query" && input.apiKey?.trim()) {
     target.searchParams.set(input.authQueryParam?.trim() || "apikey", input.apiKey.trim());
+  }
+  if (input.authMode === "query" && input.apiKey2?.trim()) {
+    target.searchParams.set("key2", input.apiKey2.trim());
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);

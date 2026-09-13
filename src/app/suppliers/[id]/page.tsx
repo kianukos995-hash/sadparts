@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, RefreshCw, Upload } from "lucide-react";
+import { ArrowLeft, RefreshCw } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { KeyField } from "@/components/key-field";
 import { PartsTable } from "@/components/parts-table";
+import { PriceListUpload } from "@/components/price-list-upload";
 import { SupplierFormDialog } from "@/components/supplier-form";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { AUTH_MODE_LABELS } from "@/lib/constants";
@@ -32,7 +33,7 @@ export default function SupplierDetailPage() {
     [offers, params.id, fileOffers],
   );
 
-  useEffect(() => {
+  const reloadCatalog = useCallback(() => {
     if (!params.id) return;
     void fetch(`/api/catalog/browse?supplierId=${encodeURIComponent(params.id)}&pageSize=40`)
       .then(async (response) => {
@@ -42,6 +43,10 @@ export default function SupplierDetailPage() {
       })
       .catch(() => undefined);
   }, [params.id]);
+
+  useEffect(() => {
+    reloadCatalog();
+  }, [reloadCatalog]);
   const supplierLogs = logs.filter((log) => log.supplierId === params.id).slice(0, 8);
 
   async function runSync() {
@@ -124,27 +129,41 @@ export default function SupplierDetailPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {supplier.source === "api" ? (
+          {supplier.source === "api" || supplier.adapter === "rossko" ? (
             <>
               <Button variant="outline" disabled={busy !== null} onClick={() => void testConnection()}>
-                {busy === "test" ? "Проверяю…" : "Проверить ключ"}
+                {busy === "test"
+                  ? "Проверяю…"
+                  : supplier.adapter === "rossko"
+                    ? "Проверить KEY1/KEY2"
+                    : "Проверить ключ"}
               </Button>
-              <Button disabled={busy !== null} onClick={() => void runSync()}>
-                <RefreshCw className={busy === "sync" ? "animate-spin" : ""} />
-                {supplier.adapter === "rossko" ? "Проверить KEY1/KEY2" : "Забрать прайс"}
-              </Button>
+              {supplier.adapter !== "rossko" ? (
+                <Button disabled={busy !== null} onClick={() => void runSync()}>
+                  <RefreshCw className={busy === "sync" ? "animate-spin" : ""} />
+                  Забрать прайс
+                </Button>
+              ) : null}
             </>
-          ) : (
-            <Link href="/import" className={cn(buttonVariants())}>
-              <Upload />
-              Загрузить файл
-            </Link>
-          )}
+          ) : null}
           <Button variant="outline" onClick={() => setEditing(true)}>
             Изменить
           </Button>
         </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Прайс-лист файлом</CardTitle>
+          <CardDescription>
+            Файл пишется в каталог этого поставщика. Карта колонок из вкладки «Поля прайса» имеет приоритет
+            над автоподбором.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <PriceListUpload supplier={supplier} variant="dropzone" onImported={() => reloadCatalog()} />
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card size="sm">
@@ -155,7 +174,7 @@ export default function SupplierDetailPage() {
           <CardContent className="text-xs text-muted-foreground">
             {supplier.lastSyncStatus === "error"
               ? supplier.lastSyncError
-              : `${supplier.catalogCount ?? supplier.lastSyncCount ?? supplierOffers.length} позиций`}
+              : `${supplier.catalogCount ?? supplier.lastSyncCount ?? fileTotal} позиций`}
           </CardContent>
         </Card>
         <Card size="sm">
@@ -173,19 +192,31 @@ export default function SupplierDetailPage() {
           <CardHeader>
             <CardDescription>Авторизация</CardDescription>
             <CardTitle className="text-base">
-              {supplier.source === "api" ? AUTH_MODE_LABELS[supplier.authMode] : "файл"}
+              {supplier.source === "api" || supplier.adapter === "rossko"
+                ? AUTH_MODE_LABELS[supplier.authMode]
+                : "файл"}
             </CardTitle>
           </CardHeader>
-          <CardContent className="truncate font-mono text-xs text-muted-foreground">
-            {supplier.apiUrl || "URL не задан"}
+          <CardContent className="truncate text-xs text-muted-foreground">
+            <p className="font-mono">{supplier.apiUrl || "URL не задан"}</p>
+            {supplier.authMode === "header" && supplier.authHeaderName ? (
+              <p className="mt-1">заголовок {supplier.authHeaderName}</p>
+            ) : null}
+            {supplier.authMode === "query" && supplier.authQueryParam ? (
+              <p className="mt-1">параметр {supplier.authQueryParam}</p>
+            ) : null}
           </CardContent>
         </Card>
         <Card size="sm">
           <CardHeader>
-            <CardDescription>API-ключ</CardDescription>
+            <CardDescription>{supplier.adapter === "rossko" ? "KEY1" : "API-ключ / KEY1"}</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="grid gap-3">
             <KeyField value={supplier.apiKey} />
+            <div>
+              <p className="mb-1 text-xs text-muted-foreground">KEY2</p>
+              <KeyField value={supplier.apiKey2} />
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -222,7 +253,7 @@ export default function SupplierDetailPage() {
         <PartsTable
           offers={supplierOffers.slice(0, 40)}
           suppliers={[supplier]}
-          empty="Прайс ещё не загружен. Нажмите «Загрузить файл»."
+          empty="Прайс ещё не загружен. Выберите файл в блоке выше."
         />
         {fileTotal > 40 ? (
           <p className="mt-2 text-xs text-muted-foreground">

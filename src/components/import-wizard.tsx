@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { FileSpreadsheet, Link2, RefreshCw, Type, Upload } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -22,8 +22,8 @@ import { PricePreviewCard, type PricePreview } from "@/components/price-preview"
 import { cn } from "@/lib/utils";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { FIELD_LABELS } from "@/lib/constants";
-import { guessColumnMap, mapPayloadToOffers } from "@/lib/mapping";
 import { guessPriceTitle } from "@/lib/price-bands";
+import { mapPayloadToOffers, resolveColumnMap } from "@/lib/mapping";
 import { buildSyncLog, fetchFeedTable, syncSupplier } from "@/lib/sync";
 import { offerKey } from "@/lib/format";
 import type { AuthMode, ColumnMap, ImportMode, ParsedTable, Supplier, SupplierSource } from "@/lib/types";
@@ -32,12 +32,16 @@ import { AUTH_MODE_LABELS } from "@/lib/constants";
 
 export function ImportWizard() {
   const { suppliers, replaceOffers, refresh } = useAvtoPrice();
-  const [supplierId, setSupplierId] = useState(
-    suppliers.find((item) => item.source === "file")?.id ?? suppliers[0]?.id ?? "",
+  const [supplierId, setSupplierId] = useState(() =>
+    typeof window === "undefined" ? "" : (new URLSearchParams(window.location.search).get("supplierId") ?? ""),
   );
   const [mode, setMode] = useState<ImportMode>("replace");
-
-  const supplier = suppliers.find((item) => item.id === supplierId);
+  const resolvedId =
+    (supplierId && suppliers.some((item) => item.id === supplierId) ? supplierId : "") ||
+    suppliers.find((item) => item.source === "file")?.id ||
+    suppliers[0]?.id ||
+    "";
+  const supplier = suppliers.find((item) => item.id === resolvedId);
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_19rem]">
@@ -51,7 +55,7 @@ export function ImportWizard() {
         <CardContent className="grid gap-4">
           <SupplierSelect
             suppliers={suppliers}
-            value={supplierId}
+            value={resolvedId}
             onChange={setSupplierId}
           />
           <label className="flex items-center gap-2 text-sm">
@@ -257,18 +261,6 @@ async function commitTable(
   return offers.length;
 }
 
-function isBulkPrice(file: File, supplier?: Supplier) {
-  const name = file.name.toLowerCase();
-  return (
-    name.endsWith(".zip") ||
-    name.endsWith(".xml") ||
-    name.endsWith(".xlsx") ||
-    name.endsWith(".xls") ||
-    file.size > 400_000 ||
-    supplier?.adapter === "rossko"
-  );
-}
-
 async function previewBulkFile(file: File, supplierId: string) {
   const form = new FormData();
   form.set("action", "preview");
@@ -280,19 +272,27 @@ async function previewBulkFile(file: File, supplierId: string) {
   return data;
 }
 
-async function importBulkFile(file: File, supplierId: string, mode: ImportMode, label: string) {
+async function importBulkFile(
+  file: File,
+  supplierId: string,
+  mode: ImportMode,
+  label: string,
+  columnMap?: ColumnMap | null,
+) {
   const form = new FormData();
   form.set("action", "import");
   form.set("file", file);
   form.set("supplierId", supplierId);
   form.set("mode", mode);
   form.set("label", label);
+  if (columnMap) form.set("columnMap", JSON.stringify(columnMap));
   const response = await fetch("/api/catalog/import", { method: "POST", body: form });
   const data = (await response.json()) as {
     imported?: number;
     skipped?: number;
     error?: string;
     label?: string;
+    mapNote?: string;
   };
   if (!response.ok) throw new Error(data.error || "Не удалось загрузить прайс");
   return data;
@@ -301,7 +301,6 @@ async function importBulkFile(file: File, supplierId: string, mode: ImportMode, 
 function FilePane({
   supplier,
   mode,
-  onImport,
   onRefresh,
 }: {
   supplier?: Supplier;
@@ -309,6 +308,7 @@ function FilePane({
   onImport: ImportFn;
   onRefresh: () => Promise<void>;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [fileName, setFileName] = useState("");
   const [preview, setPreview] = useState<PricePreview | null>(null);
@@ -325,6 +325,7 @@ function FilePane({
     setFiles([]);
     setFileName("");
     setLabel("");
+    if (inputRef.current) inputRef.current.value = "";
   }
 
   async function onFiles(list: FileList | File[] | undefined) {
@@ -338,64 +339,68 @@ function FilePane({
     try {
       if (!supplier) throw new Error("Выберите поставщика");
       const file = next[0];
+      if (!file.size) throw new Error("Файл пустой — выберите прайс ещё раз");
       setFiles(next);
       setFileName(file.name);
-      if (isBulkPrice(file, supplier) || next.length > 1) {
-        const data = await previewBulkFile(file, supplier.id);
-        setPreview(data);
-        setLabel(data.title || guessPriceTitle(file.name));
-        return;
+      const data = await previewBulkFile(file, supplier.id);
+      setPreview(data);
+      setLabel(data.title || guessPriceTitle(file.name));
+      if (data.headers?.length) {
+        setTable({
+          headers: data.headers,
+          rows: data.rows ?? [],
+          total: data.total,
+          warnings: data.warnings,
+        });
+        setMap(resolveColumnMap(data.headers, supplier.columnMap).map);
       }
-      const form = new FormData();
-      form.set("file", file);
-      const response = await fetch("/api/parse-price-list", { method: "POST", body: form });
-      const data = (await response.json()) as ParsedTable & { error?: string };
-      if (!response.ok) throw new Error(data.error || "Не удалось прочитать файл");
-      setTable(data);
-      setMap(guessColumnMap(data.headers));
-      setPreview({
-        title: guessPriceTitle(file.name),
-        headers: data.headers,
-        rows: data.rows.slice(0, 25),
-        total: data.total,
-        warnings: data.warnings,
-      });
-      setLabel(guessPriceTitle(file.name));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка чтения файла");
     } finally {
       setBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
     }
   }
 
   async function confirmImport() {
     if (!supplier) throw new Error("Выберите поставщика");
     const title = label.trim() || guessPriceTitle(fileName);
-    if (table && map && files.length === 1 && !isBulkPrice(files[0], supplier)) {
-      await commitTable(supplier, table, map, "file", fileName, mode, onImport, title);
-      toast.success(`«${title}»: загружено в каталог`);
-      resetPreview();
-      return;
-    }
     let total = 0;
+    let note = "";
     for (const file of files) {
       const name = file === files[0] ? title : guessPriceTitle(file.name);
-      const result = await importBulkFile(file, supplier.id, mode, name);
+      const result = await importBulkFile(file, supplier.id, mode, name, map);
       total += result.imported ?? 0;
+      note = result.mapNote || note;
     }
     await onRefresh();
     toast.success(
       files.length > 1
-        ? `Из ${files.length} файлов на сервере ${total} позиций`
-        : `«${title}»: ${total} позиций. Можно откатить в истории.`,
+        ? `Из ${files.length} файлов на сервере ${total.toLocaleString("ru-RU")} позиций`
+        : `«${title}»: ${total.toLocaleString("ru-RU")} позиций у «${supplier.name}».`,
     );
+    if (note) toast.message(`Ключи колонок: ${note}`);
     resetPreview();
   }
 
   return (
     <div className="grid gap-4">
-      <label
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        accept=".csv,.tsv,.txt,.zip,.xlsx,.xls,.json,.xml,.yml,text/csv,application/json,application/xml,application/zip"
+        className="sr-only"
+        onChange={(event) => {
+          const list = event.target.files;
+          event.target.value = "";
+          void onFiles(list ?? undefined);
+        }}
+      />
+      <button
+        type="button"
         className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-10 text-center hover:bg-muted/40"
+        onClick={() => inputRef.current?.click()}
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => {
           event.preventDefault();
@@ -405,16 +410,9 @@ function FilePane({
         <Upload className="size-6 text-muted-foreground" />
         <span className="text-sm font-medium">Перетащите файлы или нажмите, чтобы выбрать</span>
         <span className="text-xs text-muted-foreground">
-          CSV, ZIP, XLSX, JSON, XML/YML · сначала просмотр, имя прайса — по имени файла
+          CSV, ZIP, XLSX, JSON, XML/YML · файл целиком уходит в каталог выбранного поставщика
         </span>
-        <input
-          type="file"
-          multiple
-          accept=".csv,.zip,.xlsx,.xls,.json,.xml,.yml,text/csv,application/json,application/xml,application/zip"
-          className="sr-only"
-          onChange={(event) => void onFiles(event.target.files ?? undefined)}
-        />
-      </label>
+      </button>
       {busy ? <p className="text-sm text-muted-foreground">Читаю файл…</p> : null}
       {error ? (
         <Alert variant="destructive">
@@ -431,7 +429,7 @@ function FilePane({
           showTable={!(table && map)}
         />
       ) : null}
-      {table && map && supplier && files.length === 1 && !isBulkPrice(files[0], supplier) ? (
+      {table && map && supplier && files.length === 1 ? (
         <MappingBlock
           table={table}
           map={map}
@@ -535,7 +533,7 @@ function UrlPane({
           })
             .then((next) => {
               setTable(next);
-              setMap(guessColumnMap(next.headers));
+              setMap(resolveColumnMap(next.headers, supplier?.columnMap).map);
             })
             .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Ошибка"))
             .finally(() => setBusy(false));
@@ -610,7 +608,7 @@ function PastePane({
               const data = (await response.json()) as ParsedTable & { error?: string };
               if (!response.ok) throw new Error(data.error || "Не разобрать");
               setTable(data);
-              setMap(guessColumnMap(data.headers));
+              setMap(resolveColumnMap(data.headers, supplier?.columnMap).map);
             })
             .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Ошибка"))
             .finally(() => setBusy(false));
