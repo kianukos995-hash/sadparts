@@ -23,7 +23,12 @@ function extOf(file: File) {
 }
 
 export async function POST(request: NextRequest) {
-  const form = await request.formData();
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return Response.json({ error: "Нет файла или позиции" }, { status: 400 });
+  }
   const file = form.get("file");
   const offerId = String(form.get("offerId") ?? "");
   const supplierIdRaw = String(form.get("supplierId") ?? "");
