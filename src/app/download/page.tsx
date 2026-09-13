@@ -24,43 +24,55 @@ export default function DownloadPage() {
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <a
-            href="/api/download"
+            href="/sadparts-prices.zip"
             className={cn(buttonVariants({ size: "lg" }), "h-12 w-full justify-center text-base")}
           >
             <Download />
             Скачать ZIP
           </a>
           <p className="text-xs text-muted-foreground">
-            Если браузер ничего не спросил — проверьте папку «Загрузки». Имя файла:
-            sadparts-prices.zip
+            Windows 11: файл окажется в «Загрузки» как sadparts-prices.zip. Если браузер
+            ничего не спросил — проверьте папку Downloads и защиту SmartScreen.
           </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Как открыть у себя или у коллеги</CardTitle>
-          <CardDescription>Нужны Node.js 20+ и npm</CardDescription>
+          <CardTitle>Windows 11 — как открыть у себя</CardTitle>
+          <CardDescription>
+            Адрес превью Cursor — облако агента, не ваш ПК. На Win11 программа появится только
+            после запуска файла в распакованной папке.
+          </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 text-sm">
           <ol className="list-decimal space-y-2 pl-5">
-            <li>Распакуйте ZIP в любую папку.</li>
             <li>
-              В этой папке выполните:
-              <pre className="mt-2 overflow-x-auto rounded-lg bg-zinc-950 p-3 text-xs text-zinc-100">
-                npm install{"\n"}npm run build{"\n"}npm start
-              </pre>
+              Поставьте Node.js 20 LTS, установщик Windows 64-bit с{" "}
+              <a className="underline" href="https://nodejs.org" target="_blank" rel="noreferrer">
+                nodejs.org
+              </a>
+              , галочка Add to PATH.
             </li>
             <li>
-              Откройте{" "}
+              Правый клик по zip → <strong>Извлечь всё</strong> в папку вроде{" "}
+              <code>C:\SadParts</code>. Не запускайте файлы изнутри архива.
+            </li>
+            <li>
+              Внутри папки дважды кликните <code>start-windows.bat</code>. Первая установка
+              займёт несколько минут. Чёрное окно не закрывайте.
+            </li>
+            <li>
+              Браузер откроет{" "}
               <a className="font-medium underline" href="http://127.0.0.1:43217">
                 http://127.0.0.1:43217
-              </a>
+              </a>{" "}
+              уже на вашем компьютере. Если брандмауэр спросит — разрешите Node.js.
             </li>
           </ol>
           <p className="text-muted-foreground">
-            Свой сервер и Google Cloud — в файле DEPLOY.md внутри архива. Google Диск только
-            передаёт файл, сам сайт он не запускает.
+            Подробности — WINDOWS.md в архиве. Google Диск только передаёт файл, сам сайт он не
+            запускает.
           </p>
         </CardContent>
       </Card>

@@ -20,18 +20,20 @@ npm run pack
 
 ---
 
-## 1. У себя на компьютере (Windows / Mac / Linux)
+## 1. Windows 11 (ваш случай)
 
-1. Распакуйте ZIP.
-2. В папке проекта:
+Полная шпаргалка: **[WINDOWS.md](./WINDOWS.md)**.
 
-```bash
-npm install
-npm run build
-npm start
-```
+1. Node.js 20 LTS, установщик **Windows 64-bit (.msi)**, галочка Add to PATH: https://nodejs.org
+2. Правый клик по `sadparts-prices.zip` → **Извлечь всё** в `C:\SadParts` (не открывать zip двойным кликом и не запускать bat изнутри архива).
+3. Внутри папки дважды кликните **`start-windows.bat`**.
+4. В браузере на этом же ПК откроется http://127.0.0.1:43217
 
-3. Откройте http://127.0.0.1:43217
+Превью агента Cursor на `127.0.0.1:43217` — это облако, не ваш Win11. Пока bat не запущен локально, обычный Chrome на компьютере ничего не покажет.
+
+Если брандмауэр Windows спросит доступ — разрешите Node.js. SmartScreen: «Подробнее» → выполнить.
+
+macOS / Linux: `npm install && npm run build && npm start`.
 
 Режим разработки (без `build`): `npm run dev`.
 

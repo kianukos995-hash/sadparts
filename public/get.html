@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Скачать SadParts Prices</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: Arial, sans-serif;
+        background: #fff7ed;
+        color: #1c1917;
+      }
+      main {
+        width: min(520px, calc(100vw - 32px));
+        background: #fff;
+        border: 1px solid #fbbf24;
+        border-radius: 16px;
+        padding: 28px;
+      }
+      h1 { margin: 0 0 8px; font-size: 24px; }
+      p { margin: 0 0 16px; color: #57534e; line-height: 1.45; }
+      a.btn {
+        display: block;
+        text-align: center;
+        background: #f59e0b;
+        color: #1c1917;
+        font-weight: 700;
+        text-decoration: none;
+        padding: 14px 16px;
+        border-radius: 10px;
+      }
+      code { font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Скачать проект</h1>
+      <p>Windows 11: файл <code>sadparts-prices.zip</code> уйдёт в «Загрузки». Адрес превью Cursor — не ваш ПК, программу нужно запустить локально.</p>
+      <a class="btn" href="/sadparts-prices.zip" download="sadparts-prices.zip">Скачать ZIP</a>
+      <p style="margin-top:16px;font-size:13px">
+        1) Node.js LTS 64-bit с nodejs.org (Add to PATH).<br />
+        2) Правый клик по zip → Извлечь всё, лучше в <code>C:\SadParts</code>.<br />
+        3) Дважды кликните <code>start-windows.bat</code>. Чёрное окно не закрывайте.<br />
+        4) Откроется <code>http://127.0.0.1:43217</code> уже на вашем Win11.
+      </p>
+    </main>
+  </body>
+</html>

@@ -10,7 +10,9 @@
 2. В шапке справа жёлтая кнопка **Скачать ZIP**, либо меню слева **Скачать проект**.
 3. Прямые ссылки: [/download](http://127.0.0.1:43217/download) и [/api/download](http://127.0.0.1:43217/api/download).
 
-После скачивания распакуйте архив и выполните `npm install && npm run build && npm start`. Подробности — [DEPLOY.md](./DEPLOY.md).
+**Windows 11:** правый клик по zip → Извлечь всё → в папке дважды кликните `start-windows.bat`. Нужен Node.js LTS с [nodejs.org](https://nodejs.org) (галочка Add to PATH). Пошагово: [WINDOWS.md](./WINDOWS.md).
+
+macOS / Linux: `npm install && npm run build && npm start`. Облако и свой сервер: [DEPLOY.md](./DEPLOY.md).
 
 ## Что внутри
 

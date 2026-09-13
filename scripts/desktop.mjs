@@ -69,7 +69,11 @@ function openApp() {
       // try next
     }
   }
-  spawn(process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open", [URL], {
+  if (process.platform === "win32") {
+    spawn("cmd", ["/c", "start", "", URL], { detached: true, stdio: "ignore" }).unref();
+    return;
+  }
+  spawn(process.platform === "darwin" ? "open" : "xdg-open", [URL], {
     detached: true,
     stdio: "ignore",
   }).unref();
@@ -78,9 +82,10 @@ function openApp() {
 const already = await isUp();
 if (!already) {
   const cmd = existsSync(path.join(ROOT, ".next")) ? "start" : "dev";
-  spawn("npm", ["run", cmd], {
+  spawn(process.platform === "win32" ? "npm.cmd" : "npm", ["run", cmd], {
     cwd: ROOT,
     stdio: "inherit",
+    shell: process.platform === "win32",
     env: process.env,
   });
   await waitForPort();

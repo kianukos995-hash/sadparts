@@ -42,7 +42,7 @@ export default function HomePage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <a href="/api/download" className={cn(buttonVariants())}>
+          <a href="/sadparts-prices.zip" className={cn(buttonVariants())}>
             <Download />
             Скачать ZIP
           </a>
@@ -85,12 +85,12 @@ export default function HomePage() {
             Скачать весь проект одним файлом
           </CardTitle>
           <CardDescription>
-            Файл sadparts-prices.zip сразу начнёт качаться. Инструкция, как запустить у коллеги, —
-            на странице «Скачать проект» в меню слева.
+            Файл sadparts-prices.zip сразу начнёт качаться. На Windows 11: извлечь всё и
+            запустить start-windows.bat (не изнутри zip). Адрес превью Cursor — не ваш ПК.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
-          <a href="/api/download" className={cn(buttonVariants())}>
+          <a href="/sadparts-prices.zip" className={cn(buttonVariants())}>
             <Download />
             Скачать ZIP
           </a>

@@ -168,7 +168,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className="ml-auto flex items-center gap-2">
             <a
-              href="/api/download"
+              href="/sadparts-prices.zip"
               className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-semibold text-zinc-950 hover:bg-amber-400"
             >
               <Download className="size-4" />
