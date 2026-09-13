@@ -47,11 +47,39 @@ export async function getBotProfile(token: string) {
   return telegramApi<{ username?: string; first_name?: string }>(token, "getMe");
 }
 
-export async function sendTelegramMessage(token: string, chatId: number, text: string) {
+export async function sendTelegramMessage(token: string, chatId: number | string, text: string) {
   await telegramApi(token, "sendMessage", {
     chat_id: chatId,
     text,
   });
+}
+
+export async function sendTelegramDocument(
+  token: string,
+  chatId: number | string,
+  file: Buffer,
+  filename: string,
+  caption: string,
+) {
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append("caption", caption.slice(0, 1024));
+  form.append(
+    "document",
+    new Blob([new Uint8Array(file)], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+    filename,
+  );
+  const response = await fetch(`${API}/bot${token}/sendDocument`, {
+    method: "POST",
+    body: form,
+    cache: "no-store",
+  });
+  const data = (await response.json()) as TelegramApiResult<unknown>;
+  if (!data.ok) {
+    throw new Error(data.description || "Telegram sendDocument не выполнен");
+  }
 }
 
 export async function handleTelegramText(text: string, chatId: number, token: string) {
@@ -93,7 +121,7 @@ export async function handleTelegramText(text: string, chatId: number, token: st
 }
 
 export async function processUpdates(updates: TelegramUpdate[]) {
-  const settings = await readSettings();
+  let settings = await readSettings();
   const token = settings.telegramToken.trim();
   if (!token || updates.length === 0) return 0;
   let lastId = settings.telegramOffset;
@@ -101,6 +129,22 @@ export async function processUpdates(updates: TelegramUpdate[]) {
     lastId = Math.max(lastId, update.update_id);
     const text = update.message?.text;
     const chatId = update.message?.chat.id;
+    const from = update.message?.from;
+    if (chatId != null) {
+      const title =
+        [from?.first_name, from?.username ? `@${from.username}` : ""]
+          .filter(Boolean)
+          .join(" ")
+          .trim() || `chat ${chatId}`;
+      const chats = [...(settings.telegramChats ?? [])].filter((item) => item.id !== String(chatId));
+      chats.unshift({
+        id: String(chatId),
+        title,
+        username: from?.username,
+        updatedAt: new Date().toISOString(),
+      });
+      settings = { ...settings, telegramChats: chats.slice(0, 40) };
+    }
     if (!text || chatId == null) continue;
     try {
       await handleTelegramText(text, chatId, token);
@@ -108,7 +152,7 @@ export async function processUpdates(updates: TelegramUpdate[]) {
       console.error("telegram reply failed", error);
     }
   }
-  await writeSettings({ telegramOffset: lastId });
+  await writeSettings({ telegramOffset: lastId, telegramChats: settings.telegramChats });
   return updates.length;
 }
 

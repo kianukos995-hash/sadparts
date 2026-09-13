@@ -14,6 +14,11 @@ function toPublic(settings: Awaited<ReturnType<typeof readSettings>>): PublicSet
     markupPercent: settings.markupPercent,
     moscowHubNote: settings.moscowHubNote,
     priceBands: settings.priceBands,
+    sellerTitle: settings.sellerTitle,
+    sellerAddress: settings.sellerAddress,
+    vatPercent: settings.vatPercent,
+    telegramNotifyChatId: settings.telegramNotifyChatId,
+    telegramChats: settings.telegramChats ?? [],
   };
 }
 
@@ -29,6 +34,10 @@ export async function POST(request: NextRequest) {
     markupPercent?: number;
     moscowHubNote?: string;
     priceBands?: { id: string; min: number; max: number | null; markupPercent: number }[];
+    sellerTitle?: string;
+    sellerAddress?: string;
+    vatPercent?: number;
+    telegramNotifyChatId?: string;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -52,6 +61,18 @@ export async function POST(request: NextRequest) {
   }
   if (typeof body.moscowHubNote === "string") {
     tradePatch.moscowHubNote = body.moscowHubNote;
+  }
+  if (typeof body.sellerTitle === "string") {
+    tradePatch.sellerTitle = body.sellerTitle;
+  }
+  if (typeof body.sellerAddress === "string") {
+    tradePatch.sellerAddress = body.sellerAddress;
+  }
+  if (typeof body.vatPercent === "number" && Number.isFinite(body.vatPercent)) {
+    tradePatch.vatPercent = Math.min(22, Math.max(0, body.vatPercent));
+  }
+  if (typeof body.telegramNotifyChatId === "string") {
+    tradePatch.telegramNotifyChatId = body.telegramNotifyChatId.trim();
   }
   if (Array.isArray(body.priceBands)) {
     tradePatch.priceBands = sanitizeBands(body.priceBands);

@@ -1,27 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { OrderEditor } from "@/components/order-editor";
+import { OrderShareBar } from "@/components/order-share";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
-import { formatDays, formatMoney } from "@/lib/format";
-import { PriceFormula } from "@/components/price-formula";
-import { clientLineTotal, clientPriceBreakdown } from "@/lib/pricing";
+import { formatMoney } from "@/lib/format";
+import { emptyDraft } from "@/lib/order";
+import { priceOrder } from "@/lib/order-price";
 import { cn } from "@/lib/utils";
 import type { Order, OrderStatus } from "@/lib/types";
 
@@ -34,310 +25,82 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
 export default function OrdersPage() {
   const {
     ready,
-    suppliers,
     clients,
     orders,
     drafts,
-    draft: storedDraft,
+    draft,
     setActiveDraftId,
     settings,
     upsertOrder,
     removeOrder,
   } = useAvtoPrice();
-  const [markupOverride, setMarkupOverride] = useState<string | null>(null);
-
-  const client = clients.find((item) => item.id === storedDraft?.clientId);
-  const discount = client?.discountPercent ?? 0;
-  const useBands = markupOverride === null || markupOverride.trim() === "";
-  const markup = useBands
-    ? null
-    : Number.parseFloat(markupOverride.replace(",", ".")) || 0;
-  const names = useMemo(
-    () => new Map(suppliers.map((supplier) => [supplier.id, supplier.name])),
-    [suppliers],
-  );
-
-  const totals = useMemo(() => {
-    if (!storedDraft) return { buy: 0, sell: 0, qty: 0, markup: 0, discount: 0 };
-    return storedDraft.lines.reduce(
-      (acc, line) => {
-        const b = clientPriceBreakdown(
-          line.buyPrice,
-          settings.priceBands,
-          settings.markupPercent,
-          client,
-          markup,
-        );
-        return {
-          buy: acc.buy + line.buyPrice * line.qty,
-          markup: acc.markup + b.markupAmount * line.qty,
-          discount: acc.discount + b.discountAmount * line.qty,
-          sell:
-            acc.sell +
-            clientLineTotal(
-              line.buyPrice,
-              line.qty,
-              settings.priceBands,
-              settings.markupPercent,
-              client,
-              markup,
-            ),
-          qty: acc.qty + line.qty,
-        };
-      },
-      { buy: 0, sell: 0, qty: 0, markup: 0, discount: 0 },
-    );
-  }, [storedDraft, markup, client, settings.priceBands, settings.markupPercent]);
-
-  async function persist(next: Order) {
-    await upsertOrder({
-      ...next,
-      markupPercent:
-        next.status === "draft" ? (markup ?? settings.markupPercent) : next.markupPercent,
-      updatedAt: new Date().toISOString(),
-    });
-  }
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const editing = orders.find((item) => item.id === editingId && item.status !== "draft") ?? null;
 
   if (!ready) return <p className="text-sm text-muted-foreground">Загружаю заказы…</p>;
 
-  const draft = storedDraft;
-
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Заказы</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Заказы</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Черновики живут на диске и в браузере: обновление страницы их не съест. Несколько корзин —
-            несколько черновиков.
+            Нумерация ЗК-0001. Черновики делятся по клиентам в проценке. Накладная — Excel по шаблону
+            «Заказ клиента», печать и отправка в Telegram / WhatsApp.
           </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => {
+            const created = emptyDraft(orders, clients, settings.markupPercent, draft?.clientId);
+            void upsertOrder(created).then(() => {
+              setActiveDraftId(created.id);
+              toast.success(created.number);
+            });
+          }}
+        >
+          Новая корзина
+        </Button>
       </div>
 
       {drafts.length > 1 ? (
         <div className="flex flex-wrap gap-2">
-          {drafts.map((item) => (
-            <Button
-              key={item.id}
-              size="sm"
-              variant={item.id === storedDraft?.id ? "default" : "outline"}
-              onClick={() => setActiveDraftId(item.id)}
-            >
-              {item.number} · {item.lines.length} поз.
-            </Button>
-          ))}
+          {drafts.map((item) => {
+            const name = clients.find((client) => client.id === item.clientId)?.name;
+            return (
+              <Button
+                key={item.id}
+                size="sm"
+                variant={item.id === draft?.id ? "default" : "outline"}
+                onClick={() => setActiveDraftId(item.id)}
+              >
+                {item.number} · {name || "без клиента"} · {item.lines.length} поз.
+              </Button>
+            );
+          })}
         </div>
       ) : null}
 
       {draft ? (
-      <Card>
-        <CardHeader>
-          <CardTitle>Черновик {draft.number}</CardTitle>
-          <CardDescription>
-            {settings.moscowHubNote || "Срок в строке — дни до Москвы от поставщика."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4">
-          <div className="grid gap-3 md:grid-cols-3">
-            <label className="grid gap-1.5">
-              <Label>Клиент</Label>
-              <select
-                className="h-9 rounded-lg border bg-transparent px-3 text-sm"
-                value={draft.clientId}
-                onChange={(event) => {
-                  void persist({ ...draft, clientId: event.target.value });
-                }}
-              >
-                <option value="">Без клиента</option>
-                {clients.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name} · скидка {item.discountPercent}%
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1.5">
-              <Label>Наценка, %</Label>
-              <Input
-                type="number"
-                min={0}
-                placeholder="по коридорам"
-                value={markupOverride ?? ""}
-                onChange={(event) => setMarkupOverride(event.target.value)}
-                onBlur={() => {
-                  if (!useBands) void persist({ ...draft, markupPercent: markup ?? 0 });
-                }}
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Пусто — наценка из ценовых категорий
-                {client ? ` клиента «${client.name}»` : ""}.
-              </p>
-            </label>
-            <div className="grid gap-1 text-sm">
-              <p className="text-muted-foreground">Скидка клиента</p>
-              <p className="text-lg font-semibold">{discount}%</p>
-            </div>
-          </div>
-
-          {draft.lines.length === 0 ? (
-            <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-              Позиций нет. Откройте каталог и нажмите «В заказ».
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Артикул</TableHead>
-                  <TableHead className="hidden md:table-cell">OEM</TableHead>
-                  <TableHead>Поставщик</TableHead>
-                  <TableHead className="text-right">Кол-во</TableHead>
-                  <TableHead className="hidden text-right sm:table-cell">Закуп</TableHead>
-                  <TableHead className="text-right">Клиенту</TableHead>
-                  <TableHead className="hidden text-right lg:table-cell">До Москвы</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {draft.lines.map((line) => {
-                  const breakdown = clientPriceBreakdown(
-                    line.buyPrice,
-                    settings.priceBands,
-                    settings.markupPercent,
-                    client,
-                    markup,
-                  );
-                  return (
-                  <TableRow key={line.id}>
-                    <TableCell>
-                      <p className="font-mono text-xs">{line.sku}</p>
-                      <p className="text-sm">
-                        {line.brand} · {line.name}
-                      </p>
-                    </TableCell>
-                    <TableCell className="hidden font-mono text-xs md:table-cell">
-                      {line.oem || "—"}
-                    </TableCell>
-                    <TableCell>{names.get(line.supplierId) ?? "—"}</TableCell>
-                    <TableCell className="text-right">
-                      <Input
-                        className="ml-auto h-8 w-20 text-right"
-                        type="number"
-                        min={1}
-                        value={line.qty}
-                        onChange={(event) => {
-                          const qty = Math.max(1, Number.parseInt(event.target.value, 10) || 1);
-                          void persist({
-                            ...draft,
-                            lines: draft.lines.map((item) =>
-                              item.id === line.id ? { ...item, qty } : item,
-                            ),
-                          });
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell className="hidden text-right sm:table-cell">
-                      {formatMoney(line.buyPrice, line.currency)}
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {formatMoney(breakdown.sell, line.currency)}
-                      <PriceFormula breakdown={breakdown} currency={line.currency} compact />
-                      <p className="text-[11px] font-normal text-muted-foreground">
-                        × {line.qty} ={" "}
-                        {formatMoney(
-                          clientLineTotal(
-                            line.buyPrice,
-                            line.qty,
-                            settings.priceBands,
-                            settings.markupPercent,
-                            client,
-                            markup,
-                          ),
-                          line.currency,
-                        )}
-                      </p>
-                    </TableCell>
-                    <TableCell className="hidden text-right lg:table-cell">
-                      {formatDays(line.deliveryDays)}
-                      {line.warehouse ? (
-                        <p className="text-[11px] text-muted-foreground">{line.warehouse}</p>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => {
-                          void persist({
-                            ...draft,
-                            lines: draft.lines.filter((item) => item.id !== line.id),
-                          });
-                        }}
-                      >
-                        <Trash2 />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-
-          <label className="grid gap-1.5">
-            <Label>Комментарий</Label>
-            <Textarea
-              rows={2}
-              value={draft.comment}
-              onChange={(event) => {
-                void persist({ ...draft, comment: event.target.value });
-              }}
-            />
-          </label>
-
-          <div className="flex flex-col gap-3 rounded-lg bg-muted/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">
-                {totals.qty} шт. · закуп {formatMoney(totals.buy)} + наценка {formatMoney(totals.markup)} −
-                скидка {formatMoney(totals.discount)}
-              </p>
-              <p className="text-xl font-semibold">Клиенту {formatMoney(totals.sell)}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                disabled={draft.lines.length === 0}
-                onClick={() => {
-                  void persist({ ...draft, lines: [] }).then(() => toast.success("Черновик очищен"));
-                }}
-              >
-                Очистить
-              </Button>
-              <Button
-                disabled={draft.lines.length === 0}
-                onClick={() => {
-                  void persist({ ...draft, status: "assembled" }).then(() =>
-                    toast.success(`Заказ ${draft.number} собран`),
-                  );
-                }}
-              >
-                Собрать заказ
-              </Button>
-            </div>
-          </div>
-          <RosskoCheckout order={draft} />
-        </CardContent>
-      </Card>
+        <OrderEditor order={draft} />
       ) : (
-      <Card>
-        <CardContent className="flex flex-col items-start gap-3 py-10">
-          <p className="text-sm text-muted-foreground">
-            Черновика нет. Добавьте позиции из каталога — OEM, артикул, срок до Москвы и цена
-            подтянутся сами.
-          </p>
-          <Link href="/catalog" className={cn(buttonVariants())}>
-            Открыть каталог
-          </Link>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardContent className="flex flex-col items-start gap-3 py-10">
+            <p className="text-sm text-muted-foreground">
+              Черновика нет. Добавьте позиции из проценки — появится заказ ЗК-0001.
+            </p>
+            <Link href="/quote" className={cn(buttonVariants())}>
+              Открыть проценку
+            </Link>
+          </CardContent>
+        </Card>
       )}
+
+      {draft ? <RosskoCheckout order={draft} /> : null}
+
+      {editing ? (
+        <OrderEditor order={editing} onClose={() => setEditingId(null)} />
+      ) : null}
 
       <div>
         <h2 className="mb-3 text-lg font-medium">История</h2>
@@ -349,58 +112,58 @@ export default function OrdersPage() {
               .filter((order) => order.status !== "draft")
               .map((order) => {
                 const orderClient = clients.find((item) => item.id === order.clientId);
-                const orderDiscount = orderClient?.discountPercent ?? 0;
-                const sell = order.lines.reduce(
-                  (sum, line) =>
-                    sum +
-                    clientLineTotal(
-                      line.buyPrice,
-                      line.qty,
-                      settings.priceBands,
-                      order.markupPercent,
-                      orderClient,
-                    ),
-                  0,
+                const priced = priceOrder(
+                  order,
+                  orderClient,
+                  settings.priceBands,
+                  order.markupPercent || settings.markupPercent,
                 );
                 return (
-                  <div
-                    key={order.id}
-                    className="flex flex-col gap-1 rounded-lg border px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div>
-                      <p className="font-medium">
-                        {order.number} · {orderClient?.name || "без клиента"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {order.lines.length} поз. · коридоры / скидка {orderDiscount}%
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary">{STATUS_LABEL[order.status]}</Badge>
-                      <span className="text-sm font-medium">{formatMoney(sell)}</span>
-                      {order.status === "assembled" ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            void persist({ ...order, status: "sent" }).then(() =>
-                              toast.success("Отмечен как отправленный"),
-                            )
-                          }
-                        >
-                          Отправлен
+                  <div key={order.id} className="grid gap-2 rounded-lg border px-3 py-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-medium">
+                          {order.number} · {orderClient?.name || "без клиента"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {order.lines.length} поз. · скидка {orderClient?.discountPercent ?? 0}%
+                          {order.car ? ` · ${order.car}` : ""}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary">{STATUS_LABEL[order.status]}</Badge>
+                        <span className="text-sm font-medium">{formatMoney(priced.totals.sell)}</span>
+                        <Button size="sm" variant="outline" onClick={() => setEditingId(order.id)}>
+                          <Pencil />
+                          Изменить
                         </Button>
-                      ) : null}
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => {
-                          if (confirm(`Удалить ${order.number}?`)) void removeOrder(order.id);
-                        }}
-                      >
-                        <Trash2 />
-                      </Button>
+                        {order.status === "assembled" ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              void upsertOrder({
+                                ...order,
+                                status: "sent",
+                                updatedAt: new Date().toISOString(),
+                              }).then(() => toast.success("Отмечен как отправленный"))
+                            }
+                          >
+                            Отправлен
+                          </Button>
+                        ) : null}
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => {
+                            if (confirm(`Удалить ${order.number}?`)) void removeOrder(order.id);
+                          }}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
                     </div>
+                    {editingId === order.id ? null : <OrderShareBar order={order} />}
                   </div>
                 );
               })}
@@ -494,7 +257,7 @@ function RosskoCheckout({ order }: { order: Order }) {
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="grid gap-1.5 text-sm">
-          <Label>Доставка</Label>
+          Доставка
           <select
             className="h-9 rounded-lg border bg-transparent px-3 text-sm"
             value={deliveryId}
@@ -509,7 +272,7 @@ function RosskoCheckout({ order }: { order: Order }) {
           </select>
         </label>
         <label className="grid gap-1.5 text-sm">
-          <Label>Оплата</Label>
+          Оплата
           <select
             className="h-9 rounded-lg border bg-transparent px-3 text-sm"
             value={paymentId}

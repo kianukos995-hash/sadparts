@@ -270,7 +270,7 @@ function DrawerBody({
         ) : null}
 
         <div className="flex flex-wrap gap-2">
-          <AddToOrderButtons offer={offer} />
+          <AddToOrderButtons offer={offer} clientId={clientId} />
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Закрыть
           </Button>

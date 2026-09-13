@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { emptyDraft, findDraft, findDrafts, offerToLine } from "@/lib/order";
+import { copyClientVehicle, emptyDraft, findDraft, findDraftForClient, findDrafts, offerToLine } from "@/lib/order";
 import { DEFAULT_PRICE_BANDS } from "@/lib/price-bands";
 import type {
   Client,
@@ -31,6 +31,11 @@ const EMPTY_PUBLIC: PublicSettings = {
   markupPercent: 18,
   moscowHubNote: "",
   priceBands: DEFAULT_PRICE_BANDS,
+  sellerTitle: "",
+  sellerAddress: "",
+  vatPercent: 0,
+  telegramNotifyChatId: "",
+  telegramChats: [],
 };
 
 const ORDERS_KEY = "sadparts-orders-v1";
@@ -66,11 +71,19 @@ export interface AvtoPriceApi {
   removeClient: (id: string) => Promise<void>;
   upsertOrder: (order: Order) => Promise<void>;
   removeOrder: (id: string) => Promise<void>;
-  addToDraft: (offer: Offer, qty?: number, options?: { newOrder?: boolean; orderId?: string }) => Promise<Order>;
+  addToDraft: (
+    offer: Offer,
+    qty?: number,
+    options?: { newOrder?: boolean; orderId?: string; clientId?: string },
+  ) => Promise<Order>;
   saveTradeSettings: (patch: {
     markupPercent?: number;
     moscowHubNote?: string;
     priceBands?: PublicSettings["priceBands"];
+    sellerTitle?: string;
+    sellerAddress?: string;
+    vatPercent?: number;
+    telegramNotifyChatId?: string;
   }) => Promise<void>;
   resetDemo: () => Promise<void>;
 }
@@ -248,18 +261,32 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
   }, [applyStore]);
 
   const addToDraft = useCallback(
-    async (offer: Offer, qty = 1, options?: { newOrder?: boolean; orderId?: string }) => {
+    async (
+      offer: Offer,
+      qty = 1,
+      options?: { newOrder?: boolean; orderId?: string; clientId?: string },
+    ) => {
       const drafts = findDrafts(store.orders);
       let draft: Order;
       if (options?.newOrder) {
-        draft = emptyDraft(store.orders, store.clients, settings.markupPercent);
+        draft = emptyDraft(store.orders, store.clients, settings.markupPercent, options.clientId);
       } else if (options?.orderId) {
-        draft = drafts.find((item) => item.id === options.orderId) ?? emptyDraft(store.orders, store.clients, settings.markupPercent);
+        draft =
+          drafts.find((item) => item.id === options.orderId) ??
+          emptyDraft(store.orders, store.clients, settings.markupPercent, options.clientId);
+      } else if (options?.clientId) {
+        draft =
+          findDraftForClient(store.orders, options.clientId) ??
+          emptyDraft(store.orders, store.clients, settings.markupPercent, options.clientId);
       } else {
         draft =
           drafts.find((item) => item.id === activeDraftId) ??
           findDraft(store.orders) ??
           emptyDraft(store.orders, store.clients, settings.markupPercent);
+      }
+      if (options?.clientId && draft.clientId !== options.clientId) {
+        const client = store.clients.find((item) => item.id === options.clientId);
+        draft = { ...draft, clientId: options.clientId, ...copyClientVehicle(client) };
       }
       const line = offerToLine(offer, qty);
       const existing = draft.lines.find((item) => item.offerId === offer.id);
@@ -281,6 +308,10 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       markupPercent?: number;
       moscowHubNote?: string;
       priceBands?: PublicSettings["priceBands"];
+      sellerTitle?: string;
+      sellerAddress?: string;
+      vatPercent?: number;
+      telegramNotifyChatId?: string;
     }) => {
       const response = await fetch("/api/settings", {
         method: "POST",

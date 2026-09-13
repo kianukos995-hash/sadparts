@@ -163,6 +163,47 @@ export default function ClientsPage() {
                 />
               </Field>
             </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Telegram Chat ID">
+                <Input
+                  value={draft.telegramChatId ?? ""}
+                  onChange={(event) =>
+                    setDraft((prev) => ({ ...prev, telegramChatId: event.target.value }))
+                  }
+                  placeholder="для накладной в мессенджер"
+                />
+              </Field>
+              <Field label="Автомобиль">
+                <Input
+                  value={draft.car ?? ""}
+                  onChange={(event) => setDraft((prev) => ({ ...prev, car: event.target.value }))}
+                />
+              </Field>
+              <Field label="VIN">
+                <Input
+                  value={draft.vin ?? ""}
+                  onChange={(event) => setDraft((prev) => ({ ...prev, vin: event.target.value }))}
+                />
+              </Field>
+              <Field label="Госномер">
+                <Input
+                  value={draft.plate ?? ""}
+                  onChange={(event) => setDraft((prev) => ({ ...prev, plate: event.target.value }))}
+                />
+              </Field>
+              <Field label="Год">
+                <Input
+                  value={draft.year ?? ""}
+                  onChange={(event) => setDraft((prev) => ({ ...prev, year: event.target.value }))}
+                />
+              </Field>
+              <Field label="Цвет">
+                <Input
+                  value={draft.color ?? ""}
+                  onChange={(event) => setDraft((prev) => ({ ...prev, color: event.target.value }))}
+                />
+              </Field>
+            </div>
             <Field label="Скидка, % от цены с наценкой">
               <Input
                 type="number"

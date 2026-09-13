@@ -109,7 +109,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [bot, setBot] = useState<PublicSettings | null>(null);
   const { draft, drafts } = useAvtoPrice();
+  const pathname = usePathname();
   const draftCount = drafts.reduce((sum, order) => sum + order.lines.reduce((s, line) => s + line.qty, 0), 0);
+  const printMode = pathname.startsWith("/orders/print");
 
   useEffect(() => {
     void fetch("/api/settings")
@@ -117,6 +119,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       .then((data: PublicSettings) => setBot(data))
       .catch(() => undefined);
   }, []);
+
+  if (printMode) {
+    return <div className="min-h-full bg-white">{children}</div>;
+  }
 
   return (
     <div className="flex min-h-full bg-background">

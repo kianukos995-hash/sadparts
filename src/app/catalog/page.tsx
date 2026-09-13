@@ -19,8 +19,10 @@ import { OfferSpecs } from "@/components/offer-specs";
 import { BrandDialog, BrandMark } from "@/components/brand-mark";
 import { PriceChange } from "@/components/price-change";
 import { AddToOrderButtons, offerContextAdd } from "@/components/add-to-order";
+import { ClientCartBar } from "@/components/client-carts";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { formatDays, formatMoney, formatStock } from "@/lib/format";
+import { findDraftForClient } from "@/lib/order";
 import { groupByOem, offerTitle } from "@/lib/oem";
 import { applicabilityOf, sellWarning } from "@/lib/offer-extra";
 import { pairLabel } from "@/lib/pairs";
@@ -33,7 +35,7 @@ import { cn } from "@/lib/utils";
 const PAGE_SIZE = 24;
 
 export default function CatalogPage() {
-  const { ready, suppliers, clients, settings, addToDraft } = useAvtoPrice();
+  const { ready, suppliers, clients, settings, addToDraft, drafts, setActiveDraftId } = useAvtoPrice();
   const [query, setQuery] = useState("");
   const [offers, setOffers] = useState<Offer[]>([]);
   const [total, setTotal] = useState(0);
@@ -127,7 +129,13 @@ export default function CatalogPage() {
         <Select
           value={clientId || "none"}
           onValueChange={(value) => {
-            if (value) setClientId(value === "none" ? "" : value);
+            if (!value) return;
+            const id = value === "none" ? "" : value;
+            setClientId(id);
+            if (id) {
+              const existing = findDraftForClient(drafts, id);
+              if (existing) setActiveDraftId(existing.id);
+            }
           }}
         >
           <SelectTrigger className="w-full">
@@ -230,6 +238,8 @@ export default function CatalogPage() {
         </label>
       </div>
 
+      <ClientCartBar clientId={clientId} onClientId={setClientId} />
+
       <p className="text-xs text-muted-foreground">
         {total.toLocaleString("ru-RU")} на странице фильтров · {catalogRows.toLocaleString("ru-RU")} в
         файлах прайсов · {groups.length} групп
@@ -311,7 +321,7 @@ export default function CatalogPage() {
                         <div
                           key={offer.id}
                           className="flex flex-col gap-2 border-b px-4 py-3 last:border-b-0 sm:flex-row sm:items-start"
-                          onContextMenu={offerContextAdd(offer, addToDraft)}
+                          onContextMenu={offerContextAdd(offer, addToDraft, clientId)}
                         >
                           <div className="shrink-0">
                             <OfferMedia images={offer.images} sku={offer.sku} size="sm" />
@@ -362,7 +372,7 @@ export default function CatalogPage() {
                                 <p className="text-[11px] text-amber-800">ниже закупа — только предупреждение</p>
                               ) : null}
                             </div>
-                            <AddToOrderButtons offer={offer} compact />
+                            <AddToOrderButtons offer={offer} compact clientId={clientId} />
                           </div>
                         </div>
                       );

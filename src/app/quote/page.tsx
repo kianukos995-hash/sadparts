@@ -24,8 +24,10 @@ import { OfferDrawer } from "@/components/offer-drawer";
 import { BrandDialog, BrandMark } from "@/components/brand-mark";
 import { PriceChange } from "@/components/price-change";
 import { AddToOrderButtons, offerContextAdd } from "@/components/add-to-order";
+import { ClientCartBar } from "@/components/client-carts";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { formatDays, formatMoney, formatStock } from "@/lib/format";
+import { findDraftForClient } from "@/lib/order";
 import { applicabilityOf, sellWarning } from "@/lib/offer-extra";
 import { pairLabel } from "@/lib/pairs";
 import { PriceFormula } from "@/components/price-formula";
@@ -34,7 +36,7 @@ import type { Offer } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export default function QuotePage() {
-  const { ready, suppliers, clients, settings, addToDraft } = useAvtoPrice();
+  const { ready, suppliers, clients, settings, addToDraft, drafts, setActiveDraftId } = useAvtoPrice();
   const [sku, setSku] = useState("");
   const [name, setName] = useState("");
   const [supplierId, setSupplierId] = useState("all");
@@ -103,7 +105,8 @@ export default function QuotePage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Проценка</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Точечный поиск по прайсам поставщиков. ПКМ по строке — сразу в новый черновик заказа.
+          Точечный поиск по прайсам. Выберите клиента — у него своя корзина ЗК. ПКМ по строке — новая
+          корзина этого клиента.
         </p>
       </div>
 
@@ -199,7 +202,13 @@ export default function QuotePage() {
         <Select
           value={clientId || "none"}
           onValueChange={(value) => {
-            if (value) setClientId(value === "none" ? "" : value);
+            if (!value) return;
+            const id = value === "none" ? "" : value;
+            setClientId(id);
+            if (id) {
+              const existing = findDraftForClient(drafts, id);
+              if (existing) setActiveDraftId(existing.id);
+            }
           }}
         >
           <SelectTrigger className="w-full">
@@ -236,6 +245,8 @@ export default function QuotePage() {
           Искать
         </Button>
       </div>
+
+      <ClientCartBar clientId={clientId} onClientId={setClientId} />
 
       <p className="text-xs text-muted-foreground">
         {busy ? "Ищу…" : `${total.toLocaleString("ru-RU")} позиций`} · страница {page + 1}/{pages}
@@ -282,7 +293,7 @@ export default function QuotePage() {
                 key={offer.id}
                 className="cursor-pointer"
                 onClick={() => setSelected(offer)}
-                onContextMenu={offerContextAdd(offer, addToDraft)}
+                onContextMenu={offerContextAdd(offer, addToDraft, clientId)}
               >
                 <TableCell className="font-mono text-xs">
                   {offer.sku}
@@ -310,7 +321,7 @@ export default function QuotePage() {
                 </TableCell>
                 <TableCell className="text-right">{formatStock(offer.stock)}</TableCell>
                 <TableCell onClick={(event) => event.stopPropagation()}>
-                  <AddToOrderButtons offer={offer} compact />
+                  <AddToOrderButtons offer={offer} compact clientId={clientId} />
                 </TableCell>
               </TableRow>
             );

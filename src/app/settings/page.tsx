@@ -32,6 +32,10 @@ export default function SettingsPage() {
   const [markup, setMarkup] = useState<string | null>(null);
   const [hubNote, setHubNote] = useState<string | null>(null);
   const [bands, setBands] = useState<PriceBand[] | null>(null);
+  const [sellerTitle, setSellerTitle] = useState<string | null>(null);
+  const [sellerAddress, setSellerAddress] = useState<string | null>(null);
+  const [vat, setVat] = useState<string | null>(null);
+  const [notifyChat, setNotifyChat] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const markupValue = markup ?? String(settings.markupPercent);
@@ -44,6 +48,10 @@ export default function SettingsPage() {
     Number.parseFloat(markupValue.replace(",", ".")) || 0,
   );
   const sampleBreakdown = priceBreakdown(sampleBuy, sampleMarkup, 8);
+  const sellerTitleValue = sellerTitle ?? settings.sellerTitle ?? "";
+  const sellerAddressValue = sellerAddress ?? settings.sellerAddress ?? "";
+  const vatValue = vat ?? String(settings.vatPercent ?? 0);
+  const notifyChatValue = notifyChat ?? settings.telegramNotifyChatId ?? "";
 
   if (!ready) return <p className="text-sm text-muted-foreground">Загружаю настройки…</p>;
 
@@ -115,6 +123,10 @@ export default function SettingsPage() {
                   markupPercent: Number.parseFloat(markupValue.replace(",", ".")) || 0,
                   moscowHubNote: noteValue,
                   priceBands: bandsValue,
+                  sellerTitle: sellerTitleValue,
+                  sellerAddress: sellerAddressValue,
+                  vatPercent: Number.parseFloat(vatValue.replace(",", ".")) || 0,
+                  telegramNotifyChatId: notifyChatValue,
                 })
                   .then(() => toast.success("Настройки сохранены"))
                   .catch((error: unknown) =>
@@ -126,6 +138,50 @@ export default function SettingsPage() {
               Сохранить
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Накладная ЗК</CardTitle>
+          <CardDescription>
+            Шапка Excel и печати берётся отсюда. Шаблон — «Заказ клиента ЗК-500». Номера заказов:
+            ЗК-0001, ЗК-0002…
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <label className="grid gap-1.5 sm:col-span-2">
+            <Label>Продавец (строка 1)</Label>
+            <Input value={sellerTitleValue} onChange={(event) => setSellerTitle(event.target.value)} />
+          </label>
+          <label className="grid gap-1.5 sm:col-span-2">
+            <Label>Адрес (строка 2)</Label>
+            <Textarea
+              rows={2}
+              value={sellerAddressValue}
+              onChange={(event) => setSellerAddress(event.target.value)}
+            />
+          </label>
+          <label className="grid gap-1.5">
+            <Label>НДС, % (0 — не облагается)</Label>
+            <Input value={vatValue} onChange={(event) => setVat(event.target.value)} type="number" min={0} />
+          </label>
+          <label className="grid gap-1.5">
+            <Label>Chat ID для накладных в Telegram</Label>
+            <Input
+              value={notifyChatValue}
+              onChange={(event) => setNotifyChat(event.target.value)}
+              placeholder="если у клиента нет своего"
+              list="telegram-chats"
+            />
+            <datalist id="telegram-chats">
+              {settings.telegramChats?.map((chat) => (
+                <option key={chat.id} value={chat.id}>
+                  {chat.title}
+                </option>
+              ))}
+            </datalist>
+          </label>
         </CardContent>
       </Card>
 

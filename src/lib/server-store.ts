@@ -32,6 +32,11 @@ export const EMPTY_SETTINGS: AppSettings = {
   markupPercent: 18,
   moscowHubNote: "Срок до Москвы считается от склада поставщика + 1 день на хаб.",
   priceBands: DEFAULT_PRICE_BANDS,
+  sellerTitle: "ИП Блажиевский Олег Владимирович, ИНН 622602703211",
+  sellerAddress: "391001, Рязанская обл, Клепиковский р-н, рп Тума",
+  vatPercent: 0,
+  telegramNotifyChatId: "",
+  telegramChats: [],
 };
 
 const DEFAULT_DELIVERY: Record<string, { days: number; note: string }> = {
@@ -127,11 +132,14 @@ function dedupeOrders(orders: Order[]) {
 }
 
 function nextUniqueNumber(orders: Order[], used: Set<string>) {
-  let n = orders.length + 1;
-  let value = `SP-${String(n).padStart(4, "0")}`;
+  let n = orders.reduce((acc, order) => {
+    const match = /^(?:ЗК|ZK|SP)-(\d+)$/i.exec(order.number);
+    return match ? Math.max(acc, Number.parseInt(match[1], 10)) : acc;
+  }, 0);
+  let value = `ЗК-${String(n + 1).padStart(4, "0")}`;
   while (used.has(value)) {
     n += 1;
-    value = `SP-${String(n).padStart(4, "0")}`;
+    value = `ЗК-${String(n).padStart(4, "0")}`;
   }
   return value;
 }
@@ -376,6 +384,7 @@ async function readSettingsFile(): Promise<AppSettings> {
       ...EMPTY_SETTINGS,
       ...parsed,
       priceBands: parsed.priceBands?.length ? parsed.priceBands : DEFAULT_PRICE_BANDS,
+      telegramChats: Array.isArray(parsed.telegramChats) ? parsed.telegramChats : [],
     };
   } catch {
     return { ...EMPTY_SETTINGS };

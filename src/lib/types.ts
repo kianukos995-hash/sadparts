@@ -99,6 +99,13 @@ export interface SyncLog {
   mode?: ImportMode;
 }
 
+export interface TelegramChat {
+  id: string;
+  title: string;
+  username?: string;
+  updatedAt: string;
+}
+
 export interface Client {
   id: string;
   name: string;
@@ -108,6 +115,12 @@ export interface Client {
   bandMarkups?: Record<string, number>;
   notes: string;
   createdAt: string;
+  telegramChatId?: string;
+  car?: string;
+  vin?: string;
+  plate?: string;
+  year?: string;
+  color?: string;
 }
 
 export interface OrderLine {
@@ -141,6 +154,12 @@ export interface Order {
   externalIds?: string[];
   externalStatus?: string;
   externalMessage?: string;
+  car?: string;
+  vin?: string;
+  plate?: string;
+  year?: string;
+  color?: string;
+  paidAmount?: number;
 }
 
 export interface PriceBand {
@@ -159,6 +178,11 @@ export interface AppSettings {
   markupPercent: number;
   moscowHubNote: string;
   priceBands: PriceBand[];
+  sellerTitle: string;
+  sellerAddress: string;
+  vatPercent: number;
+  telegramNotifyChatId: string;
+  telegramChats: TelegramChat[];
 }
 
 export interface PublicSettings {
@@ -169,6 +193,11 @@ export interface PublicSettings {
   markupPercent: number;
   moscowHubNote: string;
   priceBands: PriceBand[];
+  sellerTitle: string;
+  sellerAddress: string;
+  vatPercent: number;
+  telegramNotifyChatId: string;
+  telegramChats: TelegramChat[];
 }
 
 export interface StoreSnapshot {
