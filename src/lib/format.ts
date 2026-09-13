@@ -1,0 +1,49 @@
+const moneyCache = new Map<string, Intl.NumberFormat>();
+
+export function formatMoney(amount: number, currency = "RUB") {
+  const key = currency || "RUB";
+  let fmt = moneyCache.get(key);
+  if (!fmt) {
+    fmt = new Intl.NumberFormat("ru-RU", {
+      style: "currency",
+      currency: key,
+      maximumFractionDigits: 2,
+    });
+    moneyCache.set(key, fmt);
+  }
+  return fmt.format(amount);
+}
+
+export function formatDateTime(iso?: string) {
+  if (!iso) return "никогда";
+  return new Intl.DateTimeFormat("ru-RU", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(iso));
+}
+
+export function formatStock(stock: number) {
+  if (stock <= 0) return "нет";
+  if (stock < 5) return `${stock} шт.`;
+  return `${stock} шт.`;
+}
+
+export function maskKey(key: string) {
+  const value = key.trim();
+  if (!value) return "не задан";
+  if (value.length <= 6) return "••••••";
+  return `${value.slice(0, 3)}••••${value.slice(-4)}`;
+}
+
+export function normalizeSku(value: string) {
+  return value.replace(/\s+/g, "").toUpperCase();
+}
+
+export function offerKey(supplierId: string, sku: string) {
+  return `${supplierId}:${normalizeSku(sku)}`;
+}
+
+export function daysSince(iso?: string) {
+  if (!iso) return Infinity;
+  return (Date.now() - new Date(iso).getTime()) / 86_400_000;
+}
