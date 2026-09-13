@@ -1,17 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronLeft, ChevronRight, ExternalLink, ImageOff } from "lucide-react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { ChevronLeft, ChevronRight, ExternalLink, ImageOff, X } from "lucide-react";
 import { isDisplayableImage, isRemoteRef } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 function Thumb({
   src,
@@ -38,75 +32,84 @@ function Thumb({
 }
 
 function PhotoViewer({
-  photos,
   sku,
+  photos,
   index,
-  open,
-  onOpenChange,
-  onIndexChange,
+  onIndex,
+  onClose,
 }: {
-  photos: string[];
   sku: string;
+  photos: string[];
   index: number;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onIndexChange: (index: number) => void;
+  onIndex: (value: number) => void;
+  onClose: () => void;
 }) {
   const current = photos[index] ?? photos[0];
-  const many = photos.length > 1;
 
-  function go(delta: number) {
-    if (!many || photos.length === 0) return;
-    const next = (index + delta + photos.length) % photos.length;
-    onIndexChange(next);
-  }
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+      if (event.key === "ArrowLeft") {
+        onIndex((index - 1 + photos.length) % photos.length);
+      }
+      if (event.key === "ArrowRight") {
+        onIndex((index + 1) % photos.length);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [index, onClose, onIndex, photos.length]);
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="sm:max-w-md"
-        onKeyDown={(event) => {
-          if (event.key === "ArrowLeft") {
-            event.preventDefault();
-            go(-1);
-          } else if (event.key === "ArrowRight") {
-            event.preventDefault();
-            go(1);
-          }
-        }}
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded-xl border bg-background p-3 shadow-xl"
+        onClick={(event) => event.stopPropagation()}
       >
-        <DialogHeader>
-          <DialogTitle>Просмотр фото</DialogTitle>
-          <DialogDescription>
-            {sku}
-            {many ? ` · ${index + 1} из ${photos.length}` : ""}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex max-h-[min(22rem,50vh)] items-center justify-center overflow-hidden rounded-lg border bg-muted/40">
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">Фото {sku}</p>
+            <p className="text-xs text-muted-foreground">
+              {photos.length > 1 ? `${index + 1} из ${photos.length}` : "Просмотр в программе"}
+            </p>
+          </div>
+          <Button type="button" size="icon-sm" variant="ghost" onClick={onClose}>
+            <X />
+          </Button>
+        </div>
+        <div className="relative flex min-h-48 items-center justify-center rounded-lg bg-muted/40 p-2">
           {current ? (
-            // eslint-disable-next-line @next/next/no-img-element -- supplier CDNs and /api/media are arbitrary hosts
-            <img
-              src={current}
-              alt={sku}
-              className="max-h-[min(22rem,50vh)] w-full object-contain"
-              referrerPolicy="no-referrer"
-            />
+            <Thumb src={current} alt={sku} className="max-h-[55vh] w-full object-contain" />
+          ) : null}
+          {photos.length > 1 ? (
+            <>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="outline"
+                className="absolute left-2 top-1/2 -translate-y-1/2"
+                onClick={() => onIndex((index - 1 + photos.length) % photos.length)}
+              >
+                <ChevronLeft />
+              </Button>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="outline"
+                className="absolute right-2 top-1/2 -translate-y-1/2"
+                onClick={() => onIndex((index + 1) % photos.length)}
+              >
+                <ChevronRight />
+              </Button>
+            </>
           ) : null}
         </div>
-        {many ? (
-          <div className="flex items-center justify-between gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => go(-1)}>
-              <ChevronLeft />
-              Назад
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => go(1)}>
-              Далее
-              <ChevronRight />
-            </Button>
-          </div>
-        ) : null}
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -122,15 +125,14 @@ export function OfferMedia({
   const list = images?.filter(Boolean) ?? [];
   const photos = list.filter((item) => isDisplayableImage(item));
   const links = list.filter((item) => isRemoteRef(item) && !isDisplayableImage(item));
+  const [open, setOpen] = useState(false);
+  const [index, setIndex] = useState(0);
   const box =
     size === "sm"
       ? "size-14"
       : size === "lg"
         ? "h-40 w-full max-w-xs"
         : "size-24";
-  const [open, setOpen] = useState(false);
-  const [index, setIndex] = useState(0);
-  const currentIndex = photos.length === 0 ? 0 : Math.min(index, photos.length - 1);
 
   return (
     <div className="grid gap-2">
@@ -140,16 +142,17 @@ export function OfferMedia({
             <button
               key={src}
               type="button"
+              title="Открыть фото"
+              className={cn(
+                "block cursor-zoom-in overflow-hidden rounded-lg border bg-muted/40",
+                box,
+              )}
               onClick={(event) => {
+                event.preventDefault();
                 event.stopPropagation();
                 setIndex(photoIndex);
                 setOpen(true);
               }}
-              className={cn(
-                "block cursor-pointer overflow-hidden rounded-lg border bg-muted/40 hover:opacity-90",
-                box,
-              )}
-              aria-label={`Просмотр фото ${sku}`}
             >
               <Thumb src={src} alt={sku} className="size-full object-contain" />
             </button>
@@ -178,6 +181,7 @@ export function OfferMedia({
               target="_blank"
               rel="noreferrer"
               className="inline-flex max-w-full items-center gap-1 truncate text-xs text-amber-800 hover:underline"
+              onClick={(event) => event.stopPropagation()}
             >
               <ExternalLink className="size-3 shrink-0" />
               {size === "sm" ? "на сайте" : href.replace(/^https?:\/\//, "")}
@@ -187,14 +191,13 @@ export function OfferMedia({
       ) : photos.length === 0 && size !== "sm" ? (
         <p className="text-[11px] text-muted-foreground">Ссылок на фото в прайсе нет</p>
       ) : null}
-      {photos.length > 0 ? (
+      {open && photos.length > 0 ? (
         <PhotoViewer
-          photos={photos}
           sku={sku}
-          index={currentIndex}
-          open={open}
-          onOpenChange={setOpen}
-          onIndexChange={setIndex}
+          photos={photos}
+          index={index}
+          onIndex={setIndex}
+          onClose={() => setOpen(false)}
         />
       ) : null}
     </div>

@@ -1,0 +1,11 @@
+services:
+  sadparts:
+    build: .
+    ports:
+      - "43217:43217"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "43217"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

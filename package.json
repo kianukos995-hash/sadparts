@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0 --port 43217",
     "build": "next build",
-    "start": "next start --hostname 0.0.0.0 --port 43217",
+    "start": "node scripts/start.mjs",
+    "pack": "node scripts/pack-release.mjs",
     "lint": "eslint",
     "desktop": "node scripts/desktop.mjs",
     "test:rossko": "npx --yes tsx scripts/rossko-soap-check.ts",

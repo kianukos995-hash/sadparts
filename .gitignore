@@ -40,6 +40,8 @@ yarn-error.log*
 /data/media/
 /data/patches/
 .sadparts-chrome/
+/dist/
+*.zip
 
 # vercel
 .vercel

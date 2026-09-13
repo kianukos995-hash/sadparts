@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+dist
+coverage
+.sadparts-chrome
+*.zip
+*.pem
+.env
+.env.*
+npm-debug.log*
+.git
