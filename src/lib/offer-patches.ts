@@ -5,7 +5,20 @@ import type { Offer } from "@/lib/types";
 const DIR = path.join(process.cwd(), "data", "patches");
 
 export type OfferPatch = Partial<
-  Pick<Offer, "displayName" | "crossOems" | "notes" | "applicability" | "name" | "brand" | "oem" | "category">
+  Pick<
+    Offer,
+    | "displayName"
+    | "crossOems"
+    | "notes"
+    | "applicability"
+    | "name"
+    | "brand"
+    | "oem"
+    | "category"
+    | "specs"
+    | "images"
+    | "stock"
+  >
 >;
 
 type PatchFile = Record<string, OfferPatch>;
@@ -32,14 +45,29 @@ export async function readPatches(supplierId: string): Promise<PatchFile> {
 
 export async function writeOfferPatch(supplierId: string, offerId: string, patch: OfferPatch) {
   const current = { ...(await readPatches(supplierId)) };
-  current[offerId] = { ...(current[offerId] ?? {}), ...patch };
+  const prev = current[offerId] ?? {};
+  current[offerId] = {
+    ...prev,
+    ...patch,
+    specs: patch.specs ? { ...(prev.specs ?? {}), ...patch.specs } : prev.specs,
+    images: patch.images ?? prev.images,
+  };
   cache.set(supplierId, current);
   await mkdir(DIR, { recursive: true });
   await writeFile(filePath(supplierId), JSON.stringify(current), "utf8");
   return current[offerId];
 }
 
-export function applyPatch<T extends { id: string }>(offer: T, patches: PatchFile): T {
+export function applyPatch<T extends { id: string; specs?: Record<string, string>; images?: string[] }>(
+  offer: T,
+  patches: PatchFile,
+): T {
   const patch = patches[offer.id];
-  return patch ? { ...offer, ...patch } : offer;
+  if (!patch) return offer;
+  return {
+    ...offer,
+    ...patch,
+    specs: patch.specs ? { ...(offer.specs ?? {}), ...patch.specs } : offer.specs,
+    images: patch.images ?? offer.images,
+  };
 }

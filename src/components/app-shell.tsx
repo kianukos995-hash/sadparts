@@ -153,14 +153,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b bg-background px-4 py-3 md:hidden">
-          <Button variant="outline" size="icon-sm" onClick={() => setOpen(true)}>
+        <header className="sticky top-0 z-30 flex items-center gap-3 border-b bg-background/95 px-4 py-2.5 backdrop-blur md:px-8">
+          <Button variant="outline" size="icon-sm" className="md:hidden" onClick={() => setOpen(true)}>
             <Menu />
           </Button>
-          <BrandMark />
-          <Link href="/settings" className="ml-auto">
-            <Settings className="size-4 text-muted-foreground" />
-          </Link>
+          <div className="md:hidden">
+            <BrandMark />
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <Link
+              href={draft ? `/cart?id=${draft.id}` : "/cart"}
+              className={cn(
+                "relative inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted",
+                pathname.startsWith("/cart") && "border-amber-400 bg-amber-50",
+              )}
+            >
+              <ShoppingCart className="size-4" />
+              <span className="hidden sm:inline">Корзина</span>
+              {draftCount > 0 ? (
+                <span className="absolute -top-1.5 -right-1.5 min-w-5 rounded-full bg-amber-500 px-1 text-center text-[10px] font-semibold text-zinc-950">
+                  {draftCount}
+                </span>
+              ) : null}
+            </Link>
+            <Link href="/settings" className="rounded-lg p-2 hover:bg-muted md:hidden">
+              <Settings className="size-4 text-muted-foreground" />
+            </Link>
+          </div>
         </header>
         <main className="flex-1 px-4 py-5 md:px-8 md:py-7">{children}</main>
       </div>

@@ -315,6 +315,9 @@ export function patchOffer(offerId: string, patch: OfferPatch) {
           notes: patch.notes === undefined ? offer.notes : patch.notes,
           applicability: patch.applicability === undefined ? offer.applicability : patch.applicability,
           crossOems: crosses,
+          specs: patch.specs ? { ...(offer.specs ?? {}), ...patch.specs } : offer.specs,
+          images: patch.images ?? offer.images,
+          stock: patch.stock === undefined ? offer.stock : patch.stock,
         };
       }),
     };

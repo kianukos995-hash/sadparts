@@ -24,13 +24,14 @@ import { ClientCartBar } from "@/components/client-carts";
 import { SearchPick } from "@/components/search-pick";
 import { SortToggle, type SortDir } from "@/components/sort-toggle";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
-import { formatDays, formatMoney, formatStock } from "@/lib/format";
+import { formatDays, formatMoney } from "@/lib/format";
 import { findDraftForClient } from "@/lib/order";
 import { applicabilityOf, sellWarning } from "@/lib/offer-extra";
 import { pairLabel } from "@/lib/pairs";
 import { PriceFormula } from "@/components/price-formula";
 import { clientPriceBreakdown } from "@/lib/pricing";
 import { sortOffers } from "@/lib/sort-offers";
+import { availableStock, formatFreeStock, reservedQty } from "@/lib/stock";
 import type { Offer } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -405,7 +406,9 @@ function QuotePageInner() {
                   <TableCell className="hidden text-right text-xs md:table-cell">
                     {formatDays(offer.deliveryDays)}
                   </TableCell>
-                  <TableCell className="text-right">{formatStock(offer.stock)}</TableCell>
+                  <TableCell className="text-right">
+                    {formatFreeStock(availableStock(offer, orders), reservedQty(orders, offer.id))}
+                  </TableCell>
                   <TableCell onClick={(event) => event.stopPropagation()}>
                     <AddToOrderButtons
                       offer={offer}

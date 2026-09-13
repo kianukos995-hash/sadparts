@@ -4,6 +4,7 @@ import { ShoppingCart, ListPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
+import { availableStock } from "@/lib/stock";
 import type { Offer } from "@/lib/types";
 import type { MouseEvent } from "react";
 
@@ -34,7 +35,14 @@ export function AddToOrderButtons({
           : "В корзину";
 
   async function intoCurrent() {
-    const next = await addToDraft(offer, Math.max(1, offer.multiplicity || 1), {
+    const qty = Math.max(1, offer.multiplicity || 1);
+    const free = availableStock(offer, orders);
+    if (qty > free) {
+      toast.warning(
+        `Свободно ${free} шт. (прайс ${offer.stock}). Кладём ${qty} — остаток в учёте уйдёт в минус.`,
+      );
+    }
+    const next = await addToDraft(offer, qty, {
       clientId: clientId || undefined,
       orderId: orderId || undefined,
     });
