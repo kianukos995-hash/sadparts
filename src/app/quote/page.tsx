@@ -28,7 +28,8 @@ import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { formatDays, formatMoney, formatStock } from "@/lib/format";
 import { applicabilityOf, sellWarning } from "@/lib/offer-extra";
 import { pairLabel } from "@/lib/pairs";
-import { clientSellPrice } from "@/lib/pricing";
+import { PriceFormula } from "@/components/price-formula";
+import { clientPriceBreakdown } from "@/lib/pricing";
 import type { Offer } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -262,12 +263,13 @@ export default function QuotePage() {
         </TableHeader>
         <TableBody>
           {offers.map((offer) => {
-            const sell = clientSellPrice(
+            const breakdown = clientPriceBreakdown(
               offer.price,
               settings.priceBands,
               settings.markupPercent,
               client,
             );
+            const sell = breakdown.sell;
             const warn = sellWarning(
               offer.price,
               settings.priceBands,
@@ -300,6 +302,7 @@ export default function QuotePage() {
                 <TableCell className="text-right">{formatMoney(offer.price, offer.currency)}</TableCell>
                 <TableCell className={cn("text-right", warn && "text-amber-800")}>
                   {formatMoney(sell, offer.currency)}
+                  <PriceFormula breakdown={breakdown} currency={offer.currency} compact />
                   {warn ? <p className="text-[10px] font-normal">ниже закупа</p> : null}
                 </TableCell>
                 <TableCell className="hidden text-right text-xs md:table-cell">

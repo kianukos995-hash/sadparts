@@ -24,8 +24,9 @@ import { formatDateTime, formatDays, formatMoney, formatStock } from "@/lib/form
 import { offerOems, offerTitle, relatedOffers } from "@/lib/oem";
 import { applicabilityOf, relatedKind, sellWarning } from "@/lib/offer-extra";
 import { pairLabel, pairQuery } from "@/lib/pairs";
-import { findBand, formatBandLabel } from "@/lib/price-bands";
-import { clientSellPrice } from "@/lib/pricing";
+import { PriceFormula } from "@/components/price-formula";
+import { findBand, formatBandLabel, markupForPrice } from "@/lib/price-bands";
+import { clientPriceBreakdown } from "@/lib/pricing";
 import type { Client, Offer, PriceBand, Supplier } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -102,11 +103,11 @@ function DrawerBody({
   const [pairHits, setPairHits] = useState<Offer[]>([]);
   const client = clients.find((item) => item.id === clientId);
   const band = findBand(offer.price, priceBands);
-  const sell = clientSellPrice(offer.price, priceBands, markupPercent, client);
+  const breakdown = clientPriceBreakdown(offer.price, priceBands, markupPercent, client);
+  const sell = breakdown.sell;
   const warn = sellWarning(offer.price, priceBands, markupPercent, client);
   const oems = offerOems(offer);
-  const clientMarkup = client?.bandMarkups?.[band.id];
-  const markup = typeof clientMarkup === "number" ? clientMarkup : band.markupPercent || markupPercent;
+  const markup = markupForPrice(offer.price, priceBands, markupPercent, client);
   const pair = pairQuery(offer.sku, offer.name);
 
   useEffect(() => {
@@ -142,10 +143,10 @@ function DrawerBody({
             {formatMoney(sell, offer.currency)}
           </p>
           <p className="text-sm text-muted-foreground">
-            Закуп {formatMoney(offer.price, offer.currency)} · коридор {formatBandLabel(band)} ·
-            наценка {markup}%
-            {client?.discountPercent ? ` · скидка ${client.discountPercent}%` : ""}
+            Коридор {formatBandLabel(band)} · наценка {markup}%
+            {client?.discountPercent ? ` · скидка клиента ${client.discountPercent}%` : " · без скидки"}
           </p>
+          <PriceFormula breakdown={breakdown} currency={offer.currency} compact className="mt-1" />
           {warn ? <p className="mt-1 text-xs text-amber-800">{warn}</p> : null}
           <PriceChange offer={offer} />
         </div>

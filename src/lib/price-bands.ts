@@ -42,7 +42,7 @@ export function markupForPrice(
   const band = findBand(buy, bands);
   const override = client?.bandMarkups?.[band.id];
   if (typeof override === "number" && Number.isFinite(override)) return override;
-  return band.markupPercent || fallback;
+  return Number.isFinite(band.markupPercent) ? band.markupPercent : fallback;
 }
 
 export function formatBandLabel(band: PriceBand) {

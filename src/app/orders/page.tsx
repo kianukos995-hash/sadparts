@@ -20,7 +20,8 @@ import {
 } from "@/components/ui/table";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { formatDays, formatMoney } from "@/lib/format";
-import { clientLineTotal, clientSellPrice } from "@/lib/pricing";
+import { PriceFormula } from "@/components/price-formula";
+import { clientLineTotal, clientPriceBreakdown } from "@/lib/pricing";
 import { cn } from "@/lib/utils";
 import type { Order, OrderStatus } from "@/lib/types";
 
@@ -57,23 +58,34 @@ export default function OrdersPage() {
   );
 
   const totals = useMemo(() => {
-    if (!storedDraft) return { buy: 0, sell: 0, qty: 0 };
+    if (!storedDraft) return { buy: 0, sell: 0, qty: 0, markup: 0, discount: 0 };
     return storedDraft.lines.reduce(
-      (acc, line) => ({
-        buy: acc.buy + line.buyPrice * line.qty,
-        sell:
-          acc.sell +
-          clientLineTotal(
-            line.buyPrice,
-            line.qty,
-            settings.priceBands,
-            settings.markupPercent,
-            client,
-            markup,
-          ),
-        qty: acc.qty + line.qty,
-      }),
-      { buy: 0, sell: 0, qty: 0 },
+      (acc, line) => {
+        const b = clientPriceBreakdown(
+          line.buyPrice,
+          settings.priceBands,
+          settings.markupPercent,
+          client,
+          markup,
+        );
+        return {
+          buy: acc.buy + line.buyPrice * line.qty,
+          markup: acc.markup + b.markupAmount * line.qty,
+          discount: acc.discount + b.discountAmount * line.qty,
+          sell:
+            acc.sell +
+            clientLineTotal(
+              line.buyPrice,
+              line.qty,
+              settings.priceBands,
+              settings.markupPercent,
+              client,
+              markup,
+            ),
+          qty: acc.qty + line.qty,
+        };
+      },
+      { buy: 0, sell: 0, qty: 0, markup: 0, discount: 0 },
     );
   }, [storedDraft, markup, client, settings.priceBands, settings.markupPercent]);
 
@@ -184,7 +196,15 @@ export default function OrdersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {draft.lines.map((line) => (
+                {draft.lines.map((line) => {
+                  const breakdown = clientPriceBreakdown(
+                    line.buyPrice,
+                    settings.priceBands,
+                    settings.markupPercent,
+                    client,
+                    markup,
+                  );
+                  return (
                   <TableRow key={line.id}>
                     <TableCell>
                       <p className="font-mono text-xs">{line.sku}</p>
@@ -217,16 +237,8 @@ export default function OrdersPage() {
                       {formatMoney(line.buyPrice, line.currency)}
                     </TableCell>
                     <TableCell className="text-right font-medium">
-                      {formatMoney(
-                        clientSellPrice(
-                          line.buyPrice,
-                          settings.priceBands,
-                          settings.markupPercent,
-                          client,
-                          markup,
-                        ),
-                        line.currency,
-                      )}
+                      {formatMoney(breakdown.sell, line.currency)}
+                      <PriceFormula breakdown={breakdown} currency={line.currency} compact />
                       <p className="text-[11px] font-normal text-muted-foreground">
                         × {line.qty} ={" "}
                         {formatMoney(
@@ -263,7 +275,8 @@ export default function OrdersPage() {
                       </Button>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           )}
@@ -282,7 +295,8 @@ export default function OrdersPage() {
           <div className="flex flex-col gap-3 rounded-lg bg-muted/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm text-muted-foreground">
-                {totals.qty} шт. · закуп {formatMoney(totals.buy)}
+                {totals.qty} шт. · закуп {formatMoney(totals.buy)} + наценка {formatMoney(totals.markup)} −
+                скидка {formatMoney(totals.discount)}
               </p>
               <p className="text-xl font-semibold">Клиенту {formatMoney(totals.sell)}</p>
             </div>

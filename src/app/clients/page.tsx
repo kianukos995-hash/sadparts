@@ -26,7 +26,8 @@ import {
 } from "@/components/ui/table";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { formatBandLabel, markupForPrice } from "@/lib/price-bands";
-import { clientSellPrice, discountBreakEvenPercent } from "@/lib/pricing";
+import { clientPriceBreakdown, discountBreakEvenPercent } from "@/lib/pricing";
+import { PriceFormula } from "@/components/price-formula";
 import type { Client, PriceBand } from "@/lib/types";
 
 function emptyClient(): Client {
@@ -226,12 +227,12 @@ export default function ClientsPage() {
             <Button
               disabled={draft.name.trim().length < 2}
               onClick={() => {
-                const sample = clientSellPrice(1000, settings.priceBands, settings.markupPercent, {
+                const sample = clientPriceBreakdown(1000, settings.priceBands, settings.markupPercent, {
                   ...draft,
                   name: draft.name.trim(),
                 });
                 void upsertClient({ ...draft, name: draft.name.trim() }).then(() => {
-                  if (sample + 0.009 < 1000) {
+                  if (sample.belowBuy) {
                     toast.warning(
                       "Клиент сохранён. Скидка даёт цену ниже закупа — в проценке будет предупреждение, заказ не блокируется.",
                     );
@@ -273,16 +274,19 @@ function DiscountHint({
 }) {
   const sampleBuy = 1000;
   const markup = markupForPrice(sampleBuy, bands, fallback, client);
-  const sell = clientSellPrice(sampleBuy, bands, fallback, client);
+  const breakdown = clientPriceBreakdown(sampleBuy, bands, fallback, client);
   const breakEven = discountBreakEvenPercent(markup);
-  const below = sell + 0.009 < sampleBuy;
   return (
     <div className="grid gap-1">
       <p className="text-xs text-muted-foreground">
-        Цена клиенту = закуп + наценка коридора − скидка {discount || 0}%. Пример: закуп 1000 ₽, наценка{" "}
-        {markup}% → клиенту {sell.toFixed(2)} ₽. Ниже закупа скидка становится после {breakEven}%.
+        Цена клиенту = закуп + наценка категории − скидка {discount || 0}%. Пример на {sampleBuy} ₽,
+        коридор {markup}%:
       </p>
-      {below ? (
+      <PriceFormula breakdown={breakdown} compact />
+      <p className="text-xs text-muted-foreground">
+        Ниже закупа скидка становится после {breakEven}%.
+      </p>
+      {breakdown.belowBuy ? (
         <p className="text-xs text-amber-800">
           Скидка опускает цену ниже закупа. Сохраним карточку — в проценке будет предупреждение, заказ не
           блокируется.

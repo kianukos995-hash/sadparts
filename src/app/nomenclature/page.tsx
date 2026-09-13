@@ -10,7 +10,8 @@ import { OfferMedia } from "@/components/offer-media";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { formatMoney } from "@/lib/format";
 import { specEntries } from "@/lib/specs";
-import { clientSellPrice } from "@/lib/pricing";
+import { PriceFormula } from "@/components/price-formula";
+import { clientPriceBreakdown } from "@/lib/pricing";
 import type { Offer } from "@/lib/types";
 
 export default function NomenclaturePage() {
@@ -98,7 +99,8 @@ export default function NomenclaturePage() {
       ) : (
         <div className="grid gap-3">
           {unique.map((offer) => {
-            const sell = clientSellPrice(offer.price, settings.priceBands, settings.markupPercent);
+            const breakdown = clientPriceBreakdown(offer.price, settings.priceBands, settings.markupPercent);
+            const sell = breakdown.sell;
             return (
               <article key={offer.id} className="rounded-xl border p-4">
                 <div className="flex flex-wrap items-start gap-4">
@@ -119,6 +121,7 @@ export default function NomenclaturePage() {
                     <p className="mt-1 text-[11px] text-muted-foreground">
                       закуп {formatMoney(offer.price)}
                     </p>
+                    <PriceFormula breakdown={breakdown} compact />
                   </div>
                 </div>
                 <OfferSpecs specs={offer.specs} defaultOpen />

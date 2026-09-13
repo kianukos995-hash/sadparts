@@ -25,7 +25,8 @@ import { groupByOem, offerTitle } from "@/lib/oem";
 import { applicabilityOf, sellWarning } from "@/lib/offer-extra";
 import { pairLabel } from "@/lib/pairs";
 import { findBand, formatBandLabel } from "@/lib/price-bands";
-import { clientSellPrice } from "@/lib/pricing";
+import { PriceFormula } from "@/components/price-formula";
+import { clientPriceBreakdown, clientSellPrice } from "@/lib/pricing";
 import type { Offer } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -291,12 +292,13 @@ export default function CatalogPage() {
                 {open ? (
                   <div className="border-t bg-muted/20">
                     {group.offers.map((offer) => {
-                      const sell = clientSellPrice(
+                      const breakdown = clientPriceBreakdown(
                         offer.price,
                         bands,
                         settings.markupPercent,
                         client,
                       );
+                      const sell = breakdown.sell;
                       const warn = sellWarning(
                         offer.price,
                         bands,
@@ -351,6 +353,11 @@ export default function CatalogPage() {
                               <p className="text-[11px] text-muted-foreground">
                                 закуп {formatMoney(offer.price, offer.currency)} · {formatBandLabel(band)}
                               </p>
+                              <PriceFormula
+                                breakdown={breakdown}
+                                currency={offer.currency}
+                                compact
+                              />
                               {warn ? (
                                 <p className="text-[11px] text-amber-800">ниже закупа — только предупреждение</p>
                               ) : null}

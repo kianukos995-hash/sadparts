@@ -1,7 +1,7 @@
 import { offerOems } from "@/lib/oem";
 import { detectPairSide, isRelatedConsumable } from "@/lib/pairs";
 import type { Client, Offer, PriceBand } from "@/lib/types";
-import { clientSellPrice } from "@/lib/pricing";
+import { clientPriceBreakdown } from "@/lib/pricing";
 
 export function applyPairFields(offer: Offer): Offer {
   const side = detectPairSide(`${offer.sku} ${offer.name} ${offer.displayName ?? ""}`);
@@ -27,9 +27,9 @@ export function sellWarning(
   client?: Client | null,
   markupOverride?: number | null,
 ) {
-  const sell = clientSellPrice(buy, bands, fallbackMarkup, client, markupOverride);
-  if (sell + 0.009 < buy) {
-    return `Цена клиенту ${sell.toFixed(2)} ₽ ниже закупа ${buy.toFixed(2)} ₽ — это только предупреждение, заказ можно собрать.`;
+  const b = clientPriceBreakdown(buy, bands, fallbackMarkup, client, markupOverride);
+  if (b.belowBuy) {
+    return `Цена клиенту ${b.sell.toFixed(2)} ₽ ниже закупа ${b.buy.toFixed(2)} ₽ — это только предупреждение, заказ можно собрать.`;
   }
   return "";
 }

@@ -11,9 +11,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { SupplierFormDialog } from "@/components/supplier-form";
 import { PriceBandsEditor } from "@/components/price-bands-editor";
+import { PriceFormula } from "@/components/price-formula";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { formatDays, maskKey } from "@/lib/format";
-import { DEFAULT_PRICE_BANDS, sanitizeBands } from "@/lib/price-bands";
+import { DEFAULT_PRICE_BANDS, markupForPrice, sanitizeBands } from "@/lib/price-bands";
+import { priceBreakdown } from "@/lib/pricing";
 import type { PriceBand, Supplier } from "@/lib/types";
 
 export default function SettingsPage() {
@@ -35,6 +37,13 @@ export default function SettingsPage() {
   const markupValue = markup ?? String(settings.markupPercent);
   const noteValue = hubNote ?? settings.moscowHubNote;
   const bandsValue = bands ?? sanitizeBands(settings.priceBands?.length ? settings.priceBands : DEFAULT_PRICE_BANDS);
+  const sampleBuy = 1000;
+  const sampleMarkup = markupForPrice(
+    sampleBuy,
+    bandsValue,
+    Number.parseFloat(markupValue.replace(",", ".")) || 0,
+  );
+  const sampleBreakdown = priceBreakdown(sampleBuy, sampleMarkup, 8);
 
   if (!ready) return <p className="text-sm text-muted-foreground">Загружаю настройки…</p>;
 
@@ -62,8 +71,10 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle>Торговля</CardTitle>
           <CardDescription>
-            Цена клиенту = закуп × (1 + наценка коридора) × (1 − скидка). Коридоры можно переопределить
-            в карточке клиента.
+            Цена клиенту = закуп + наценка по категории − скидка клиента. Наценка от закупа, скидка от
+            цены с наценкой. Пример: 1000 ₽, коридор 16%, скидка 8% → 1000 + 160 − 92,80 = 1067,20 ₽.
+            Коридоры можно переопределить в карточке клиента. Наценка 0% — это 0%, а не подмена на
+            значение по умолчанию.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -88,6 +99,12 @@ export default function SettingsPage() {
           <div className="sm:col-span-2">
             <Label className="mb-2 block">Ценовые категории</Label>
             <PriceBandsEditor bands={bandsValue} onChange={setBands} />
+            <div className="mt-3 rounded-lg border bg-muted/30 px-3 py-2">
+              <p className="text-xs text-muted-foreground">
+                Пример на закуп {sampleBuy} ₽ и скидку клиента 8%. Коридор даёт наценку {sampleMarkup}%.
+              </p>
+              <PriceFormula breakdown={sampleBreakdown} className="mt-1" />
+            </div>
           </div>
           <div>
             <Button
