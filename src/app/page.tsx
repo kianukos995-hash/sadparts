@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { PackageSearch, RefreshCw, ShoppingCart, ClipboardList, Wallet, Upload, AlertTriangle, Truck } from "lucide-react";
+import { PackageSearch, RefreshCw, ShoppingCart, ClipboardList, Wallet, Upload, AlertTriangle, Truck, Download } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -42,7 +42,14 @@ export default function HomePage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/quote" className={cn(buttonVariants())}>
+          <a href="/api/download" className={cn(buttonVariants())}>
+            <Download />
+            Скачать ZIP
+          </a>
+          <Link href="/download" className={cn(buttonVariants({ variant: "outline" }))}>
+            Как открыть архив
+          </Link>
+          <Link href="/quote" className={cn(buttonVariants({ variant: "outline" }))}>
             <PackageSearch />
             Проценка
           </Link>
@@ -70,6 +77,28 @@ export default function HomePage() {
           </Link>
         </div>
       </div>
+
+      <Card className="border-amber-300 bg-amber-50/70">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Download className="size-5" />
+            Скачать весь проект одним файлом
+          </CardTitle>
+          <CardDescription>
+            Файл sadparts-prices.zip сразу начнёт качаться. Инструкция, как запустить у коллеги, —
+            на странице «Скачать проект» в меню слева.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <a href="/api/download" className={cn(buttonVariants())}>
+            <Download />
+            Скачать ZIP
+          </a>
+          <Link href="/download" className={cn(buttonVariants({ variant: "outline" }))}>
+            Куда нажимать и что делать дальше
+          </Link>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat title="Поставщики" value={String(suppliers.length)} hint="активные источники" />

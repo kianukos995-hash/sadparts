@@ -13,6 +13,7 @@ import {
   PackagePlus,
   PackageSearch,
   Search,
+  Download,
   Send,
   Settings,
   ShoppingCart,
@@ -57,6 +58,7 @@ const GROUPS = [
     items: [
       { href: "/telegram", label: "Telegram-бот", icon: Send },
       { href: "/settings", label: "Настройки", icon: Settings },
+      { href: "/download", label: "Скачать проект", icon: Download },
     ],
   },
 ];
@@ -165,6 +167,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <BrandMark />
           </div>
           <div className="ml-auto flex items-center gap-2">
+            <a
+              href="/api/download"
+              className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-semibold text-zinc-950 hover:bg-amber-400"
+            >
+              <Download className="size-4" />
+              <span className="hidden sm:inline">Скачать ZIP</span>
+            </a>
             <Link
               href={draft ? `/cart?id=${draft.id}` : "/cart"}
               className={cn(

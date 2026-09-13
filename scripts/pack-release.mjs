@@ -23,6 +23,8 @@ const exclude = [
   "*.pem",
   ".env",
   ".env.*",
+  "*.zip",
+  "public/sadparts-prices.zip",
 ];
 
 const args = ["-r", "-q", zipPath, ".", "-x", ...exclude];
@@ -34,6 +36,9 @@ if (zip.status !== 0) {
 
 const bytes = statSync(zipPath).size;
 const mb = (bytes / (1024 * 1024)).toFixed(1);
+const publicDir = path.join(root, "public");
+mkdirSync(publicDir, { recursive: true });
+copyFileSync(zipPath, path.join(publicDir, zipName));
 const artifactDir = "/opt/cursor/artifacts";
 if (existsSync(artifactDir)) {
   copyFileSync(zipPath, path.join(artifactDir, zipName));
