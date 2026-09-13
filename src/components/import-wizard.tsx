@@ -96,7 +96,9 @@ export function ImportWizard() {
               }}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Выберите поставщика" />
+                <span className="flex flex-1 truncate text-left">
+                  {suppliers.find((item) => item.id === supplierId)?.name ?? "Выберите поставщика"}
+                </span>
               </SelectTrigger>
               <SelectContent>
                 {suppliers.map((item) => (

@@ -10,7 +10,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
 import { OfferDrawer } from "@/components/offer-drawer";
 import { PartsTable } from "@/components/parts-table";
@@ -100,7 +99,11 @@ export default function CatalogPage() {
           }}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="Поставщик" />
+            <span className="flex flex-1 truncate text-left">
+              {supplierId === "all"
+                ? "Все поставщики"
+                : (suppliers.find((item) => item.id === supplierId)?.name ?? "Поставщик")}
+            </span>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Все поставщики</SelectItem>
@@ -121,7 +124,9 @@ export default function CatalogPage() {
           }}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="Категория" />
+            <span className="flex flex-1 truncate text-left">
+              {category === "all" ? "Все категории" : category}
+            </span>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Все категории</SelectItem>
@@ -142,7 +147,9 @@ export default function CatalogPage() {
           }}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="Бренд" />
+            <span className="flex flex-1 truncate text-left">
+              {brand === "all" ? "Все бренды" : brand}
+            </span>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Все бренды</SelectItem>
