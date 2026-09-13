@@ -1,11 +1,12 @@
 import Papa from "papaparse";
 import { offerToCatalogRow, readCatalog, writeCatalog, type CatalogRow } from "@/lib/file-catalog";
 import { guessColumnMap, rowToOffer } from "@/lib/mapping";
-import { parseCsvText } from "@/lib/parse-feed";
+import { parseCsvText, xmlToTable } from "@/lib/parse-feed";
+import { isRosskoSoapXml } from "@/lib/rossko-soap";
 import { extractFirstZipFile } from "@/lib/zip";
-import type { ImportMode, Supplier } from "@/lib/types";
+import type { ImportMode, Offer, Supplier } from "@/lib/types";
 
-function csvText(buffer: Buffer, filename: string) {
+function payloadText(buffer: Buffer, filename: string) {
   const lower = filename.toLowerCase();
   const payload = lower.endsWith(".zip") ? extractFirstZipFile(buffer).body : buffer;
   let text = payload.toString("utf8");
@@ -13,8 +14,41 @@ function csvText(buffer: Buffer, filename: string) {
   return text;
 }
 
+async function commitRows(supplier: Supplier, offers: Offer[], mode: ImportMode) {
+  let catalogRows = offers.map(offerToCatalogRow);
+  if (mode === "merge") {
+    const existing = await readCatalog(supplier.id);
+    const byId = new Map(existing.rows.map((row) => [`${row.guid}:${row.sku}`, row]));
+    for (const row of catalogRows) byId.set(`${row.guid}:${row.sku}`, row);
+    catalogRows = Array.from(byId.values());
+  }
+  await writeCatalog(supplier.id, catalogRows);
+  return catalogRows;
+}
+
+function offersFromRecords(supplier: Supplier, rows: Record<string, string>[], map = guessColumnMap(Object.keys(rows[0] ?? {}))) {
+  const mappedSupplier = { ...supplier, columnMap: map, source: "file" as const };
+  const offers: Offer[] = [];
+  let skipped = 0;
+  for (const row of rows) {
+    const offer = rowToOffer(row, mappedSupplier, map);
+    if (offer) offers.push(offer);
+    else skipped += 1;
+  }
+  return { offers, skipped, headers: Object.keys(rows[0] ?? {}), map };
+}
+
 export async function importCatalogFile(supplier: Supplier, buffer: Buffer, filename: string, mode: ImportMode) {
-  const text = csvText(buffer, filename);
+  const text = payloadText(buffer, filename);
+  const lower = filename.toLowerCase();
+
+  if (isRosskoSoapXml(text) || lower.endsWith(".xml")) {
+    const table = xmlToTable(text);
+    const { offers, skipped, headers } = offersFromRecords(supplier, table.rows, guessColumnMap(table.headers));
+    const catalogRows = await commitRows(supplier, offers, mode);
+    return { imported: catalogRows.length, skipped, headers };
+  }
+
   const preview = parseCsvText(text.slice(0, 50_000));
   const map = guessColumnMap(preview.headers.length ? preview.headers : parseCsvText(text).headers);
   const mappedSupplier = { ...supplier, columnMap: map, source: "file" as const };

@@ -70,6 +70,7 @@ export interface Offer {
   deliveryDays: number;
   guid?: string;
   stockId?: string;
+  vendorCode?: string;
   updatedAt: string;
   source: SupplierSource;
 }
@@ -111,6 +112,7 @@ export interface OrderLine {
   warehouse: string;
   guid?: string;
   stockId?: string;
+  vendorCode?: string;
 }
 
 export interface Order {

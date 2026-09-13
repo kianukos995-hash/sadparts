@@ -2,6 +2,14 @@ import { XMLParser } from "fast-xml-parser";
 import Papa from "papaparse";
 import { stringifyCell } from "@/lib/json-path";
 import type { ParsedTable } from "@/lib/types";
+import {
+  flattenRosskoParts,
+  isRosskoSoapXml,
+  parseCheckoutResult,
+  parseOrdersResult,
+  parseSearchResult,
+  parseSoapXml,
+} from "@/lib/rossko-soap";
 
 const MAX_ROWS = 20_000;
 
@@ -114,6 +122,35 @@ export function jsonToTable(payload: unknown, itemsPath?: string): ParsedTable {
 }
 
 export function xmlToTable(xml: string): ParsedTable {
+  if (isRosskoSoapXml(xml)) {
+    const parsed = parseSoapXml(xml);
+    const search = parseSearchResult(parsed);
+    if (search.parts.length) return recordsToTable(flattenRosskoParts(search.parts));
+    const checkout = parseCheckoutResult(parsed);
+    if (checkout.items.length) {
+      return recordsToTable(
+        checkout.items.map((item) => ({
+          partnumber: item.partnumber,
+          brand: item.brand,
+          count: String(item.count),
+          price: String(item.price ?? ""),
+          stock: item.stock ?? "",
+        })),
+      );
+    }
+    const orders = parseOrdersResult(parsed);
+    const parts = orders.orders.flatMap((order) =>
+      order.parts.map((part) => ({
+        guid: part.guid,
+        partnumber: part.partnumber,
+        brand: part.brand,
+        name: part.name,
+        price: part.price,
+        count: String(part.count),
+      })),
+    );
+    if (parts.length) return recordsToTable(parts);
+  }
   const parser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: "",

@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start --hostname 0.0.0.0 --port 43217",
     "lint": "eslint",
-    "desktop": "node scripts/desktop.mjs"
+    "desktop": "node scripts/desktop.mjs",
+    "test:rossko": "npx --yes tsx scripts/rossko-soap-check.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

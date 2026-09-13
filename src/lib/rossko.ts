@@ -3,6 +3,7 @@ import { offerKey, normalizeSku } from "@/lib/format";
 import { mergeCrosses } from "@/lib/cross-catalog";
 import { searchCatalog } from "@/lib/file-catalog";
 import {
+  checkoutPartnumber,
   rosskoGetCheckout,
   rosskoGetCheckoutDetails,
   rosskoGetOrders,
@@ -47,7 +48,7 @@ function mockDetails(): RosskoCheckoutDetails {
       { id: 1, name: "Безналичный расчёт" },
       { id: 2, name: "Карта" },
     ],
-    addresses: [{ id: 1, city: "Москва", street: "Склад Подольск", house: "1", office: "" }],
+    addresses: [{ id: 1, city: "Москва", street: "Склад Подольск", house: "1", office: "", deliveryIds: ["000000001"] }],
     companies: [{ id: 1, name: "Демо-организация", requisites: "ИНН 0000000000" }],
   };
 }
@@ -73,7 +74,9 @@ function mockParts(query: string): RosskoPart[] {
         price: partPrice(part.basePrice, 1),
         count: partStock(index + 1),
         multiplicity: 1,
+        type: 0,
         delivery: 1,
+        extra: 0,
         description: "МСК-Юг",
       },
     ],
@@ -85,14 +88,24 @@ export function rosskoPartsToOffers(supplier: Supplier, parts: RosskoPart[]): Of
   const now = new Date().toISOString();
   const offers: Offer[] = [];
   for (const part of parts) {
-    const sku = normalizeSku(part.partnumber);
+    const sku = part.partnumber.replace(/\s+/g, "");
     const crosses = mergeCrosses(
       "",
       part.crosses.map((item) => item.partnumber),
     );
-    const stocks = part.stocks.length ? part.stocks : [
-      { id: "", price: 0, count: 0, multiplicity: 1, delivery: supplier.deliveryDaysMoscow || 1, description: "" },
-    ];
+    const stocks = part.stocks.length
+      ? part.stocks
+      : [
+          {
+            id: "",
+            price: 0,
+            count: 0,
+            multiplicity: 1,
+            type: 0,
+            delivery: supplier.deliveryDaysMoscow || 0,
+            description: "",
+          },
+        ];
     for (const stock of stocks) {
       offers.push({
         id: offerKey(supplier.id, part.guid || sku, stock.id),
@@ -101,7 +114,7 @@ export function rosskoPartsToOffers(supplier: Supplier, parts: RosskoPart[]): Of
         brand: part.brand || "—",
         name: part.name || sku,
         displayName: "",
-        oem: normalizeSku(part.guid.startsWith("NS") ? "" : part.guid) || sku,
+        oem: part.guid.toUpperCase().startsWith("NS") ? "" : normalizeSku(part.guid) || sku,
         crossOems: crosses,
         category: "Расходники",
         price: stock.price,
@@ -109,9 +122,10 @@ export function rosskoPartsToOffers(supplier: Supplier, parts: RosskoPart[]): Of
         stock: stock.count,
         warehouse: stock.description || stock.id || "Росско",
         multiplicity: stock.multiplicity || 1,
-        deliveryDays: stock.delivery || supplier.deliveryDaysMoscow || 1,
+        deliveryDays: Number.isFinite(stock.delivery) ? stock.delivery : supplier.deliveryDaysMoscow || 0,
         guid: part.guid,
         stockId: stock.id,
+        vendorCode: sku.includes("@") ? sku.split("@")[1] : "",
         updatedAt: now,
         source: "api",
       });
@@ -164,7 +178,7 @@ export async function rosskoSearch(supplier: Supplier, query: string): Promise<{
     return {
       offers: mergeOffers([...live, ...fileHits]),
       live: true,
-      message: result.success ? undefined : result.message,
+      message: result.message || (result.success ? undefined : "Ничего не найдено"),
     };
   } catch (error) {
     return {
@@ -185,12 +199,46 @@ function mergeOffers(offers: Offer[]) {
   return Array.from(map.values()).sort((a, b) => a.price - b.price || a.deliveryDays - b.deliveryDays);
 }
 
+export async function rosskoResolveLines(supplier: Supplier, lines: OrderLine[]): Promise<OrderLine[]> {
+  const next: OrderLine[] = [];
+  for (const line of lines) {
+    if (line.stockId) {
+      next.push(line);
+      continue;
+    }
+    const query = line.guid || `${line.brand} ${line.sku.split("@")[0]}`;
+    const found = await rosskoSearch(supplier, query);
+    const article = normalizeSku(line.sku.split("@")[0]);
+    const match =
+      found.offers.find(
+        (offer) =>
+          offer.stockId &&
+          (normalizeSku(offer.guid || "") === normalizeSku(line.guid || "") ||
+            normalizeSku(offer.sku.split("@")[0]) === article),
+      ) ?? found.offers.find((offer) => offer.stockId);
+    next.push(
+      match
+        ? {
+            ...line,
+            sku: match.sku || line.sku,
+            guid: match.guid || line.guid,
+            stockId: match.stockId,
+            buyPrice: match.price || line.buyPrice,
+            warehouse: match.warehouse || line.warehouse,
+          }
+        : line,
+    );
+  }
+  return next;
+}
+
 export async function rosskoCheckout(supplier: Supplier, input: RosskoCheckoutInput) {
   if (isRosskoDemo(supplier) && supplier.apiKey === DEMO_KEYS.rossko) {
     return {
       success: true,
       message: "Демо-заказ Росско (реальный GetCheckout не вызывался)",
       orderIds: [`DEMO-${Date.now().toString().slice(-6)}`],
+      deliveryCosts: [] as string[],
       items: input.parts.map((part) => ({
         partnumber: part.partnumber,
         brand: part.brand,
@@ -202,7 +250,12 @@ export async function rosskoCheckout(supplier: Supplier, input: RosskoCheckoutIn
   }
   const ready = await ensureRosskoDelivery(supplier);
   const { key1, key2, base } = keys(ready);
-  return rosskoGetCheckout(key1, key2, { ...input, deliveryId: input.deliveryId || ready.rosskoDeliveryId || "" }, base);
+  return rosskoGetCheckout(
+    key1,
+    key2,
+    { ...input, deliveryId: input.deliveryId || ready.rosskoDeliveryId || "" },
+    base,
+  );
 }
 
 export async function rosskoOrders(supplier: Supplier, orderIds: string[] = []) {
@@ -215,7 +268,7 @@ export async function rosskoOrders(supplier: Supplier, orderIds: string[] = []) 
 
 export function orderLinesToRosskoParts(lines: OrderLine[]) {
   return lines.map((line) => ({
-    partnumber: line.sku,
+    partnumber: checkoutPartnumber(line.sku, line.vendorCode),
     brand: line.brand,
     stock: line.stockId || "",
     count: line.qty,

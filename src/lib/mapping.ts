@@ -132,15 +132,21 @@ export function rowToOffer(
     .split(/[;,]/)
     .map((item) => normalizeSku(item))
     .filter(Boolean);
-  const oem = normalizeSku(readField(row, columnMap.oem));
   const guid = normalizeSku(
     readField(row, "Номенклатура") || readField(row, "guid") || readField(row, "GUID"),
   );
+  const vendor = normalizeSku(
+    readField(row, "Вендор-код") || readField(row, "vendor") || readField(row, "vendorcode"),
+  );
+  const catalogNumber = normalizeSku(readField(row, "Каталожный номер"));
+  const stockId = readField(row, "stock") || readField(row, "id") || readField(row, "StockID");
+  const checkoutSku = vendor && vendor !== sku && !sku.includes("@") ? `${sku}@${vendor}` : sku;
+  const oem = normalizeSku(readField(row, columnMap.oem) || catalogNumber);
 
   return {
-    id: offerKey(supplier.id, guid || sku),
+    id: offerKey(supplier.id, guid || checkoutSku, stockId),
     supplierId: supplier.id,
-    sku,
+    sku: checkoutSku,
     brand: readField(row, columnMap.brand) || "—",
     name,
     displayName: "",
@@ -150,11 +156,13 @@ export function rowToOffer(
     price,
     currency: readField(row, columnMap.currency) || "RUB",
     stock,
-    warehouse: readField(row, columnMap.warehouse),
+    warehouse: readField(row, columnMap.warehouse) || readField(row, "description") || stockId,
     multiplicity,
     deliveryDays:
       deliveryFromRow === undefined ? supplier.deliveryDaysMoscow || 2 : Math.max(0, Math.round(deliveryFromRow)),
     guid,
+    stockId: stockId || undefined,
+    vendorCode: vendor || undefined,
     updatedAt: now,
     source: supplier.source,
   };

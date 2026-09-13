@@ -19,6 +19,7 @@ export function offerToLine(offer: Offer, qty = 1): OrderLine {
     warehouse: offer.warehouse,
     guid: offer.guid,
     stockId: offer.stockId,
+    vendorCode: offer.vendorCode,
   };
 }
 

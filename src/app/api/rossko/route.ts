@@ -7,6 +7,7 @@ import {
   rosskoCheckout,
   rosskoDetails,
   rosskoOrders,
+  rosskoResolveLines,
   rosskoSearch,
 } from "@/lib/rossko";
 import { readStore, upsertOrder, upsertSupplier } from "@/lib/server-store";
@@ -59,6 +60,7 @@ export async function POST(request: NextRequest) {
         return Response.json({ error: "В заказе нет позиций Росско" }, { status: 400 });
       }
       const ready = await ensureRosskoDelivery(supplier);
+      const resolved = await rosskoResolveLines(ready, lines);
       const result = await rosskoCheckout(ready, {
         deliveryId: body.deliveryId || ready.rosskoDeliveryId || "",
         addressId: body.addressId || ready.rosskoAddressId,
@@ -67,10 +69,11 @@ export async function POST(request: NextRequest) {
         contactPhone: body.contactPhone || "+7",
         comment: body.comment || order.comment,
         deliveryParts: body.deliveryParts ?? true,
-        parts: orderLinesToRosskoParts(lines),
+        parts: orderLinesToRosskoParts(resolved),
       });
       const updated: Order = {
         ...order,
+        lines: order.lines.map((line) => resolved.find((item) => item.id === line.id) ?? line),
         status: result.success ? "sent" : order.status,
         externalIds: result.orderIds,
         externalStatus: result.success ? "отправлен в Росско" : "ошибка Росско",

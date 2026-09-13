@@ -276,6 +276,7 @@ function FilePane({
         const rosskoBulk =
           Boolean(supplier) &&
           (file.name.toLowerCase().endsWith(".zip") ||
+            file.name.toLowerCase().endsWith(".xml") ||
             file.size > 400_000 ||
             supplier?.adapter === "rossko");
         if (rosskoBulk && supplier) {

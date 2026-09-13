@@ -18,6 +18,8 @@ export interface CatalogRow {
   days: number;
   multiplicity: number;
   crosses: string[];
+  vendor?: string;
+  stockId?: string;
 }
 
 interface CatalogIndex {
@@ -43,8 +45,9 @@ function buildIndex(rows: CatalogRow[]): CatalogIndex {
   const bySku = new Map<string, number[]>();
   const byOem = new Map<string, number[]>();
   rows.forEach((row, index) => {
-    addIndex(bySku, normalizeSku(row.sku), index);
+    addIndex(bySku, normalizeSku(row.sku.split("@")[0]), index);
     addIndex(bySku, normalizeSku(row.guid), index);
+    if (row.vendor) addIndex(bySku, normalizeSku(row.vendor), index);
     addIndex(byOem, normalizeSku(row.oem), index);
     for (const cross of row.crosses) addIndex(byOem, normalizeSku(cross), index);
   });
@@ -143,8 +146,10 @@ export function catalogRowToOffer(supplier: Supplier, row: CatalogRow, now = new
     stock: row.stock,
     warehouse: "Росско",
     multiplicity: row.multiplicity,
-    deliveryDays: row.days || supplier.deliveryDaysMoscow || 1,
+    deliveryDays: Number.isFinite(row.days) ? row.days : supplier.deliveryDaysMoscow || 0,
     guid: row.guid,
+    stockId: row.stockId,
+    vendorCode: row.vendor,
     updatedAt: now,
     source: "file",
   };
@@ -162,5 +167,7 @@ export function offerToCatalogRow(offer: Offer): CatalogRow {
     days: offer.deliveryDays,
     multiplicity: offer.multiplicity,
     crosses: offer.crossOems ?? [],
+    vendor: offer.vendorCode,
+    stockId: offer.stockId,
   };
 }

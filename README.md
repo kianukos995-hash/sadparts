@@ -8,7 +8,7 @@
 - Фильтры: цена, срок до Москвы, бренд, поставщик, наличие
 - Поставщики: универсальный JSON и **Росско SOAP v2.1** (KEY1 + KEY2)
 - Прайс Росско ZIP/CSV (~190 тыс. строк) на сервере, поиск по артикулу
-- GetSearch / GetCheckoutDetails / GetCheckout / GetOrders
+- GetSearch / GetCheckoutDetails / GetCheckout / GetOrders / GetDeliveryDetails
 - Клиенты со скидкой, наценка склада, расчёт цены клиенту
 - Заказ: OEM, артикул, количество, срок, закуп, цена со скидкой
 - Редактирование названия позиции и привязка кросс-OEM
@@ -20,13 +20,13 @@
 
 ## Росско
 
-Первая версия API на `msk.rossko.ru` закрыта. Рабочий контур — `https://api.rossko.ru/service/v2.1`.
+Первая версия API на `msk.rossko.ru` закрыта. Рабочий контур — `https://api.rossko.ru/service/v2.1` ([документация GetSearch](https://api.rossko.ru/index.php?path=/GetSearch&action=SOAP)).
 
 1. В **Настройки** откройте Росско и вставьте **KEY1** и **KEY2** из кабинета.
-2. «Проверить ключ» вызывает **GetCheckoutDetails** (доставка/оплата) и запоминает `delivery_id`.
-3. Поиск в каталоге и в Telegram идёт в **GetSearch** (артикул, название, GUID) и одновременно по загруженному прайсу.
-4. **Добавить прайс** принимает ZIP/CSV Росско: Номенклатура, Бренд, Артикул, Описание, цена, наличие, срок, OEM.
-5. В заказе: **GetCheckoutDetails** → **GetCheckout**. Статусы — **GetOrders**.
+2. «Проверить ключ» вызывает **GetCheckoutDetails** (доставка/оплата, адреса и реквизиты) и запоминает `delivery_id`.
+3. Поиск в каталоге и в Telegram идёт в **GetSearch** (`text` + `delivery_id`, при курьере ещё `address_id`) и одновременно по загруженному прайсу. Ищите по артикулу, «бренд артикул» или GUID номенклатуры.
+4. **Добавить прайс** принимает ZIP/CSV Росско и SOAP XML GetSearch: Номенклатура=guid, Бренд, Артикул=partnumber, Вендор-код (`артикул@vendor` для GetCheckout), цена, наличие, срок, склад=stock.id.
+5. В заказе склад подтягивается через GetSearch, затем **GetCheckout**. Статусы — **GetOrders**. Волны курьера — **GetDeliveryDetails**.
 
 Пока стоят демо-ключи, SOAP не дергает боевой Росско: поиск работает по файлу и демо-складу.
 
