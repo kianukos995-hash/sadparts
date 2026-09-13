@@ -41,7 +41,7 @@ export default function QuotePage() {
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [maxDays, setMaxDays] = useState("");
-  const [inStock, setInStock] = useState(true);
+  const [inStock, setInStock] = useState(false);
   const [changedOnly, setChangedOnly] = useState(false);
   const [live, setLive] = useState(false);
   const [clientId, setClientId] = useState("");
@@ -238,8 +238,14 @@ export default function QuotePage() {
 
       <p className="text-xs text-muted-foreground">
         {busy ? "Ищу…" : `${total.toLocaleString("ru-RU")} позиций`} · страница {page + 1}/{pages}
+        {inStock ? " · только с остатком" : ""}
       </p>
 
+      {offers.length === 0 && !busy ? (
+        <p className="rounded-xl border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
+          Позиций нет. Загрузите прайс в карточке поставщика или снимите фильтр «В наличии».
+        </p>
+      ) : (
       <Table>
         <TableHeader>
           <TableRow>
@@ -308,6 +314,7 @@ export default function QuotePage() {
           })}
         </TableBody>
       </Table>
+      )}
 
       {pages > 1 ? (
         <div className="flex items-center justify-between">

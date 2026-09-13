@@ -1,11 +1,13 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
+import { compactColumnMap } from "@/lib/mapping";
 import { guessPriceTitle } from "@/lib/price-bands";
 import type { ImportMode, Supplier } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -35,6 +37,7 @@ export function PriceListUpload({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const { refresh } = useAvtoPrice();
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<ImportMode>("replace");
 
@@ -48,7 +51,8 @@ export function PriceListUpload({
       form.set("supplierId", supplier.id);
       form.set("mode", mode);
       form.set("label", guessPriceTitle(file.name));
-      form.set("columnMap", JSON.stringify(supplier.columnMap ?? {}));
+      const custom = compactColumnMap(supplier.columnMap);
+      if (Object.keys(custom).length) form.set("columnMap", JSON.stringify(custom));
       const response = await fetch("/api/catalog/import", { method: "POST", body: form });
       const data = (await response.json()) as ImportResult;
       if (!response.ok) throw new Error(data.error || "Не удалось загрузить прайс");
@@ -60,6 +64,7 @@ export function PriceListUpload({
       );
       if (data.mapNote) toast.message(`Ключи колонок: ${data.mapNote}`);
       onImported?.({ imported, fileName: file.name });
+      if (variant === "button") router.push(`/suppliers/${supplier.id}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Файл не загрузился");
     } finally {

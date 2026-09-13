@@ -25,8 +25,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
-import { formatBandLabel } from "@/lib/price-bands";
-import type { Client } from "@/lib/types";
+import { formatBandLabel, markupForPrice } from "@/lib/price-bands";
+import { clientSellPrice, discountBreakEvenPercent } from "@/lib/pricing";
+import type { Client, PriceBand } from "@/lib/types";
 
 function emptyClient(): Client {
   return {
@@ -161,7 +162,7 @@ export default function ClientsPage() {
                 />
               </Field>
             </div>
-            <Field label="Скидка, %">
+            <Field label="Скидка, % от цены с наценкой">
               <Input
                 type="number"
                 min={0}
@@ -174,12 +175,12 @@ export default function ClientsPage() {
                   }))
                 }
               />
-              {draft.discountPercent >= 20 ? (
-                <p className="text-xs text-amber-800">
-                  Большая скидка может опустить цену клиенту ниже закупа — программа предупредит, но
-                  сохранит.
-                </p>
-              ) : null}
+              <DiscountHint
+                discount={draft.discountPercent}
+                bands={settings.priceBands}
+                fallback={settings.markupPercent}
+                client={draft}
+              />
             </Field>
             <div className="grid gap-2">
               <Label>Наценки по ценовым категориям</Label>
@@ -225,10 +226,15 @@ export default function ClientsPage() {
             <Button
               disabled={draft.name.trim().length < 2}
               onClick={() => {
-                const tooBig = draft.discountPercent >= 40;
+                const sample = clientSellPrice(1000, settings.priceBands, settings.markupPercent, {
+                  ...draft,
+                  name: draft.name.trim(),
+                });
                 void upsertClient({ ...draft, name: draft.name.trim() }).then(() => {
-                  if (tooBig) {
-                    toast.warning("Клиент сохранён. Скидка может дать цену ниже закупа — проверьте проценку.");
+                  if (sample + 0.009 < 1000) {
+                    toast.warning(
+                      "Клиент сохранён. Скидка даёт цену ниже закупа — в проценке будет предупреждение, заказ не блокируется.",
+                    );
                   } else {
                     toast.success("Клиент сохранён");
                   }
@@ -251,5 +257,37 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <Label>{label}</Label>
       {children}
     </label>
+  );
+}
+
+function DiscountHint({
+  discount,
+  bands,
+  fallback,
+  client,
+}: {
+  discount: number;
+  bands: PriceBand[];
+  fallback: number;
+  client: Client;
+}) {
+  const sampleBuy = 1000;
+  const markup = markupForPrice(sampleBuy, bands, fallback, client);
+  const sell = clientSellPrice(sampleBuy, bands, fallback, client);
+  const breakEven = discountBreakEvenPercent(markup);
+  const below = sell + 0.009 < sampleBuy;
+  return (
+    <div className="grid gap-1">
+      <p className="text-xs text-muted-foreground">
+        Цена клиенту = закуп + наценка коридора − скидка {discount || 0}%. Пример: закуп 1000 ₽, наценка{" "}
+        {markup}% → клиенту {sell.toFixed(2)} ₽. Ниже закупа скидка становится после {breakEven}%.
+      </p>
+      {below ? (
+        <p className="text-xs text-amber-800">
+          Скидка опускает цену ниже закупа. Сохраним карточку — в проценке будет предупреждение, заказ не
+          блокируется.
+        </p>
+      ) : null}
+    </div>
   );
 }

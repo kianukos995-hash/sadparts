@@ -10,6 +10,17 @@ export function sellUnitPrice(buy: number, markupPercent: number, discountPercen
   return roundMoney(marked * (1 - (discountPercent || 0) / 100));
 }
 
+/** Скидка % от цены с наценкой, при которой продажа падает ниже закупа. */
+export function discountBreakEvenPercent(markupPercent: number) {
+  const markup = Math.max(0, markupPercent || 0);
+  if (markup <= 0) return 0;
+  return roundMoney((markup / (100 + markup)) * 100);
+}
+
+export function isSellBelowBuy(buy: number, markupPercent: number, discountPercent: number) {
+  return sellUnitPrice(buy, markupPercent, discountPercent) + 0.009 < buy;
+}
+
 export function lineTotal(buy: number, qty: number, markupPercent: number, discountPercent: number) {
   return roundMoney(sellUnitPrice(buy, markupPercent, discountPercent) * qty);
 }

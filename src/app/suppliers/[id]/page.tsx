@@ -26,22 +26,28 @@ export default function SupplierDetailPage() {
   const [busy, setBusy] = useState<"sync" | "test" | null>(null);
   const [fileOffers, setFileOffers] = useState<Offer[]>([]);
   const [fileTotal, setFileTotal] = useState(0);
+  const [browseState, setBrowseState] = useState<"loading" | "ok" | "error">("loading");
 
   const supplier = suppliers.find((item) => item.id === params.id);
-  const supplierOffers = useMemo(
-    () => (fileOffers.length ? fileOffers : offers.filter((offer) => offer.supplierId === params.id)),
-    [offers, params.id, fileOffers],
-  );
+  const catalogHint = supplier?.catalogCount ?? supplier?.lastSyncCount ?? fileTotal;
+  const supplierOffers = useMemo(() => {
+    if (fileOffers.length) return fileOffers;
+    return offers.filter((offer) => offer.supplierId === params.id);
+  }, [offers, params.id, fileOffers]);
 
   const reloadCatalog = useCallback(() => {
     if (!params.id) return;
     void fetch(`/api/catalog/browse?supplierId=${encodeURIComponent(params.id)}&pageSize=40`)
       .then(async (response) => {
-        const data = (await response.json()) as { offers?: Offer[]; total?: number };
+        const data = (await response.json()) as { offers?: Offer[]; total?: number; error?: string };
+        if (!response.ok) throw new Error(data.error || "browse failed");
         setFileOffers(data.offers ?? []);
         setFileTotal(data.total ?? 0);
+        setBrowseState("ok");
       })
-      .catch(() => undefined);
+      .catch(() => {
+        setBrowseState("error");
+      });
   }, [params.id]);
 
   useEffect(() => {
@@ -246,15 +252,45 @@ export default function SupplierDetailPage() {
       </Card>
 
       <div>
-        <h2 className="mb-3 text-lg font-medium">
-          Позиции прайса
-          {fileTotal ? ` · ${fileTotal.toLocaleString("ru-RU")}` : ""}
+        <h2 className="mb-3 flex flex-wrap items-center gap-3 text-lg font-medium">
+          <span>
+            Позиции прайса
+            {fileTotal || catalogHint
+              ? ` · ${(fileTotal || catalogHint).toLocaleString("ru-RU")}`
+              : ""}
+          </span>
+          <Link href="/catalog" className="text-sm font-normal text-muted-foreground hover:underline">
+            Каталог
+          </Link>
+          <Link href="/quote" className="text-sm font-normal text-muted-foreground hover:underline">
+            Проценка
+          </Link>
         </h2>
-        <PartsTable
-          offers={supplierOffers.slice(0, 40)}
-          suppliers={[supplier]}
-          empty="Прайс ещё не загружен. Выберите файл в блоке выше."
-        />
+        {browseState === "loading" && supplierOffers.length === 0 ? (
+          <p className="rounded-xl border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
+            Читаю прайс с диска…
+          </p>
+        ) : browseState === "error" && supplierOffers.length === 0 ? (
+          <div className="rounded-xl border border-dashed px-4 py-12 text-center text-sm text-muted-foreground">
+            <p>Не удалось показать позиции. Прайс на диске есть — повторите чтение.</p>
+            <Button
+              className="mt-3"
+              variant="outline"
+              onClick={() => {
+                setBrowseState("loading");
+                reloadCatalog();
+              }}
+            >
+              Показать позиции
+            </Button>
+          </div>
+        ) : (
+          <PartsTable
+            offers={supplierOffers.slice(0, 40)}
+            suppliers={[supplier]}
+            empty="Прайс ещё не загружен. Выберите файл в блоке выше."
+          />
+        )}
         {fileTotal > 40 ? (
           <p className="mt-2 text-xs text-muted-foreground">
             Показаны 40 из {fileTotal.toLocaleString("ru-RU")}. Полный список — в каталоге и проценке.

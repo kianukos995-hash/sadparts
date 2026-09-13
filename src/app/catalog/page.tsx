@@ -22,7 +22,7 @@ import { AddToOrderButtons, offerContextAdd } from "@/components/add-to-order";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { formatDays, formatMoney, formatStock } from "@/lib/format";
 import { groupByOem, offerTitle } from "@/lib/oem";
-import { applicabilityOf } from "@/lib/offer-extra";
+import { applicabilityOf, sellWarning } from "@/lib/offer-extra";
 import { pairLabel } from "@/lib/pairs";
 import { findBand, formatBandLabel } from "@/lib/price-bands";
 import { clientSellPrice } from "@/lib/pricing";
@@ -297,6 +297,12 @@ export default function CatalogPage() {
                         settings.markupPercent,
                         client,
                       );
+                      const warn = sellWarning(
+                        offer.price,
+                        bands,
+                        settings.markupPercent,
+                        client,
+                      );
                       const band = findBand(offer.price, bands);
                       const cars = applicabilityOf(offer);
                       return (
@@ -337,7 +343,7 @@ export default function CatalogPage() {
                               <p
                                 className={cn(
                                   "text-sm font-semibold",
-                                  offer.id === best.id && "text-emerald-700",
+                                  warn ? "text-amber-800" : offer.id === best.id && "text-emerald-700",
                                 )}
                               >
                                 {formatMoney(sell, offer.currency)}
@@ -345,6 +351,9 @@ export default function CatalogPage() {
                               <p className="text-[11px] text-muted-foreground">
                                 закуп {formatMoney(offer.price, offer.currency)} · {formatBandLabel(band)}
                               </p>
+                              {warn ? (
+                                <p className="text-[11px] text-amber-800">ниже закупа — только предупреждение</p>
+                              ) : null}
                             </div>
                             <AddToOrderButtons offer={offer} compact />
                           </div>

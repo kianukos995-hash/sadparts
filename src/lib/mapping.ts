@@ -7,17 +7,49 @@ import { extractSpecs } from "@/lib/specs";
 import { collectRowImages } from "@/lib/media";
 
 const ALIASES: Record<FieldKey, string[]> = {
-  sku: ["артикул", "partnumber", "sku", "article", "каталожныйномер", "код", "partno", "pn", "номердетали"],
-  brand: ["brand", "бренд", "производитель", "make", "producer", "manufacturer", "марка"],
-  name: ["описание", "name", "наименование", "название", "title", "desc", "товар"],
-  oem: ["оемномер", "oemномер", "oem", "оригинал", "ориг", "oe", "oeномер"],
-  category: ["category", "категория", "группа", "group", "раздел", "применимость"],
-  price: ["ценаруб", "price", "цена", "cost", "стоимость", "закуп", "ценазакупки", "ценазакуп", "optprice"],
+  sku: [
+    "артикул",
+    "каталожныйномер",
+    "номердетали",
+    "кодтовара",
+    "partnumber",
+    "article",
+    "partno",
+    "sku",
+    "код",
+    "pn",
+  ],
+  brand: ["производитель", "manufacturer", "producer", "бренд", "brand", "марка", "make"],
+  name: ["наименование", "описание", "название", "name", "title", "товар", "desc"],
+  oem: ["оемномер", "oemномер", "оригинал", "oem", "ориг", "oeномер", "oe"],
+  category: ["применимость", "категория", "category", "группа", "раздел", "group"],
+  price: [
+    "ценазакупки",
+    "ценазакуп",
+    "ценаруб",
+    "закупочная",
+    "стоимость",
+    "ценаопт",
+    "optprice",
+    "price",
+    "цена",
+    "закуп",
+    "cost",
+  ],
   currency: ["currency", "валюта"],
-  stock: ["наличие", "stock", "остаток", "qty", "quantity", "count", "количество", "остатки"],
-  warehouse: ["warehouse", "склад", "stockname", "филиал", "складпоставщика"],
-  multiplicity: ["кратностьотгрузки", "multiplicity", "кратность", "min_order", "кратно", "минпартия"],
-  deliveryDays: ["срокпоставкидн", "deliverydays", "срок", "срокдоставки", "days", "delivery", "leadtime", "срокдн"],
+  stock: ["количество", "наличие", "остатки", "остаток", "quantity", "stock", "count", "qty", "колво"],
+  warehouse: ["складпоставщика", "warehouse", "stockname", "филиал", "склад"],
+  multiplicity: ["кратностьотгрузки", "multiplicity", "минпартия", "кратность", "min_order", "кратно"],
+  deliveryDays: [
+    "срокпоставкидн",
+    "срокдоставки",
+    "deliverydays",
+    "leadtime",
+    "delivery",
+    "срокдн",
+    "срок",
+    "days",
+  ],
 };
 
 export function normalizeHeader(value: string) {
@@ -42,7 +74,9 @@ export function resolveColumnMap(
   function overlay(partial: Partial<ColumnMap> | null | undefined, bucket: FieldKey[]) {
     if (!partial) return;
     for (const field of FIELD_KEYS) {
-      const hit = matchHeader(headers, partial[field] ?? "");
+      const raw = (partial[field] ?? "").trim();
+      if (!raw || raw === DEFAULT_COLUMN_MAP[field]) continue;
+      const hit = matchHeader(headers, raw);
       if (!hit) continue;
       map[field] = hit;
       bucket.push(field);
@@ -66,6 +100,16 @@ export function describeColumnMap(map: ColumnMap) {
     .join(", ");
 }
 
+export function compactColumnMap(map?: Partial<ColumnMap> | null): Partial<ColumnMap> {
+  const out: Partial<ColumnMap> = {};
+  if (!map) return out;
+  for (const field of FIELD_KEYS) {
+    const value = (map[field] ?? "").trim();
+    if (value && value !== DEFAULT_COLUMN_MAP[field]) out[field] = value;
+  }
+  return out;
+}
+
 export function guessColumnMap(headers: string[]): ColumnMap {
   if (isRosskoPriceHeaders(headers)) return rosskoFileColumnMap(headers);
   const map = { ...DEFAULT_COLUMN_MAP };
@@ -75,7 +119,7 @@ export function guessColumnMap(headers: string[]): ColumnMap {
   }));
 
   (Object.keys(ALIASES) as FieldKey[]).forEach((field) => {
-    let best: { raw: string; score: number } | undefined;
+    let best: { raw: string; score: number; aliasLen: number } | undefined;
     for (const header of normalized) {
       for (const alias of ALIASES[field]) {
         const key = normalizeHeader(alias);
@@ -83,7 +127,12 @@ export function guessColumnMap(headers: string[]): ColumnMap {
         if (header.key === key) score = 3;
         else if (header.key.startsWith(key) || key.startsWith(header.key)) score = 2;
         else if (key.length >= 5 && header.key.includes(key)) score = 1;
-        if (score && (!best || score > best.score)) best = { raw: header.raw, score };
+        if (
+          score &&
+          (!best || score > best.score || (score === best.score && key.length > best.aliasLen))
+        ) {
+          best = { raw: header.raw, score, aliasLen: key.length };
+        }
       }
     }
     if (best) map[field] = best.raw;
@@ -132,6 +181,19 @@ function readField(row: Record<string, unknown>, column: string) {
   return match ? stringifyCell(row[match]) : "";
 }
 
+function fallbackSku(row: Record<string, unknown>) {
+  for (const alias of ALIASES.sku) {
+    const hit = Object.keys(row).find((key) => {
+      const header = normalizeHeader(key);
+      const needle = normalizeHeader(alias);
+      return header === needle || (needle.length >= 5 && header.includes(needle));
+    });
+    const sku = normalizeSku(hit ? stringifyCell(row[hit]) : "");
+    if (sku) return sku;
+  }
+  return "";
+}
+
 function parseNumber(value: string) {
   const cleaned = value.replace(/\s/g, "").replace(",", ".");
   const num = Number.parseFloat(cleaned);
@@ -157,7 +219,8 @@ export function rowToOffer(
   columnMap: ColumnMap,
   now = new Date().toISOString(),
 ): Offer | null {
-  const sku = normalizeSku(readField(row, columnMap.sku));
+  let sku = normalizeSku(readField(row, columnMap.sku));
+  if (!sku) sku = fallbackSku(row);
   if (!sku) return null;
   const name = readField(row, columnMap.name) || sku;
   const price = parseNumber(readField(row, columnMap.price));

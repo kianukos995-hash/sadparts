@@ -198,14 +198,36 @@ function rowMatches(row: CatalogRow, filter: CatalogBrowseFilter, q: string, qSk
   );
 }
 
+function browseIsOpen(filter: CatalogBrowseFilter) {
+  return (
+    !(filter.q ?? "").trim() &&
+    !filter.brand &&
+    !filter.minPrice &&
+    !filter.maxPrice &&
+    !filter.maxDays &&
+    !filter.inStock &&
+    !filter.changedOnly
+  );
+}
+
 export async function browseCatalog(supplier: Supplier, filter: CatalogBrowseFilter) {
   const index = await readCatalog(supplier.id);
   const limit = Math.min(Math.max(filter.limit ?? 40, 0), 120);
   const offset = Math.max(filter.offset ?? 0, 0);
-  const q = (filter.q ?? "").trim().toLowerCase();
-  const qSku = normalizeSku(filter.q ?? "");
   const patches = await readPatches(supplier.id);
   const now = new Date().toISOString();
+
+  if (browseIsOpen(filter)) {
+    const slice = index.rows.slice(offset, offset + limit);
+    return {
+      offers: slice.map((row) => applyPatch(catalogRowToOffer(supplier, row, now), patches)),
+      total: index.rows.length,
+      brands: index.brands.slice(0, 250),
+      count: index.rows.length,
+    };
+  }
+  const q = (filter.q ?? "").trim().toLowerCase();
+  const qSku = normalizeSku(filter.q ?? "");
   const seen = new Set<number>();
   let matched = 0;
   const offers: Offer[] = [];

@@ -8,13 +8,13 @@ import { decodePriceText, extractBestZipFile } from "../src/lib/zip";
 import { parseCsvText } from "../src/lib/parse-feed";
 import { DEFAULT_COLUMN_MAP, type Supplier } from "../src/lib/types";
 import { findBand, markupForPrice, DEFAULT_PRICE_BANDS } from "../src/lib/price-bands";
-import { clientSellPrice } from "../src/lib/pricing";
+import { clientSellPrice, discountBreakEvenPercent } from "../src/lib/pricing";
 import { stringifyCell } from "../src/lib/json-path";
 import { collectRowImages, isDisplayableImage } from "../src/lib/media";
 import { parseExcelPrice } from "../src/lib/excel-price";
 import { readCatalog } from "../src/lib/file-catalog";
 import { pairQuery } from "../src/lib/pairs";
-import { resolveColumnMap } from "../src/lib/mapping";
+import { resolveColumnMap, guessColumnMap } from "../src/lib/mapping";
 
 const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
   let c = n;
@@ -212,6 +212,12 @@ async function main() {
   });
   assert(Math.abs(sell - 400 * 1.1 * 0.92) < 0.02, `sell ${sell}`);
   assert(markupForPrice(200, DEFAULT_PRICE_BANDS, 18) === 32, "коридор 0-300");
+  const breakEven18 = discountBreakEvenPercent(18);
+  assert(Math.abs(breakEven18 - 15.25) < 0.02, `breakEven ${breakEven18}`);
+  const mixed = guessColumnMap(["sku", "Артикул", "Цена"]);
+  assert(mixed.sku === "Артикул", `prefer Артикул, got ${mixed.sku}`);
+  const resolvedDefault = resolveColumnMap(["sku", "Артикул", "Цена"], DEFAULT_COLUMN_MAP);
+  assert(resolvedDefault.map.sku === "Артикул", `default overlay ${resolvedDefault.map.sku}`);
   const pair = pairQuery("X", "Рычаг левый");
   assert(pair.side === "L", `pair ${pair.side}`);
   assert(/прав/i.test(pair.name), pair.name);

@@ -29,7 +29,7 @@ export function sellWarning(
 ) {
   const sell = clientSellPrice(buy, bands, fallbackMarkup, client, markupOverride);
   if (sell + 0.009 < buy) {
-    return `Цена клиенту ${sell.toFixed(2)} ₽ ниже закупа ${buy.toFixed(2)} ₽ — проверьте скидку и наценку.`;
+    return `Цена клиенту ${sell.toFixed(2)} ₽ ниже закупа ${buy.toFixed(2)} ₽ — это только предупреждение, заказ можно собрать.`;
   }
   return "";
 }

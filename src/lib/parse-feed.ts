@@ -47,8 +47,8 @@ export function recordsToTable(records: Record<string, unknown>[]): ParsedTable 
   return { headers, rows, total: rows.length };
 }
 
-const HEADER_HINT =
-  /артикул|номенклатура|sku|partnumber|brand|бренд|цена|price|наличие|stock|oem|описание|наименование/i;
+  const HEADER_HINT =
+  /артикул|номенклатура|sku|partnumber|brand|бренд|цена|price|наличие|stock|oem|описание|наименование|кодтовара|производитель|закуп/i;
 
 export function detectDelimiter(line: string) {
   const semicolons = (line.match(/;/g) ?? []).length;
