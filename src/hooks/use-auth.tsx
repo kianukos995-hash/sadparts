@@ -9,6 +9,7 @@ interface AuthApi {
   loading: boolean;
   refresh: () => Promise<PublicUser | null>;
   login: (email: string, password: string) => Promise<PublicUser>;
+  loginByKey: (key: string) => Promise<PublicUser>;
   guest: () => Promise<PublicUser>;
   logout: () => Promise<void>;
 }
@@ -54,6 +55,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return data.user;
   }, []);
 
+  const loginByKey = useCallback(async (key: string) => {
+    const response = await fetch("/api/auth/login-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key }),
+    });
+    const data = (await response.json()) as { user?: PublicUser; error?: string };
+    if (!response.ok || !data.user) throw new Error(data.error || "Не войти по ключу");
+    const { clearLegacyDrafts } = await import("@/lib/local-drafts");
+    clearLegacyDrafts();
+    setUser(data.user);
+    return data.user;
+  }, []);
+
   const guest = useCallback(async () => {
     const response = await fetch("/api/auth/guest", { method: "POST" });
     const data = (await response.json()) as { user?: PublicUser; error?: string };
@@ -75,8 +90,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const open = pathname.startsWith("/login") || pathname.startsWith("/register");
 
   const value = useMemo(
-    () => ({ user, loading, refresh, login, guest, logout }),
-    [user, loading, refresh, login, guest, logout],
+    () => ({ user, loading, refresh, login, loginByKey, guest, logout }),
+    [user, loading, refresh, login, loginByKey, guest, logout],
   );
 
   if (loading) {

@@ -203,6 +203,23 @@ export interface AccessKeyRecord {
   incomePercent?: number;
   incomeFixed?: number;
   shiftRate?: number;
+  markupPercent?: number;
+  discountPercent?: number;
+  maxMarkup?: number;
+  owner?: KeyOwner;
+}
+
+export interface KeyOwner {
+  name?: string;
+  fio?: string;
+  phone?: string;
+  email?: string;
+  carMake?: string;
+  carModel?: string;
+  vin?: string;
+  plate?: string;
+  year?: string;
+  color?: string;
 }
 
 export interface ManagerMembership {

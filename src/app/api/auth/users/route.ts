@@ -1,6 +1,7 @@
 import {
   attachClient,
   createDeskUser,
+  issueBlankAccessKey,
   listStaffUsers,
   markNoticesRead,
   newAccessKey,
@@ -8,13 +9,27 @@ import {
   requestAccessKey,
   revokeAccessKey,
   setUserSeeCost,
+  takeOrganizationDeskKeys,
+  updateKeyOwner,
   updateUserStatus,
 } from "@/lib/auth-store";
 import { fail, requireUser } from "@/lib/session";
-import { readStore, upsertClient, upsertManagerMembership, upsertOrganization } from "@/lib/server-store";
+import { ensureKeyClient, readStore, upsertClient, upsertManagerMembership, upsertOrganization } from "@/lib/server-store";
 import { logActivity } from "@/lib/activity";
+import { ownerFromProfile, ownerFromUnknown } from "@/lib/access-keys";
+import { orgAllowsClientKeys } from "@/lib/org-policy";
 import { canIssueKeys, canManageStaff } from "@/lib/scope";
-import type { UserRole } from "@/lib/types";
+import type { PublicUser, UserRole } from "@/lib/types";
+
+async function assertOrgMayIssue(actor: PublicUser) {
+  if (actor.role === "admin") return;
+  if (actor.role !== "organization" && actor.role !== "manager") return;
+  const store = await readStore();
+  const org = store.organizations.find((item) => item.id === actor.organizationId);
+  if (!orgAllowsClientKeys(org)) {
+    throw new Error("Администратор забрал ключ организации. Клиентами управляет админ.");
+  }
+}
 
 export async function GET(request: Request) {
   try {
@@ -53,6 +68,7 @@ export async function POST(request: Request) {
       incomePercent?: number;
       incomeFixed?: number;
       shiftRate?: number;
+      owner?: unknown;
     };
     if (body.noticesRead) {
       if (!canIssueKeys(actor.role)) return Response.json({ error: "Недостаточно прав" }, { status: 403 });
@@ -88,6 +104,30 @@ export async function POST(request: Request) {
       });
       return Response.json({ key: rec });
     }
+    if (body.action === "take-org-key" && body.organizationId) {
+      if (actor.role !== "admin") {
+        return Response.json({ error: "Только администратор забирает ключ организации" }, { status: 403 });
+      }
+      const taken = await takeOrganizationDeskKeys(actor, body.organizationId);
+      const store = await readStore();
+      const org = store.organizations.find((item) => item.id === body.organizationId);
+      if (!org) throw new Error("Организация не найдена");
+      await upsertOrganization({
+        ...org,
+        accessKey: undefined,
+        adminControlsClients: true,
+        accountStatus: org.accountStatus === "blocked" ? "blocked" : "pending_key",
+      });
+      await logActivity({
+        userId: actor.id,
+        email: actor.email,
+        role: actor.role,
+        organizationId: org.id,
+        action: "take_org_key",
+        detail: `Ключ организации «${org.name}» забран, клиентами управляет администратор`,
+      });
+      return Response.json({ keys: taken, organizationId: org.id });
+    }
     if (!canIssueKeys(actor.role)) {
       return Response.json({ error: "Недостаточно прав" }, { status: 403 });
     }
@@ -105,7 +145,63 @@ export async function POST(request: Request) {
       });
       return Response.json({ user: updated });
     }
+    if (body.action === "issue-blank-key") {
+      await assertOrgMayIssue(actor);
+      const rec = await issueBlankAccessKey({
+        actor,
+        role: body.role || "client",
+        organizationId: body.organizationId,
+        owner: ownerFromUnknown(body.owner),
+        markupPercent: Number(body.markupPercent),
+        discountPercent: Number(body.discountPercent),
+        maxMarkup: Number(body.maxMarkup),
+        incomePercent: Number(body.incomePercent) || 0,
+        incomeFixed: Number(body.incomeFixed) || 0,
+        shiftRate: Number(body.shiftRate) || 0,
+      });
+      await logActivity({
+        userId: actor.id,
+        email: actor.email,
+        role: actor.role,
+        organizationId: rec.organizationId,
+        action: "issue_blank_key",
+        detail: `Выдан ключ без пользователя (${rec.role})`,
+      });
+      return Response.json({ key: rec, accessKey: rec.key });
+    }
+    if (body.action === "update-key-owner" && body.keyId) {
+      const rec = await updateKeyOwner(actor, body.keyId, ownerFromUnknown(body.owner), {
+        markupPercent: Number(body.markupPercent),
+        discountPercent: Number(body.discountPercent),
+        maxMarkup: Number(body.maxMarkup),
+      });
+      if ((rec.role === "client" || rec.role === "guest") && rec.clientId && rec.userId) {
+        await ensureKeyClient({
+          clientId: rec.clientId,
+          userId: rec.userId,
+          accessKey: rec.key,
+          owner: rec.owner,
+          organizationId: rec.organizationId,
+          issuedByUserId: rec.issuedByUserId,
+          markupPercent: rec.markupPercent,
+          discountPercent: rec.discountPercent,
+          maxMarkup: rec.maxMarkup,
+          guest: rec.role === "guest",
+        });
+      }
+      await logActivity({
+        userId: actor.id,
+        email: actor.email,
+        role: actor.role,
+        organizationId: rec.organizationId,
+        clientId: rec.clientId,
+        action: "key_owner",
+        detail: "Обновлён владелец ключа",
+      });
+      return Response.json({ key: rec });
+    }
     if (body.action === "create-user") {
+      await assertOrgMayIssue(actor);
       if (actor.role === "manager") {
         body.role = "client";
       }
@@ -131,6 +227,7 @@ export async function POST(request: Request) {
       return Response.json({ user: await updateUserStatus(body.userId, "blocked") });
     }
     if (body.action === "issue-key") {
+      await assertOrgMayIssue(actor);
       const staff = await listStaffUsers(actor.role === "admin" ? undefined : actor);
       const target = staff.users.find((item) => item.id === body.userId);
       if (!target) throw new Error("Пользователь не найден");
@@ -156,6 +253,7 @@ export async function POST(request: Request) {
             ...orgRow,
             accessKey: key,
             accountStatus: "active",
+            adminControlsClients: false,
             markupPercent: capped,
             discountPercent: Number(body.discountPercent) || orgRow.discountPercent,
             maxMarkup: body.maxMarkup ?? orgRow.maxMarkup,
@@ -172,6 +270,10 @@ export async function POST(request: Request) {
           issuedBy: actor,
           userId: body.userId,
           organizationId: orgRow?.id || orgId,
+          owner: ownerFromProfile(target),
+          markupPercent: capped,
+          discountPercent: Number(body.discountPercent) || 0,
+          maxMarkup: body.maxMarkup,
         });
         await logActivity({
           userId: actor.id,
@@ -238,6 +340,10 @@ export async function POST(request: Request) {
         incomePercent: Number(body.incomePercent) || 0,
         incomeFixed: Number(body.incomeFixed) || 0,
         shiftRate: Number(body.shiftRate) || 0,
+        owner: ownerFromProfile(target),
+        markupPercent: capped,
+        discountPercent: Number(body.discountPercent) || 0,
+        maxMarkup: body.maxMarkup,
       });
       await logActivity({
         userId: actor.id,

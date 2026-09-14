@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { DEMO_KEYS, EXAMPLE_ORG_ID, ROSSKO_API_BASE, STORE_VERSION } from "@/lib/constants";
+import { DEMO_KEYS, EXAMPLE_ORG_ID, ROSSKO_API_BASE, STORE_VERSION, DEMO_LOGIN_KEY } from "@/lib/constants";
 import { mergeCrosses } from "@/lib/cross-catalog";
 import type { OfferPatch } from "@/lib/offer-patches";
 import { normalizeSku } from "@/lib/format";
@@ -8,6 +8,7 @@ import { removeCatalog } from "@/lib/file-catalog";
 import { CORE_PARTS } from "@/lib/mock-parts";
 import { createInitialStore, DEFAULT_CLIENTS, DEFAULT_ORGANIZATIONS } from "@/lib/seed";
 import { DEFAULT_PRICE_BANDS, sanitizeBands } from "@/lib/price-bands";
+import { applyOrgCapsToClient, applyOrgCapsToClients, applyOrgCapsToOrg } from "@/lib/org-policy";
 import { defaultGuestBands } from "@/lib/roles";
 import {
   nextBillNumber,
@@ -107,6 +108,7 @@ function migrateStore(store: StoreSnapshot): StoreSnapshot {
   organizations = organizations.map((org) => ({
     ...org,
     managersCanEditSuppliers: Boolean(org.managersCanEditSuppliers),
+    adminControlsClients: Boolean(org.adminControlsClients),
   }));
   const orgIds = organizations.map((item) => item.id);
   const suppliers = store.suppliers.map((supplier) => {
@@ -174,6 +176,10 @@ function migrateStore(store: StoreSnapshot): StoreSnapshot {
       },
     ];
   }
+  if (!clients.some((item) => item.id === "cli-key-demo")) {
+    const demo = DEFAULT_CLIENTS.find((item) => item.id === "cli-key-demo");
+    if (demo) clients = [...clients, demo];
+  }
   clients = clients.map((client) => {
     if (client.id === "cli-sto") {
       return {
@@ -184,6 +190,20 @@ function migrateStore(store: StoreSnapshot): StoreSnapshot {
         accountStatus: "active",
         priceView: client.priceView ?? "clean",
         ownerUserId: client.ownerUserId || "usr-sto",
+        issuedByUserId: client.issuedByUserId || "usr-admin",
+        fio: client.fio || client.name,
+      };
+    }
+    if (client.id === "cli-key-demo") {
+      return {
+        ...client,
+        email: client.email || "keydemo@sadparts.local",
+        accessKey: client.accessKey || DEMO_LOGIN_KEY,
+        markupPercent: client.markupPercent ?? 16,
+        discountPercent: client.discountPercent ?? 5,
+        accountStatus: "active",
+        priceView: client.priceView ?? "clean",
+        ownerUserId: client.ownerUserId || "usr-key-demo",
         issuedByUserId: client.issuedByUserId || "usr-admin",
         fio: client.fio || client.name,
       };
@@ -518,12 +538,16 @@ export function patchOffer(offerId: string, patch: OfferPatch) {
 export function upsertOrganization(org: Organization) {
   return enqueue(async () => {
     const store = await readStoreFile();
-    const exists = store.organizations.some((item) => item.id === org.id);
+    const normalized = applyOrgCapsToOrg(org);
+    const exists = store.organizations.some((item) => item.id === normalized.id);
+    const organizations = exists
+      ? store.organizations.map((item) => (item.id === normalized.id ? normalized : item))
+      : [normalized, ...store.organizations];
+    const clients = applyOrgCapsToClients(store.clients, normalized);
     const next: StoreSnapshot = {
       ...store,
-      organizations: exists
-        ? store.organizations.map((item) => (item.id === org.id ? org : item))
-        : [org, ...store.organizations],
+      organizations,
+      clients,
     };
     await persistStore(next);
     return next;
@@ -574,15 +598,93 @@ export function ensureGuestClient(input: {
   });
 }
 
+export function ensureKeyClient(input: {
+  clientId: string;
+  userId: string;
+  accessKey: string;
+  owner?: {
+    name?: string;
+    fio?: string;
+    phone?: string;
+    email?: string;
+    carMake?: string;
+    carModel?: string;
+    vin?: string;
+    plate?: string;
+    year?: string;
+    color?: string;
+  };
+  organizationId?: string;
+  issuedByUserId?: string;
+  markupPercent?: number;
+  discountPercent?: number;
+  maxMarkup?: number;
+  guest?: boolean;
+}) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const existing =
+      store.clients.find((item) => item.id === input.clientId) ||
+      store.clients.find((item) => item.accessKey === input.accessKey);
+    const name =
+      input.owner?.fio?.trim() ||
+      input.owner?.name?.trim() ||
+      existing?.fio ||
+      existing?.name ||
+      (input.guest ? "Гость по ключу" : "Клиент");
+    const car =
+      [input.owner?.carMake, input.owner?.carModel].filter((item) => item?.trim()).join(" ").trim() ||
+      existing?.car;
+    const client: Client = {
+      id: existing?.id ?? input.clientId,
+      name,
+      fio: input.owner?.fio?.trim() || existing?.fio || name,
+      phone: input.owner?.phone?.trim() || existing?.phone || "",
+      inn: existing?.inn ?? "",
+      email: input.owner?.email?.trim() || existing?.email,
+      discountPercent: input.discountPercent ?? existing?.discountPercent ?? 0,
+      markupPercent: input.markupPercent ?? existing?.markupPercent,
+      bandMarkups: existing?.bandMarkups,
+      accessKey: input.accessKey,
+      accountStatus: "active",
+      priceView: existing?.priceView ?? "clean",
+      notes: existing?.notes ?? (input.guest ? "Именной гость по ключу, не устройство." : `Ключ ${input.accessKey}`),
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
+      telegramChatId: existing?.telegramChatId,
+      car,
+      vin: input.owner?.vin?.trim() || existing?.vin,
+      plate: input.owner?.plate?.trim() || existing?.plate,
+      year: input.owner?.year?.trim() || existing?.year,
+      color: input.owner?.color?.trim() || existing?.color,
+      carMake: input.owner?.carMake?.trim() || existing?.carMake,
+      carModel: input.owner?.carModel?.trim() || existing?.carModel,
+      ownerUserId: input.userId,
+      organizationId: existing?.organizationId || input.organizationId,
+      issuedByUserId: existing?.issuedByUserId || input.issuedByUserId,
+      maxMarkup: input.maxMarkup ?? existing?.maxMarkup,
+    };
+    const clients = existing
+      ? store.clients.map((item) => (item.id === existing.id ? client : item))
+      : [client, ...store.clients];
+    const next: StoreSnapshot = { ...store, clients };
+    await persistStore(next);
+    return next;
+  });
+}
+
 export function upsertClient(client: Client) {
   return enqueue(async () => {
     const store = await readStoreFile();
-    const exists = store.clients.some((item) => item.id === client.id);
+    const org = client.organizationId
+      ? store.organizations.find((item) => item.id === client.organizationId)
+      : undefined;
+    const nextClient = org ? applyOrgCapsToClient(client, org) : client;
+    const exists = store.clients.some((item) => item.id === nextClient.id);
     const next: StoreSnapshot = {
       ...store,
       clients: exists
-        ? store.clients.map((item) => (item.id === client.id ? client : item))
-        : [client, ...store.clients],
+        ? store.clients.map((item) => (item.id === nextClient.id ? nextClient : item))
+        : [nextClient, ...store.clients],
     };
     await persistStore(next);
     return next;

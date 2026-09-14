@@ -1,9 +1,22 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { AccessKeyRecord, AccountStatus, PriceView, PublicUser, UserRole } from "@/lib/types";
-import { EXAMPLE_ORG_ID, EXAMPLE_ORG_USER_ID } from "@/lib/constants";
-import { keyedUserIdsFor } from "@/lib/scope";
+import type { AccessKeyRecord, AccountStatus, KeyOwner, PriceView, PublicUser, UserRole } from "@/lib/types";
+import {
+  DEMO_LOGIN_KEY,
+  DEMO_LOGIN_KEY_CLIENT_ID,
+  DEMO_LOGIN_KEY_USER_ID,
+  EXAMPLE_ORG_ID,
+  EXAMPLE_ORG_USER_ID,
+} from "@/lib/constants";
+import { keyedUserIdsFor, canEditAccessKey, visibleAccessKeys } from "@/lib/scope";
+import {
+  mergeKeyOwner,
+  normalizeAccessKey,
+  ownerFromProfile,
+  ownerForRole,
+  ownerHasData,
+} from "@/lib/access-keys";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const AUTH_FILE = path.join(DATA_DIR, "auth.json");
@@ -148,6 +161,55 @@ export function publicUser(user: AuthUser): PublicUser {
   };
 }
 
+function applyOwnerToUser(
+  user: AuthUser,
+  owner: KeyOwner | null | undefined,
+  users: AuthUser[],
+  clearEmpty = false,
+) {
+  if (!owner) return;
+  if (owner.name?.trim()) user.name = owner.name.trim();
+  if (owner.fio?.trim()) user.fio = owner.fio.trim();
+  else if (clearEmpty && typeof owner.fio === "string") user.fio = "";
+  if (owner.phone?.trim()) user.phone = owner.phone.trim();
+  else if (clearEmpty && typeof owner.phone === "string") user.phone = "";
+  const email = owner.email?.trim().toLowerCase();
+  if (email?.includes("@") && user.role !== "admin") {
+    const taken = users.some((item) => item.id !== user.id && item.email === email);
+    if (!taken) user.email = email;
+  }
+  const car = (field: "carMake" | "carModel" | "vin" | "plate" | "year" | "color", value?: string) => {
+    if (typeof value !== "string") return;
+    if (value.trim()) user[field] = value.trim();
+    else if (clearEmpty) user[field] = "";
+  };
+  car("carMake", owner.carMake);
+  car("carModel", owner.carModel);
+  car("vin", owner.vin);
+  car("plate", owner.plate);
+  car("year", owner.year);
+  car("color", owner.color);
+}
+
+function decorateKey(rec: AccessKeyRecord, users: AuthUser[]): AccessKeyRecord {
+  const user = rec.userId ? users.find((item) => item.id === rec.userId) : undefined;
+  const fromUser = user ? ownerFromProfile(user) : undefined;
+  const owner = ownerForRole(rec.role, mergeKeyOwner(fromUser, rec.owner));
+  return { ...rec, owner };
+}
+
+function statusError(message: string, status: number) {
+  const error = new Error(message);
+  (error as Error & { status: number }).status = status;
+  return error;
+}
+
+function invalidKeyError() {
+  const error = new Error("Ключ не подходит или отозван");
+  (error as Error & { status: number }).status = 401;
+  return error;
+}
+
 function emptyAuth(): AuthFile {
   const now = new Date().toISOString();
   return {
@@ -194,6 +256,33 @@ function emptyAuth(): AuthFile {
         issuedByUserId: "usr-admin",
         createdAt: now,
         lastLoginAt: now,
+        fio: "Иванов Сергей Петрович",
+        phone: "+7 495 120-40-18",
+        carMake: "Audi",
+        carModel: "A4",
+        vin: "WAUZZZ8K9BA123456",
+        plate: "А123АА777",
+        year: "2012",
+        color: "чёрный",
+      },
+      {
+        id: DEMO_LOGIN_KEY_USER_ID,
+        email: "keydemo@sadparts.local",
+        name: "Ключ-демо",
+        fio: "Клюева Дарья Игоревна",
+        phone: "+7 495 000-11-22",
+        role: "client",
+        status: "active",
+        passwordHash: hashPassword("KeyDemo12345"),
+        clientId: DEMO_LOGIN_KEY_CLIENT_ID,
+        issuedByUserId: "usr-admin",
+        createdAt: now,
+        carMake: "Kia",
+        carModel: "Rio",
+        vin: "XWEPH81ABD0001234",
+        plate: "К001КК777",
+        year: "2019",
+        color: "белый",
       },
       {
         id: "usr-nova",
@@ -238,6 +327,11 @@ function emptyAuth(): AuthFile {
         organizationId: EXAMPLE_ORG_ID,
         userId: EXAMPLE_ORG_USER_ID,
         createdAt: now,
+        owner: {
+          name: "Пример организации",
+          fio: "Пример организации",
+          email: "org@sadparts.local",
+        },
       },
       {
         id: "key-sto",
@@ -249,6 +343,20 @@ function emptyAuth(): AuthFile {
         userId: "usr-sto",
         clientId: "cli-sto",
         createdAt: now,
+        markupPercent: 16,
+        discountPercent: 8,
+        owner: {
+          name: "СТО Север",
+          fio: "Иванов Сергей Петрович",
+          phone: "+7 495 120-40-18",
+          email: "sto@sadparts.local",
+          carMake: "Audi",
+          carModel: "A4",
+          vin: "WAUZZZ8K9BA123456",
+          plate: "А123АА777",
+          year: "2012",
+          color: "чёрный",
+        },
       },
       {
         id: "key-manager",
@@ -263,6 +371,35 @@ function emptyAuth(): AuthFile {
         incomePercent: 5,
         incomeFixed: 50,
         shiftRate: 2500,
+        owner: {
+          name: "Менеджер организации",
+          email: "manager@sadparts.local",
+        },
+      },
+      {
+        id: "key-demo-login",
+        key: DEMO_LOGIN_KEY,
+        role: "client",
+        status: "active",
+        issuedByUserId: "usr-admin",
+        issuedByRole: "admin",
+        userId: DEMO_LOGIN_KEY_USER_ID,
+        clientId: DEMO_LOGIN_KEY_CLIENT_ID,
+        createdAt: now,
+        markupPercent: 16,
+        discountPercent: 5,
+        owner: {
+          name: "Ключ-демо",
+          fio: "Клюева Дарья Игоревна",
+          phone: "+7 495 000-11-22",
+          email: "keydemo@sadparts.local",
+          carMake: "Kia",
+          carModel: "Rio",
+          vin: "XWEPH81ABD0001234",
+          plate: "К001КК777",
+          year: "2019",
+          color: "белый",
+        },
       },
     ],
   };
@@ -295,6 +432,29 @@ function migrateAuth(auth: AuthFile): { next: AuthFile; changed: boolean } {
     sto.issuedByUserId = "usr-admin";
     changed = true;
   }
+  if (!users.some((item) => item.id === DEMO_LOGIN_KEY_USER_ID)) {
+    const seed = emptyAuth();
+    const extra = seed.users.find((item) => item.id === DEMO_LOGIN_KEY_USER_ID);
+    if (extra) {
+      users.push(extra);
+      changed = true;
+    }
+  }
+  const keyDemo = users.find((item) => item.id === DEMO_LOGIN_KEY_USER_ID);
+  if (keyDemo) {
+    if (keyDemo.role !== "client") {
+      keyDemo.role = "client";
+      changed = true;
+    }
+    if (keyDemo.clientId !== DEMO_LOGIN_KEY_CLIENT_ID) {
+      keyDemo.clientId = DEMO_LOGIN_KEY_CLIENT_ID;
+      changed = true;
+    }
+    if (keyDemo.status !== "active") {
+      keyDemo.status = "active";
+      changed = true;
+    }
+  }
   const org = users.find((item) => item.id === EXAMPLE_ORG_USER_ID);
   if (org) {
     if (org.role !== "organization") {
@@ -323,6 +483,11 @@ function migrateAuth(auth: AuthFile): { next: AuthFile; changed: boolean } {
       organizationId: EXAMPLE_ORG_ID,
       userId: EXAMPLE_ORG_USER_ID,
       createdAt: org?.createdAt || new Date().toISOString(),
+      owner: {
+        name: "Пример организации",
+        fio: "Пример организации",
+        email: "org@sadparts.local",
+      },
     },
     {
       id: "key-sto",
@@ -334,6 +499,20 @@ function migrateAuth(auth: AuthFile): { next: AuthFile; changed: boolean } {
       userId: "usr-sto",
       clientId: "cli-sto",
       createdAt: sto?.createdAt || new Date().toISOString(),
+      markupPercent: 16,
+      discountPercent: 8,
+      owner: {
+        name: "СТО Север",
+        fio: "Иванов Сергей Петрович",
+        phone: "+7 495 120-40-18",
+        email: "sto@sadparts.local",
+        carMake: "Audi",
+        carModel: "A4",
+        vin: "WAUZZZ8K9BA123456",
+        plate: "А123АА777",
+        year: "2012",
+        color: "чёрный",
+      },
     },
     {
       id: "key-manager",
@@ -345,11 +524,47 @@ function migrateAuth(auth: AuthFile): { next: AuthFile; changed: boolean } {
       organizationId: EXAMPLE_ORG_ID,
       userId: "usr-manager",
       createdAt: manager?.createdAt || new Date().toISOString(),
+      incomePercent: 5,
+      incomeFixed: 50,
+      shiftRate: 2500,
+      owner: {
+        name: "Менеджер организации",
+        email: "manager@sadparts.local",
+      },
+    },
+    {
+      id: "key-demo-login",
+      key: DEMO_LOGIN_KEY,
+      role: "client" as const,
+      status: "active" as const,
+      issuedByUserId: "usr-admin",
+      issuedByRole: "admin" as const,
+      userId: DEMO_LOGIN_KEY_USER_ID,
+      clientId: DEMO_LOGIN_KEY_CLIENT_ID,
+      createdAt: keyDemo?.createdAt || new Date().toISOString(),
+      markupPercent: 16,
+      discountPercent: 5,
+      owner: {
+        name: "Ключ-демо",
+        fio: "Клюева Дарья Игоревна",
+        phone: "+7 495 000-11-22",
+        email: "keydemo@sadparts.local",
+        carMake: "Kia",
+        carModel: "Rio",
+        vin: "XWEPH81ABD0001234",
+        plate: "К001КК777",
+        year: "2019",
+        color: "белый",
+      },
     },
   ];
   for (const extra of needed) {
-    if (!keys.some((item) => item.id === extra.id || item.key === extra.key)) {
+    const found = keys.find((item) => item.id === extra.id || item.key === extra.key);
+    if (!found) {
       keys.push(extra);
+      changed = true;
+    } else if (!ownerHasData(found.owner) && extra.owner) {
+      found.owner = extra.owner;
       changed = true;
     }
   }
@@ -447,6 +662,91 @@ export function loginUser(email: string, password: string) {
     auth.sessions.push(session);
     await persist(auth);
     return { sessionId: session.id, user: publicUser(user) };
+  });
+}
+
+export function loginByAccessKey(rawKey: string) {
+  return enqueue(async () => {
+    const needle = normalizeAccessKey(rawKey);
+    if (needle.length < 6) throw invalidKeyError();
+    const auth = await readAuthFile();
+    const rec = (auth.accessKeys ?? []).find(
+      (item) => normalizeAccessKey(item.key) === needle,
+    );
+    if (!rec || rec.status !== "active") throw invalidKeyError();
+    if (rec.role === "admin") throw invalidKeyError();
+
+    let user = rec.userId ? auth.users.find((item) => item.id === rec.userId) : undefined;
+    const ownerEmail = rec.owner?.email?.trim().toLowerCase();
+    if (!user && ownerEmail) {
+      const byEmail = auth.users.find((item) => item.email === ownerEmail);
+      if (byEmail && byEmail.role !== "admin" && (byEmail.role === rec.role || byEmail.status === "pending_key")) {
+        user = byEmail;
+        rec.userId = byEmail.id;
+      }
+    }
+    const now = new Date().toISOString();
+    if (!user) {
+      const local = rec.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toLowerCase() || randomBytes(4).toString("hex");
+      const email =
+        ownerEmail && ownerEmail.includes("@") && !auth.users.some((item) => item.email === ownerEmail)
+          ? ownerEmail
+          : `key-${local}@sadparts.local`;
+      const fallbackName =
+        rec.role === "guest"
+          ? "Гость по ключу"
+          : rec.role === "manager"
+            ? "Менеджер"
+            : rec.role === "organization"
+              ? "Организация"
+              : "Клиент";
+      user = {
+        id: crypto.randomUUID(),
+        email,
+        name: rec.owner?.name?.trim() || rec.owner?.fio?.trim() || fallbackName,
+        fio: rec.owner?.fio,
+        phone: rec.owner?.phone,
+        role: rec.role,
+        status: "active",
+        passwordHash: hashPassword(randomBytes(12).toString("hex")),
+        organizationId: rec.organizationId,
+        issuedByUserId: rec.issuedByUserId,
+        createdAt: now,
+      };
+      applyOwnerToUser(user, rec.owner, auth.users);
+      auth.users.push(user);
+      rec.userId = user.id;
+    }
+    if (user.status === "blocked") throw statusError("Аккаунт заблокирован", 403);
+    applyOwnerToUser(user, rec.owner, auth.users);
+    user.role = rec.role === "guest" || rec.role === "client" || rec.role === "manager" || rec.role === "organization"
+      ? rec.role
+      : user.role;
+    user.status = "active";
+    if (rec.organizationId) user.organizationId = rec.organizationId;
+    if (rec.issuedByUserId) user.issuedByUserId = user.issuedByUserId || rec.issuedByUserId;
+    rec.owner = mergeKeyOwner(ownerFromProfile(user), rec.owner);
+
+    if (rec.role === "client" || rec.role === "guest") {
+      const clientId = rec.clientId || user.clientId || `cli-key-${rec.id.slice(0, 8)}`;
+      rec.clientId = clientId;
+      user.clientId = clientId;
+    }
+
+    const session: AuthSession = {
+      id: randomBytes(24).toString("hex"),
+      userId: user.id,
+      createdAt: now,
+      expiresAt: expireDate(),
+    };
+    user.lastLoginAt = now;
+    auth.sessions.push(session);
+    await persist(auth);
+    return {
+      sessionId: session.id,
+      user: publicUser(user),
+      key: decorateKey(rec, auth.users),
+    };
   });
 }
 
@@ -623,11 +923,7 @@ function staffPayload(auth: AuthFile, actor?: PublicUser) {
         (actor.organizationId && item.organizationId === actor.organizationId),
     );
     mailbox = mailbox.filter((item) => users.some((user) => user.email === item.to));
-    scopedKeys = keys.filter(
-      (key) =>
-        key.issuedByUserId === actor.id ||
-        (actor.organizationId && key.organizationId === actor.organizationId),
-    );
+    scopedKeys = visibleAccessKeys(actor, keys);
   }
   return {
     users: users.map((item) => ({
@@ -637,7 +933,7 @@ function staffPayload(auth: AuthFile, actor?: PublicUser) {
     })),
     notices,
     mailbox,
-    accessKeys: scopedKeys,
+    accessKeys: scopedKeys.map((item) => decorateKey(item, auth.users)),
   };
 }
 
@@ -763,9 +1059,14 @@ export function recordIssuedKey(input: {
   incomePercent?: number;
   incomeFixed?: number;
   shiftRate?: number;
+  markupPercent?: number;
+  discountPercent?: number;
+  maxMarkup?: number;
+  owner?: KeyOwner | null;
 }) {
   return enqueue(async () => {
     const auth = await readAuthFile();
+    const bound = input.userId ? auth.users.find((item) => item.id === input.userId) : undefined;
     const rec: AccessKeyRecord = {
       id: crypto.randomUUID(),
       key: input.key,
@@ -780,14 +1081,122 @@ export function recordIssuedKey(input: {
       incomePercent: input.incomePercent,
       incomeFixed: input.incomeFixed,
       shiftRate: input.shiftRate,
+      markupPercent: input.markupPercent,
+      discountPercent: input.discountPercent,
+      maxMarkup: input.maxMarkup,
+      owner: ownerForRole(
+        input.role,
+        mergeKeyOwner(bound ? ownerFromProfile(bound) : undefined, input.owner),
+      ),
     };
     auth.accessKeys.unshift(rec);
     await persist(auth);
-    return rec;
+    return decorateKey(rec, auth.users);
   });
 }
 
-export function revokeAccessKey(actor: PublicUser, keyId: string) {
+function assertCanIssueRole(actor: PublicUser, role: UserRole) {
+  if (role === "admin") throw statusError("Администратору ключ не выдают", 403);
+  if (actor.role === "manager" && role !== "client" && role !== "guest") {
+    throw statusError("Менеджер выдаёт ключи только клиентам и гостям", 403);
+  }
+  if (actor.role === "organization" && role !== "manager" && role !== "client" && role !== "guest") {
+    throw statusError("Организация выдаёт ключи менеджерам, клиентам и гостям", 403);
+  }
+}
+
+/** Ключ без пользователя: владельца можно дозаполнить позже. */
+export function issueBlankAccessKey(input: {
+  actor: PublicUser;
+  role: UserRole;
+  organizationId?: string;
+  owner?: KeyOwner | null;
+  markupPercent?: number;
+  discountPercent?: number;
+  maxMarkup?: number;
+  incomePercent?: number;
+  incomeFixed?: number;
+  shiftRate?: number;
+}) {
+  return enqueue(async () => {
+    assertCanIssueRole(input.actor, input.role);
+    const auth = await readAuthFile();
+    const now = new Date().toISOString();
+    const rec: AccessKeyRecord = {
+      id: crypto.randomUUID(),
+      key: newAccessKey(),
+      role: input.role,
+      status: "active",
+      issuedByUserId: input.actor.id,
+      issuedByRole: input.actor.role,
+      organizationId:
+        input.actor.role === "admin" ? input.organizationId : input.actor.organizationId,
+      createdAt: now,
+      markupPercent: Number.isFinite(input.markupPercent) ? input.markupPercent : undefined,
+      discountPercent: Number.isFinite(input.discountPercent) ? input.discountPercent : undefined,
+      maxMarkup: Number.isFinite(input.maxMarkup) ? input.maxMarkup : undefined,
+      incomePercent: input.incomePercent,
+      incomeFixed: input.incomeFixed,
+      shiftRate: input.shiftRate,
+      owner: ownerForRole(input.role, input.owner),
+    };
+    auth.accessKeys.unshift(rec);
+    auth.notices.unshift({
+      id: crypto.randomUUID(),
+      at: now,
+      kind: "key",
+      title: "Выдан ключ без пользователя",
+      detail: `${ROLE_REQUEST[input.role]} · владельца можно дописать на карточке.`,
+      userId: input.actor.id,
+      organizationId: rec.organizationId,
+      read: false,
+    });
+    await persist(auth);
+    return decorateKey(rec, auth.users);
+  });
+}
+
+export function updateKeyOwner(
+  actor: PublicUser,
+  keyId: string,
+  ownerPatch: KeyOwner | null | undefined,
+  extras?: {
+    markupPercent?: number;
+    discountPercent?: number;
+    maxMarkup?: number;
+  },
+) {
+  return enqueue(async () => {
+    const auth = await readAuthFile();
+    const rec = auth.accessKeys.find((item) => item.id === keyId || item.key === keyId);
+    if (!rec) throw statusError("Ключ не найден", 404);
+    if (!canEditAccessKey(actor, rec)) throw statusError("Нельзя править чужой ключ", 403);
+    rec.owner = ownerForRole(rec.role, mergeKeyOwner(rec.owner, ownerPatch));
+    if (typeof extras?.markupPercent === "number" && Number.isFinite(extras.markupPercent)) {
+      rec.markupPercent = extras.markupPercent;
+    }
+    if (typeof extras?.discountPercent === "number" && Number.isFinite(extras.discountPercent)) {
+      rec.discountPercent = extras.discountPercent;
+    }
+    if (typeof extras?.maxMarkup === "number" && Number.isFinite(extras.maxMarkup)) {
+      rec.maxMarkup = extras.maxMarkup;
+    }
+    const user = rec.userId ? auth.users.find((item) => item.id === rec.userId) : undefined;
+    if (user) {
+      applyOwnerToUser(user, rec.owner, auth.users, true);
+      rec.owner = ownerForRole(rec.role, mergeKeyOwner(ownerFromProfile(user), rec.owner));
+    }
+    if (rec.role === "client" || rec.role === "guest") {
+      const clientId = rec.clientId || user?.clientId || `cli-key-${rec.id.slice(0, 8)}`;
+      rec.clientId = clientId;
+      if (user) user.clientId = clientId;
+    }
+    await persist(auth);
+    return decorateKey(rec, auth.users);
+  });
+}
+
+export function revokeAccessKey(actor: PublicUser, keyId: string, options?: { blockUser?: boolean }) {
   return enqueue(async () => {
     const auth = await readAuthFile();
     const rec = auth.accessKeys.find((item) => item.id === keyId || item.key === keyId);
@@ -802,12 +1211,35 @@ export function revokeAccessKey(actor: PublicUser, keyId: string) {
     rec.status = "revoked";
     rec.revokedAt = new Date().toISOString();
     rec.revokedByUserId = actor.id;
-    if (rec.userId) {
+    if (options?.blockUser !== false && rec.userId) {
       const user = auth.users.find((item) => item.id === rec.userId);
       if (user && user.role !== "admin") user.status = "blocked";
     }
     await persist(auth);
     return rec;
+  });
+}
+
+/** Забрать ключ организации: кабинет по паролю остаётся, клиентами управляет админ. */
+export function takeOrganizationDeskKeys(actor: PublicUser, organizationId: string) {
+  return enqueue(async () => {
+    if (actor.role !== "admin") throw new Error("Только администратор забирает ключ организации");
+    const auth = await readAuthFile();
+    const now = new Date().toISOString();
+    const taken: AccessKeyRecord[] = [];
+    for (const rec of auth.accessKeys) {
+      const orgDesk =
+        rec.organizationId === organizationId &&
+        rec.role === "organization" &&
+        rec.status !== "revoked";
+      if (!orgDesk) continue;
+      rec.status = "revoked";
+      rec.revokedAt = now;
+      rec.revokedByUserId = actor.id;
+      taken.push(rec);
+    }
+    await persist(auth);
+    return taken;
   });
 }
 
@@ -945,6 +1377,11 @@ export function updateProfile(
     if (typeof patch.year === "string") user.year = patch.year.trim();
     if (typeof patch.color === "string") user.color = patch.color.trim();
     if (patch.priceView === "clean" || patch.priceView === "retail") user.priceView = patch.priceView;
+    for (const rec of auth.accessKeys ?? []) {
+      if (rec.userId === user.id) {
+        rec.owner = ownerForRole(rec.role, mergeKeyOwner(rec.owner, ownerFromProfile(user)));
+      }
+    }
     await persist(auth);
     return publicUser(user);
   });

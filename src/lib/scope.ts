@@ -82,6 +82,32 @@ export function canIssueKeys(role?: UserRole) {
   return role === "admin" || role === "organization" || role === "manager";
 }
 
+export function canEditAccessKey(
+  actor: PublicUser,
+  rec: { issuedByUserId?: string; organizationId?: string },
+) {
+  if (actor.role === "admin") return true;
+  if (actor.role === "organization") {
+    return (
+      rec.issuedByUserId === actor.id ||
+      Boolean(actor.organizationId && rec.organizationId === actor.organizationId)
+    );
+  }
+  if (actor.role === "manager") {
+    return rec.issuedByUserId === actor.id;
+  }
+  return false;
+}
+
+/** Админ — все ключи; организация — свои; менеджер — только выданные им. */
+export function visibleAccessKeys<T extends { issuedByUserId?: string; organizationId?: string }>(
+  actor: PublicUser | undefined,
+  keys: T[],
+): T[] {
+  if (!actor || actor.role === "admin") return keys;
+  return keys.filter((rec) => canEditAccessKey(actor, rec));
+}
+
 export function homeHref(role?: UserRole) {
   return clientNavOnly(role) ? "/quote" : "/";
 }

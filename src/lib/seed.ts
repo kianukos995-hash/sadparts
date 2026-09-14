@@ -1,4 +1,4 @@
-import { DEMO_KEYS, EXAMPLE_ORG_ID, ROSSKO_API_BASE, STORE_VERSION } from "@/lib/constants";
+import { DEMO_KEYS, DEMO_LOGIN_KEY, EXAMPLE_ORG_ID, ROSSKO_API_BASE, STORE_VERSION } from "@/lib/constants";
 import { mergeCrosses } from "@/lib/cross-catalog";
 import { offerKey } from "@/lib/format";
 import { CORE_PARTS, partPrice, partStock } from "@/lib/mock-parts";
@@ -73,6 +73,30 @@ export const DEFAULT_CLIENTS: Client[] = [
     year: "2012",
     color: "чёрный",
     ownerUserId: "usr-sto",
+    issuedByUserId: "usr-admin",
+  },
+  {
+    id: "cli-key-demo",
+    name: "Ключ-демо",
+    fio: "Клюева Дарья Игоревна",
+    phone: "+7 495 000-11-22",
+    inn: "",
+    discountPercent: 5,
+    markupPercent: 16,
+    email: "keydemo@sadparts.local",
+    accessKey: DEMO_LOGIN_KEY,
+    accountStatus: "active",
+    priceView: "clean",
+    notes: `Демо-вход по ключу ${DEMO_LOGIN_KEY}. Не гость по устройству.`,
+    createdAt: "2026-06-01T09:00:00.000Z",
+    car: "Kia Rio",
+    carMake: "Kia",
+    carModel: "Rio",
+    vin: "XWEPH81ABD0001234",
+    plate: "К001КК777",
+    year: "2019",
+    color: "белый",
+    ownerUserId: "usr-key-demo",
     issuedByUserId: "usr-admin",
   },
   {
