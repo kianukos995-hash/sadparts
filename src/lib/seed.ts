@@ -143,6 +143,7 @@ export const DEFAULT_ORGANIZATIONS: Organization[] = [
     accountStatus: "active",
     priceView: "clean",
     managersCanEditSuppliers: false,
+    adminControlsClients: false,
   },
 ];
 

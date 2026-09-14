@@ -102,6 +102,7 @@ export interface AvtoPriceApi {
   upsertClient: (client: Client) => Promise<void>;
   removeClient: (id: string) => Promise<void>;
   upsertOrganization: (org: Organization) => Promise<void>;
+  takeOrganizationKey: (id: string) => Promise<void>;
   removeOrganization: (id: string) => Promise<void>;
   upsertOrder: (order: Order) => Promise<void>;
   removeOrder: (id: string) => Promise<void>;
@@ -326,6 +327,10 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
 
   const upsertOrganization = useCallback(async (organization: Organization) => {
     applyStore(await mutate({ action: "upsertOrganization", organization }));
+  }, [applyStore]);
+
+  const takeOrganizationKey = useCallback(async (id: string) => {
+    applyStore(await mutate({ action: "takeOrganizationKey", organizationId: id }));
   }, [applyStore]);
 
   const removeOrganization = useCallback(async (id: string) => {
@@ -559,6 +564,7 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       upsertClient,
       removeClient,
       upsertOrganization,
+      takeOrganizationKey,
       removeOrganization,
       upsertOrder,
       removeOrder,
@@ -595,6 +601,7 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       upsertClient,
       removeClient,
       upsertOrganization,
+      takeOrganizationKey,
       removeOrganization,
       upsertOrder,
       removeOrder,

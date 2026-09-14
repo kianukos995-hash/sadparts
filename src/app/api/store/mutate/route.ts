@@ -44,9 +44,10 @@ import type {
 } from "@/lib/types";
 import { fail, requireUser } from "@/lib/session";
 import { logActivity } from "@/lib/activity";
-import { listAccessKeys } from "@/lib/auth-store";
+import { listAccessKeys, takeOrganizationDeskKeys } from "@/lib/auth-store";
 import { findPriceOffer } from "@/lib/catalog-query";
 import { publicStoreFor } from "@/lib/public-store";
+import { applyOrgCapsToClient, orgAllowsClientKeys } from "@/lib/org-policy";
 import { canSeeInvoices, canSeeMoney, canSeeTeam, canSeeWarehouse, clientNavOnly, clientVisibleTo, isDeskRole } from "@/lib/scope";
 import { sellForViewer, viewerPriceContext } from "@/lib/viewer-price";
 import {
@@ -214,10 +215,40 @@ export async function POST(request: NextRequest) {
             bandMarkups: body.organization.bandMarkups ?? current.bandMarkups,
             managersCanEditSuppliers:
               body.organization.managersCanEditSuppliers ?? current.managersCanEditSuppliers,
+            discountPercent: current.discountPercent,
+            maxMarkup: current.maxMarkup,
+            maxDiscountPercent: current.maxDiscountPercent,
+            accessKey: current.accessKey,
+            adminControlsClients: current.adminControlsClients,
+            accountStatus: current.accountStatus,
           }),
         );
       }
       return Response.json({ error: "Только администратор создаёт организации" }, { status: 403 });
+    }
+    if (body.action === "takeOrganizationKey" && body.organizationId) {
+      if (!admin) return Response.json({ error: "Только администратор забирает ключ" }, { status: 403 });
+      await takeOrganizationDeskKeys(user, body.organizationId);
+      const store = await readStore();
+      const org = store.organizations.find((item) => item.id === body.organizationId);
+      if (!org) return Response.json({ error: "Организация не найдена" }, { status: 404 });
+      await logActivity({
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+        organizationId: org.id,
+        action: "take_org_key",
+        detail: `Ключ организации «${org.name}» забран, клиентами управляет администратор`,
+      });
+      return respond(
+        user,
+        await upsertOrganization({
+          ...org,
+          accessKey: undefined,
+          adminControlsClients: true,
+          accountStatus: org.accountStatus === "blocked" ? "blocked" : "pending_key",
+        }),
+      );
     }
     if (body.action === "removeOrganization" && body.organizationId) {
       if (!admin) return Response.json({ error: "Только администратор" }, { status: 403 });
@@ -249,6 +280,12 @@ export async function POST(request: NextRequest) {
           return Response.json({ error: "Чужая карточка" }, { status: 403 });
         }
         const org = store.organizations.find((item) => item.id === user.organizationId);
+        if (!orgAllowsClientKeys(org)) {
+          return Response.json(
+            { error: "Администратор забрал ключ организации. Цены клиентов правит админ." },
+            { status: 403 },
+          );
+        }
         body.client = {
           ...body.client,
           ownerUserId: existing?.ownerUserId || user.id,
@@ -256,11 +293,13 @@ export async function POST(request: NextRequest) {
           organizationId: existing?.organizationId || user.organizationId,
           maxMarkup: existing?.maxMarkup ?? org?.maxMarkup,
         };
-        if (org?.maxMarkup != null && body.client.markupPercent != null) {
-          body.client.markupPercent = Math.min(body.client.markupPercent, org.maxMarkup);
-        }
+        if (org) body.client = applyOrgCapsToClient(body.client, org);
       } else if (!admin && existing && !clientVisibleTo(user, existing, keys)) {
         return Response.json({ error: "Чужая карточка" }, { status: 403 });
+      }
+      if (admin && body.client.organizationId) {
+        const org = store.organizations.find((item) => item.id === body.client!.organizationId);
+        if (org) body.client = applyOrgCapsToClient(body.client, org);
       }
       return respond(user, await upsertClient(body.client));
     }

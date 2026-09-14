@@ -179,10 +179,13 @@ export interface Organization {
   bandMarkups?: Record<string, number>;
   priceBands?: PriceBand[];
   maxMarkup?: number;
+  maxDiscountPercent?: number;
   accessKey?: string;
   accountStatus?: AccountStatus;
   priceView?: PriceView;
   managersCanEditSuppliers?: boolean;
+  /** Админ забрал ключ: клиентами и их ценами управляет только он. */
+  adminControlsClients?: boolean;
 }
 
 export interface AccessKeyRecord {
