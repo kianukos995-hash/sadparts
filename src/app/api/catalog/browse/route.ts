@@ -5,6 +5,7 @@ import type { CatalogBrowseFilter } from "@/lib/file-catalog";
 import { fail, requireUser } from "@/lib/session";
 import { publicOffer, viewerPriceContext } from "@/lib/viewer-price";
 import { clientNavOnly } from "@/lib/scope";
+import { catalogSupplierIds, filterOffersForActor } from "@/lib/suppliers-scope";
 
 export const runtime = "nodejs";
 
@@ -24,12 +25,19 @@ export async function GET(request: NextRequest) {
   const url = request.nextUrl;
   const meta = url.searchParams.get("meta");
   const store = await readStore();
+  const allowedIds = catalogSupplierIds(store.suppliers, user);
+  const scopedSuppliers = store.suppliers.filter((item) => allowedIds.has(item.id));
+  const scopedOffers = filterOffersForActor(store.offers, store.suppliers, user);
   if (meta === "1") {
-    return Response.json(await priceMeta(store.suppliers));
+    return Response.json(await priceMeta(scopedSuppliers));
   }
   const settings = await readSettings();
   const live = url.searchParams.get("live") === "1" && user.role === "admin";
-  const result = await queryPriceOffers(store.suppliers, store.offers, {
+  const requestedSupplier = url.searchParams.get("supplierId") || undefined;
+  if (requestedSupplier && !allowedIds.has(requestedSupplier)) {
+    return Response.json({ offers: [], total: 0, page: 0, pageSize: 40 });
+  }
+  const result = await queryPriceOffers(scopedSuppliers, scopedOffers, {
     q: url.searchParams.get("q") ?? "",
     qField: (["sku", "oem", "name", "brand"].includes(url.searchParams.get("field") ?? "")
       ? (url.searchParams.get("field") as CatalogBrowseFilter["qField"])

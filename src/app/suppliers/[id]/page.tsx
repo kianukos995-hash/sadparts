@@ -8,30 +8,42 @@ import { ArrowLeft, RefreshCw } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { RoleGate } from "@/components/role-gate";
+import { SuppliersGate } from "@/components/suppliers-gate";
 import { KeyField } from "@/components/key-field";
 import { PartsTable } from "@/components/parts-table";
 import { PriceListUpload } from "@/components/price-list-upload";
 import { SupplierFormDialog } from "@/components/supplier-form";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
+import { useAuth } from "@/hooks/use-auth";
 import { AUTH_MODE_LABELS } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
 import { fetchSupplierPayload, payloadToOffers, buildSyncLog, syncSupplier } from "@/lib/sync";
 import { isApiSupplier } from "@/lib/money";
+import { canEditSupplier, isAdminOwnedSupplier } from "@/lib/suppliers-scope";
 import { cn } from "@/lib/utils";
 import type { Offer } from "@/lib/types";
 
 export default function SupplierDetailPage() {
   return (
-    <RoleGate allow={["admin", "organization"]}>
+    <SuppliersGate>
       <SupplierDetailInner />
-    </RoleGate>
+    </SuppliersGate>
   );
 }
 
 function SupplierDetailInner() {
   const params = useParams<{ id: string }>();
-  const { ready, suppliers, offers, logs, upsertSupplier, replaceOffers } = useAvtoPrice();
+  const { user } = useAuth();
+  const {
+    ready,
+    suppliers,
+    organizations,
+    offers,
+    logs,
+    upsertSupplier,
+    replaceOffers,
+    shareSupplier,
+  } = useAvtoPrice();
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState<"sync" | "test" | null>(null);
   const [fileOffers, setFileOffers] = useState<Offer[]>([]);
@@ -113,6 +125,7 @@ function SupplierDetailInner() {
   const backHref = supplier && isApiSupplier(supplier) ? "/suppliers/api" : "/suppliers/files";
   const backLabel =
     supplier && isApiSupplier(supplier) ? "Поставщики через API" : "Поставщики через файлы";
+  const editable = supplier ? canEditSupplier(supplier, user, organizations) : false;
 
   if (!ready) return <p className="text-sm text-muted-foreground">Загружаю…</p>;
   if (!supplier) {
@@ -143,13 +156,20 @@ function SupplierDetailInner() {
             <h1 className="text-2xl font-semibold tracking-tight">{supplier.name}</h1>
             <Badge variant="secondary">{supplier.code}</Badge>
             <Badge variant="outline">{supplier.source === "api" ? "API" : "Файл"}</Badge>
+            {isAdminOwnedSupplier(supplier) || supplier.lockedByAdmin ? (
+              <Badge variant="outline" className="border-amber-400 text-amber-800">
+                Админ · замок
+              </Badge>
+            ) : (
+              <Badge variant="secondary">Свой</Badge>
+            )}
           </div>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             {supplier.notes || "Комментарий не задан"}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {supplier.source === "api" || supplier.adapter === "rossko" ? (
+          {editable && (supplier.source === "api" || supplier.adapter === "rossko") ? (
             <>
               <Button variant="outline" disabled={busy !== null} onClick={() => void testConnection()}>
                 {busy === "test"
@@ -166,24 +186,77 @@ function SupplierDetailInner() {
               ) : null}
             </>
           ) : null}
-          <Button variant="outline" onClick={() => setEditing(true)}>
-            Изменить
-          </Button>
+          {editable ? (
+            <Button variant="outline" onClick={() => setEditing(true)}>
+              Изменить
+            </Button>
+          ) : (
+            <p className="text-sm text-muted-foreground">Ключи и поля закреплены администратором.</p>
+          )}
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Прайс-лист файлом</CardTitle>
-          <CardDescription>
-            Файл пишется в каталог этого поставщика. Карта колонок из вкладки «Поля прайса» имеет приоритет
-            над автоподбором.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <PriceListUpload supplier={supplier} variant="dropzone" onImported={() => reloadCatalog()} />
-        </CardContent>
-      </Card>
+      {editable ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Прайс-лист файлом</CardTitle>
+            <CardDescription>
+              Файл пишется в каталог этого поставщика. Карта колонок из вкладки «Поля прайса» имеет приоритет
+              над автоподбором.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <PriceListUpload supplier={supplier} variant="dropzone" onImported={() => reloadCatalog()} />
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Прайс администратора</CardTitle>
+            <CardDescription>
+              Позиции видны в каталоге. Загрузка файла, синхронизация и ключи доступны только администратору.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+
+      {user?.role === "admin" && organizations.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Доступ организациям</CardTitle>
+            <CardDescription>
+              Отметьте, кому показать этого поставщика. Свои поставщики организации не затрагиваются.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-3">
+            {organizations.map((org) => {
+              const shared = (supplier.sharedWithOrgIds ?? []).includes(org.id);
+              return (
+                <label key={org.id} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={shared}
+                    onChange={(event) => {
+                      void shareSupplier(supplier.id, org.id, event.target.checked)
+                        .then(() =>
+                          toast.success(
+                            event.target.checked
+                              ? `Открыто для «${org.name}»`
+                              : `Доступ «${org.name}» отозван`,
+                          ),
+                        )
+                        .catch((err: unknown) =>
+                          toast.error(err instanceof Error ? err.message : "Ошибка"),
+                        );
+                    }}
+                  />
+                  {org.name}
+                </label>
+              );
+            })}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card size="sm">
@@ -232,11 +305,17 @@ function SupplierDetailInner() {
             <CardDescription>{supplier.adapter === "rossko" ? "KEY1" : "API-ключ / KEY1"}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
-            <KeyField value={supplier.apiKey} />
-            <div>
-              <p className="mb-1 text-xs text-muted-foreground">KEY2</p>
-              <KeyField value={supplier.apiKey2} />
-            </div>
+            {editable ? (
+              <>
+                <KeyField value={supplier.apiKey} />
+                <div>
+                  <p className="mb-1 text-xs text-muted-foreground">KEY2</p>
+                  <KeyField value={supplier.apiKey2} />
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">Ключи скрыты.</p>
+            )}
           </CardContent>
         </Card>
       </div>

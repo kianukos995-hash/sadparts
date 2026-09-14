@@ -5,6 +5,8 @@ import { describeColumnMap } from "@/lib/mapping";
 import { readStore, touchSupplierSync } from "@/lib/server-store";
 import type { ColumnMap, FieldKey, ImportMode } from "@/lib/types";
 import { FIELD_KEYS } from "@/lib/types";
+import { fail, requireUser } from "@/lib/session";
+import { canEditSupplier, canManageSuppliers } from "@/lib/suppliers-scope";
 
 export const runtime = "nodejs";
 
@@ -13,17 +15,56 @@ const MAX_BYTES = 80 * 1024 * 1024;
 export const maxDuration = 120;
 
 export async function GET(request: NextRequest) {
+  let user;
+  try {
+    user = await requireUser(request);
+  } catch (error) {
+    return fail(error);
+  }
+  const store = await readStore();
   const supplierId = request.nextUrl.searchParams.get("supplierId") ?? "";
-  const items = await listImportHistory(supplierId || undefined);
+  if (supplierId) {
+    const supplier = store.suppliers.find((item) => item.id === supplierId);
+    if (!supplier || !canEditSupplier(supplier, user, store.organizations ?? [])) {
+      return Response.json({ error: "Недостаточно прав" }, { status: 403 });
+    }
+  } else if (!canManageSuppliers(user, store.organizations ?? [])) {
+    return Response.json({ error: "Недостаточно прав" }, { status: 403 });
+  }
+  let items = await listImportHistory(supplierId || undefined);
+  if (!supplierId) {
+    const allowed = new Set(
+      store.suppliers
+        .filter((item) => canEditSupplier(item, user, store.organizations ?? []))
+        .map((item) => item.id),
+    );
+    items = items.filter((item) => allowed.has(item.supplierId));
+  }
   return Response.json({ items });
 }
 
 export async function POST(request: NextRequest) {
+  let user;
+  try {
+    user = await requireUser(request);
+  } catch (error) {
+    return fail(error);
+  }
   const form = await request.formData();
   const action = String(form.get("action") ?? "import");
+  const store = await readStore();
+  const orgs = store.organizations ?? [];
   if (action === "rollback") {
     try {
-      const result = await rollbackImport(String(form.get("historyId") ?? ""));
+      const historyId = String(form.get("historyId") ?? "");
+      const items = await listImportHistory();
+      const historyItem = items.find((item) => item.id === historyId);
+      if (!historyItem) return Response.json({ error: "Запись не найдена" }, { status: 404 });
+      const supplier = store.suppliers.find((item) => item.id === historyItem.supplierId);
+      if (!supplier || !canEditSupplier(supplier, user, orgs)) {
+        return Response.json({ error: "Недостаточно прав" }, { status: 403 });
+      }
+      const result = await rollbackImport(historyId);
       const next = await touchSupplierSync(result.item.supplierId, {
         id: result.rollback.id,
         supplierId: result.item.supplierId,
@@ -58,9 +99,12 @@ export async function POST(request: NextRequest) {
   if (file.size > MAX_BYTES) {
     return Response.json({ error: "Файл больше 80 МБ" }, { status: 413 });
   }
-  const store = await readStore();
-  const supplier = store.suppliers.find((item) => item.id === supplierId);
+  const storeForSupplier = await readStore();
+  const supplier = storeForSupplier.suppliers.find((item) => item.id === supplierId);
   if (!supplier) return Response.json({ error: "Поставщик не найден. Откройте карточку и повторите." }, { status: 404 });
+  if (!canEditSupplier(supplier, user, storeForSupplier.organizations ?? [])) {
+    return Response.json({ error: "Поставщика закрепил администратор" }, { status: 403 });
+  }
 
   try {
     const buffer = Buffer.from(await file.arrayBuffer());

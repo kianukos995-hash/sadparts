@@ -11,6 +11,8 @@ export type UserRole = "admin" | "organization" | "manager" | "client" | "guest"
 export type AccountStatus = "pending_email" | "pending_key" | "active" | "blocked";
 export type PriceView = "clean" | "retail" | "cost";
 export type KeyStatus = "pending" | "active" | "revoked";
+export type SupplierOwnerRole = "admin" | "organization";
+export type ScheduleMark = "work" | "vacation" | "sick" | "timeoff" | "absent";
 
 export interface PublicUser {
   id: string;
@@ -101,6 +103,10 @@ export interface Supplier {
   catalogCount?: number;
   rosskoDeliveryId?: string;
   rosskoAddressId?: string;
+  ownerRole?: SupplierOwnerRole;
+  ownerId?: string;
+  lockedByAdmin?: boolean;
+  sharedWithOrgIds?: string[];
 }
 
 export interface Offer {
@@ -176,6 +182,7 @@ export interface Organization {
   accessKey?: string;
   accountStatus?: AccountStatus;
   priceView?: PriceView;
+  managersCanEditSuppliers?: boolean;
 }
 
 export interface AccessKeyRecord {
@@ -193,6 +200,36 @@ export interface AccessKeyRecord {
   createdAt: string;
   revokedAt?: string;
   revokedByUserId?: string;
+  incomePercent?: number;
+  incomeFixed?: number;
+  shiftRate?: number;
+}
+
+export interface ManagerMembership {
+  id: string;
+  userId: string;
+  organizationId: string;
+  incomePercent: number;
+  incomeFixed: number;
+  shiftRate: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScheduleDay {
+  date: string;
+  userId: string;
+  organizationId: string;
+  mark: ScheduleMark;
+  note?: string;
+}
+
+export interface ScheduleArchive {
+  id: string;
+  organizationId: string;
+  year: number;
+  days: ScheduleDay[];
+  archivedAt: string;
 }
 
 export interface Client {
@@ -414,6 +451,9 @@ export interface StoreSnapshot {
   purchases: PurchaseOrder[];
   warehouseLots: WarehouseLot[];
   warehouseDocs: WarehouseDoc[];
+  managerMemberships: ManagerMembership[];
+  scheduleDays: ScheduleDay[];
+  scheduleArchives: ScheduleArchive[];
 }
 
 export interface ParsedTable {

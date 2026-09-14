@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FileSpreadsheet, KeyRound } from "lucide-react";
-import { RoleGate } from "@/components/role-gate";
+import { SuppliersGate } from "@/components/suppliers-gate";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
@@ -11,9 +11,9 @@ import { cn } from "@/lib/utils";
 
 export default function SuppliersHubPage() {
   return (
-    <RoleGate allow={["admin", "organization"]}>
+    <SuppliersGate>
       <SuppliersHubInner />
-    </RoleGate>
+    </SuppliersGate>
   );
 }
 

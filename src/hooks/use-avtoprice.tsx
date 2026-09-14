@@ -10,12 +10,15 @@ import { useAuth } from "@/hooks/use-auth";
 import type {
   Client,
   ImportMode,
+  ManagerMembership,
   MoneyMovement,
   Offer,
   Order,
   Organization,
   PublicSettings,
   PurchaseOrder,
+  ScheduleArchive,
+  ScheduleDay,
   StoreSnapshot,
   Supplier,
   SupplierBill,
@@ -37,6 +40,9 @@ const EMPTY_STORE: StoreSnapshot = {
   purchases: [],
   warehouseLots: [],
   warehouseDocs: [],
+  managerMemberships: [],
+  scheduleDays: [],
+  scheduleArchives: [],
 };
 
 const EMPTY_PUBLIC: PublicSettings = {
@@ -75,6 +81,9 @@ export interface AvtoPriceApi {
   purchases: PurchaseOrder[];
   warehouseLots: WarehouseLot[];
   warehouseDocs: WarehouseDoc[];
+  managerMemberships: ManagerMembership[];
+  scheduleDays: ScheduleDay[];
+  scheduleArchives: ScheduleArchive[];
   drafts: Order[];
   draft: Order | null;
   activeDraftId: string;
@@ -110,6 +119,10 @@ export interface AvtoPriceApi {
     lines: { sku: string; brand: string; name?: string; qty: number; warehouse: string }[];
     number?: string;
   }) => Promise<void>;
+  shareSupplier: (supplierId: string, organizationId: string, shared: boolean) => Promise<void>;
+  upsertManagerMembership: (membership: ManagerMembership) => Promise<void>;
+  upsertScheduleDay: (day: ScheduleDay, clearDay?: boolean) => Promise<void>;
+  archiveScheduleYear: (year: number) => Promise<void>;
   addToDraft: (
     offer: Offer,
     qty?: number,
@@ -207,6 +220,9 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
         purchases: data.purchases ?? [],
         warehouseLots: data.warehouseLots ?? [],
         warehouseDocs: data.warehouseDocs ?? [],
+        managerMemberships: data.managerMemberships ?? [],
+        scheduleDays: data.scheduleDays ?? [],
+        scheduleArchives: data.scheduleArchives ?? [],
       });
       return orders;
     },
@@ -481,6 +497,34 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
     [applyStore],
   );
 
+  const shareSupplier = useCallback(
+    async (supplierId: string, organizationId: string, shared: boolean) => {
+      applyStore(await mutate({ action: "shareSupplier", supplierId, organizationId, shared }));
+    },
+    [applyStore],
+  );
+
+  const upsertManagerMembership = useCallback(
+    async (membership: ManagerMembership) => {
+      applyStore(await mutate({ action: "upsertManagerMembership", membership }));
+    },
+    [applyStore],
+  );
+
+  const upsertScheduleDay = useCallback(
+    async (day: ScheduleDay, clearDay?: boolean) => {
+      applyStore(await mutate({ action: "upsertScheduleDay", scheduleDay: day, clearDay }));
+    },
+    [applyStore],
+  );
+
+  const archiveScheduleYear = useCallback(
+    async (year: number) => {
+      applyStore(await mutate({ action: "archiveScheduleYear", year }));
+    },
+    [applyStore],
+  );
+
   const drafts = useMemo(() => findDrafts(store.orders), [store.orders]);
   const draft = drafts.find((item) => item.id === activeDraftId) ?? findDraft(store.orders);
 
@@ -499,6 +543,9 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       purchases: store.purchases ?? [],
       warehouseLots: store.warehouseLots ?? [],
       warehouseDocs: store.warehouseDocs ?? [],
+      managerMemberships: store.managerMemberships ?? [],
+      scheduleDays: store.scheduleDays ?? [],
+      scheduleArchives: store.scheduleArchives ?? [],
       drafts,
       draft,
       activeDraftId: draft?.id ?? "",
@@ -524,6 +571,10 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       postPurchase,
       unpostPurchase,
       createWarehouseReceipt,
+      shareSupplier,
+      upsertManagerMembership,
+      upsertScheduleDay,
+      archiveScheduleYear,
       addToDraft,
       saveTradeSettings,
       resetDemo,
@@ -556,6 +607,10 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       postPurchase,
       unpostPurchase,
       createWarehouseReceipt,
+      shareSupplier,
+      upsertManagerMembership,
+      upsertScheduleDay,
+      archiveScheduleYear,
       addToDraft,
       saveTradeSettings,
       resetDemo,

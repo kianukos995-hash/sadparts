@@ -45,6 +45,9 @@ function StaffInner() {
   const [markup, setMarkup] = useState("16");
   const [discount, setDiscount] = useState("8");
   const [maxMarkup, setMaxMarkup] = useState("");
+  const [incomePercent, setIncomePercent] = useState("5");
+  const [incomeFixed, setIncomeFixed] = useState("50");
+  const [shiftRate, setShiftRate] = useState("2500");
   const [busy, setBusy] = useState<string | null>(null);
   const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
@@ -214,6 +217,22 @@ function StaffInner() {
               </label>
             ) : null}
           </div>
+          {actor?.role === "organization" ? (
+            <div className="grid gap-2 sm:grid-cols-3">
+              <label className="grid gap-1 text-xs">
+                <Label>% от сделок (менеджер)</Label>
+                <Input value={incomePercent} onChange={(event) => setIncomePercent(event.target.value)} />
+              </label>
+              <label className="grid gap-1 text-xs">
+                <Label>Фикс за заказ, ₽</Label>
+                <Input value={incomeFixed} onChange={(event) => setIncomeFixed(event.target.value)} />
+              </label>
+              <label className="grid gap-1 text-xs">
+                <Label>Стоимость смены, ₽</Label>
+                <Input value={shiftRate} onChange={(event) => setShiftRate(event.target.value)} />
+              </label>
+            </div>
+          ) : null}
           {users.map((user) => (
             <div
               key={user.id}
@@ -245,6 +264,9 @@ function StaffInner() {
                         discountPercent: Number.parseFloat(discount.replace(",", ".")) || 0,
                         organizationId: user.organizationId || actor?.organizationId,
                         maxMarkup: maxMarkup === "" ? undefined : Number.parseFloat(maxMarkup),
+                        incomePercent: Number.parseFloat(incomePercent.replace(",", ".")) || 0,
+                        incomeFixed: Number.parseFloat(incomeFixed.replace(",", ".")) || 0,
+                        shiftRate: Number.parseFloat(shiftRate.replace(",", ".")) || 0,
                       }),
                     })
                       .then(async (response) => {
@@ -286,6 +308,9 @@ function StaffInner() {
                   <p className="text-xs text-muted-foreground">
                     {ROLE_LABELS[key.role]} · {key.status}
                     {key.requestedByEmail ? ` · запрос ${key.requestedByEmail}` : ""}
+                    {key.role === "manager"
+                      ? ` · ${key.incomePercent ?? 0}% / фикс ${key.incomeFixed ?? 0} ₽ / смена ${key.shiftRate ?? 0} ₽`
+                      : ""}
                   </p>
                 </div>
                 {key.status !== "revoked" ? (

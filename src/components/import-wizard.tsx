@@ -21,6 +21,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { PricePreviewCard, type PricePreview } from "@/components/price-preview";
 import { cn } from "@/lib/utils";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
+import { useAuth } from "@/hooks/use-auth";
 import { FIELD_LABELS } from "@/lib/constants";
 import { guessPriceTitle } from "@/lib/price-bands";
 import { mapPayloadToOffers, resolveColumnMap } from "@/lib/mapping";
@@ -29,9 +30,12 @@ import { offerKey } from "@/lib/format";
 import type { AuthMode, ColumnMap, ImportMode, ParsedTable, Supplier, SupplierSource } from "@/lib/types";
 import { CATEGORIES, FIELD_KEYS } from "@/lib/types";
 import { AUTH_MODE_LABELS } from "@/lib/constants";
+import { canEditSupplier } from "@/lib/suppliers-scope";
 
 export function ImportWizard() {
-  const { suppliers, replaceOffers, refresh } = useAvtoPrice();
+  const { user } = useAuth();
+  const { suppliers: allSuppliers, organizations, replaceOffers, refresh } = useAvtoPrice();
+  const suppliers = allSuppliers.filter((item) => canEditSupplier(item, user, organizations));
   const [supplierId, setSupplierId] = useState(() =>
     typeof window === "undefined" ? "" : (new URLSearchParams(window.location.search).get("supplierId") ?? ""),
   );

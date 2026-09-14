@@ -11,7 +11,7 @@ import {
   updateUserStatus,
 } from "@/lib/auth-store";
 import { fail, requireUser } from "@/lib/session";
-import { readStore, upsertClient, upsertOrganization } from "@/lib/server-store";
+import { readStore, upsertClient, upsertManagerMembership, upsertOrganization } from "@/lib/server-store";
 import { logActivity } from "@/lib/activity";
 import { canIssueKeys, canManageStaff } from "@/lib/scope";
 import type { UserRole } from "@/lib/types";
@@ -50,6 +50,9 @@ export async function POST(request: Request) {
       organizationId?: string;
       target?: "admin" | "organization";
       seeCost?: boolean;
+      incomePercent?: number;
+      incomeFixed?: number;
+      shiftRate?: number;
     };
     if (body.noticesRead) {
       if (!canIssueKeys(actor.role)) return Response.json({ error: "Недостаточно прав" }, { status: 403 });
@@ -213,6 +216,18 @@ export async function POST(request: Request) {
         issuedByUserId: actor.id,
         role: target.role === "manager" ? "manager" : "client",
       });
+      if (target.role === "manager" && orgId) {
+        await upsertManagerMembership({
+          id: `mem-${orgId}-${body.userId}`,
+          userId: body.userId,
+          organizationId: orgId,
+          incomePercent: Number(body.incomePercent) || 0,
+          incomeFixed: Number(body.incomeFixed) || 0,
+          shiftRate: Number(body.shiftRate) || 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
       await recordIssuedKey({
         key,
         role: target.role === "manager" ? "manager" : "client",
@@ -220,6 +235,9 @@ export async function POST(request: Request) {
         userId: body.userId,
         clientId: client.id,
         organizationId: orgId,
+        incomePercent: Number(body.incomePercent) || 0,
+        incomeFixed: Number(body.incomeFixed) || 0,
+        shiftRate: Number(body.shiftRate) || 0,
       });
       await logActivity({
         userId: actor.id,

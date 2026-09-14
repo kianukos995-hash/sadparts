@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import {
+  archiveScheduleYear,
   createWarehouseReceipt,
   patchOffer,
   postPurchase,
@@ -14,23 +15,29 @@ import {
   removeSupplierBill,
   replaceOffers,
   resetStore,
+  shareSupplier,
   unpostPurchase,
   upsertClient,
+  upsertManagerMembership,
   upsertMoneyMovement,
   upsertOrder,
   upsertOrganization,
   upsertPurchase,
+  upsertScheduleDay,
   upsertSupplier,
   upsertSupplierBill,
 } from "@/lib/server-store";
 import type {
   Client,
   ImportMode,
+  ManagerMembership,
   MoneyMovement,
   Offer,
   Order,
   Organization,
   PurchaseOrder,
+  ScheduleDay,
+  ScheduleMark,
   Supplier,
   SupplierBill,
   SyncLog,
@@ -40,16 +47,14 @@ import { logActivity } from "@/lib/activity";
 import { listAccessKeys } from "@/lib/auth-store";
 import { findPriceOffer } from "@/lib/catalog-query";
 import { publicStoreFor } from "@/lib/public-store";
-import {
-  canSeeInvoices,
-  canSeeMoney,
-  canSeeSuppliers,
-  canSeeWarehouse,
-  clientNavOnly,
-  clientVisibleTo,
-  isDeskRole,
-} from "@/lib/scope";
+import { canSeeInvoices, canSeeMoney, canSeeTeam, canSeeWarehouse, clientNavOnly, clientVisibleTo, isDeskRole } from "@/lib/scope";
 import { sellForViewer, viewerPriceContext } from "@/lib/viewer-price";
+import {
+  canDeleteSupplier,
+  canEditSupplier,
+  canManageSuppliers,
+  resolveSupplierSecrets,
+} from "@/lib/suppliers-scope";
 
 async function respond(
   user: Awaited<ReturnType<typeof requireUser>>,
@@ -97,6 +102,11 @@ export async function POST(request: NextRequest) {
       lines?: { sku: string; brand: string; name?: string; qty: number; warehouse: string }[];
       number?: string;
     };
+    shared?: boolean;
+    membership?: ManagerMembership;
+    scheduleDay?: ScheduleDay;
+    year?: number;
+    clearDay?: boolean;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -106,25 +116,60 @@ export async function POST(request: NextRequest) {
 
   try {
     if (body.action === "upsertSupplier" && body.supplier) {
-      if (!canSeeSuppliers(user.role)) {
+      const store = await readStore();
+      if (!canManageSuppliers(user, store.organizations ?? [])) {
         return Response.json({ error: "Недостаточно прав" }, { status: 403 });
       }
-      if (!admin && (body.supplier.apiKey || body.supplier.apiKey2)) {
-        const current = (await readStore()).suppliers.find((item) => item.id === body.supplier!.id);
-        body.supplier = {
-          ...body.supplier,
-          apiKey: current?.apiKey ?? "",
-          apiKey2: current?.apiKey2 ?? "",
-        };
+      const current = store.suppliers.find((item) => item.id === body.supplier!.id);
+      if (current) {
+        if (!canEditSupplier(current, user, store.organizations ?? [])) {
+          return Response.json({ error: "Поставщика закрепил администратор" }, { status: 403 });
+        }
       }
-      return respond(user, await upsertSupplier(body.supplier));
+      let nextSupplier: Supplier = resolveSupplierSecrets(body.supplier, current);
+      if (admin) {
+        nextSupplier = {
+          ...nextSupplier,
+          ownerRole: current?.ownerRole ?? "admin",
+          ownerId: current?.ownerId,
+          lockedByAdmin: nextSupplier.lockedByAdmin ?? current?.lockedByAdmin ?? true,
+          sharedWithOrgIds: nextSupplier.sharedWithOrgIds ?? current?.sharedWithOrgIds ?? [],
+        };
+        if ((nextSupplier.ownerRole ?? "admin") !== "admin") {
+          return Response.json({ error: "Администратор не перезаписывает чужих поставщиков" }, { status: 403 });
+        }
+      } else {
+        nextSupplier = {
+          ...nextSupplier,
+          ownerRole: "organization",
+          ownerId: user.organizationId,
+          lockedByAdmin: false,
+          sharedWithOrgIds: [],
+        };
+        if (current && (current.ownerRole !== "organization" || current.ownerId !== user.organizationId)) {
+          return Response.json({ error: "Чужой поставщик" }, { status: 403 });
+        }
+      }
+      return respond(user, await upsertSupplier(nextSupplier));
     }
     if (body.action === "removeSupplier" && body.supplierId) {
-      if (!admin) return Response.json({ error: "Только администратор" }, { status: 403 });
+      const store = await readStore();
+      const current = store.suppliers.find((item) => item.id === body.supplierId);
+      if (!current) return Response.json({ error: "Поставщик не найден" }, { status: 404 });
+      if (!canDeleteSupplier(current, user, store.organizations ?? [])) {
+        return Response.json({ error: "Нельзя удалить этого поставщика" }, { status: 403 });
+      }
       return respond(user, await removeSupplier(body.supplierId));
     }
+    if (body.action === "shareSupplier" && body.supplierId && body.organizationId) {
+      if (!admin) return Response.json({ error: "Только администратор" }, { status: 403 });
+      return respond(user, await shareSupplier(body.supplierId, body.organizationId, Boolean(body.shared)));
+    }
     if (body.action === "replaceOffers" && body.supplierId && body.offers && body.log) {
-      if (!canSeeSuppliers(user.role)) {
+      const store = await readStore();
+      const current = store.suppliers.find((item) => item.id === body.supplierId);
+      if (!current) return Response.json({ error: "Поставщик не найден" }, { status: 404 });
+      if (!canEditSupplier(current, user, store.organizations ?? [])) {
         return Response.json({ error: "Недостаточно прав" }, { status: 403 });
       }
       return respond(
@@ -167,6 +212,8 @@ export async function POST(request: NextRequest) {
             priceBands: nextBands,
             markupPercent: markup,
             bandMarkups: body.organization.bandMarkups ?? current.bandMarkups,
+            managersCanEditSuppliers:
+              body.organization.managersCanEditSuppliers ?? current.managersCanEditSuppliers,
           }),
         );
       }
@@ -393,6 +440,47 @@ export async function POST(request: NextRequest) {
           number: body.receipt.number,
         }),
       );
+    }
+    if (body.action === "upsertManagerMembership" && body.membership) {
+      if (!canSeeTeam(user.role) || user.role === "manager") {
+        return Response.json({ error: "Недостаточно прав" }, { status: 403 });
+      }
+      const membership: ManagerMembership = {
+        ...body.membership,
+        organizationId: user.organizationId || body.membership.organizationId,
+      };
+      if (membership.organizationId !== user.organizationId) {
+        return Response.json({ error: "Чужая организация" }, { status: 403 });
+      }
+      return respond(user, await upsertManagerMembership(membership));
+    }
+    if (body.action === "upsertScheduleDay" && body.scheduleDay) {
+      if (!canSeeTeam(user.role) || !user.organizationId) {
+        return Response.json({ error: "Недостаточно прав" }, { status: 403 });
+      }
+      const day: ScheduleDay = {
+        ...body.scheduleDay,
+        organizationId: user.organizationId,
+        userId:
+          user.role === "manager" ? user.id : body.scheduleDay.userId || user.id,
+      };
+      if (user.role === "manager" && day.userId !== user.id) {
+        return Response.json({ error: "Можно отмечать только свой график" }, { status: 403 });
+      }
+      const marks: ScheduleMark[] = ["work", "vacation", "sick", "timeoff", "absent"];
+      if (body.clearDay || !marks.includes(day.mark)) {
+        return respond(
+          user,
+          await upsertScheduleDay({ ...day, mark: "" as ScheduleMark }),
+        );
+      }
+      return respond(user, await upsertScheduleDay(day));
+    }
+    if (body.action === "archiveScheduleYear" && body.year) {
+      if (user.role !== "organization" || !user.organizationId) {
+        return Response.json({ error: "Недостаточно прав" }, { status: 403 });
+      }
+      return respond(user, await archiveScheduleYear(user.organizationId, Number(body.year)));
     }
     if (body.action === "reset") {
       if (!admin) return Response.json({ error: "Только администратор" }, { status: 403 });

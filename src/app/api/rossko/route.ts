@@ -12,8 +12,17 @@ import {
 } from "@/lib/rossko";
 import { readStore, upsertOrder, upsertSupplier } from "@/lib/server-store";
 import type { Order } from "@/lib/types";
+import { fail, requireUser } from "@/lib/session";
+import { canEditSupplier, supplierVisibleTo } from "@/lib/suppliers-scope";
+import { isDeskRole } from "@/lib/scope";
 
 export async function POST(request: NextRequest) {
+  let user;
+  try {
+    user = await requireUser(request);
+  } catch (error) {
+    return fail(error);
+  }
   let body: {
     action?: string;
     supplierId?: string;
@@ -38,15 +47,25 @@ export async function POST(request: NextRequest) {
   if (!supplier || !isRosskoSupplier(supplier)) {
     return Response.json({ error: "Поставщик Росско не найден" }, { status: 404 });
   }
+  const orgs = store.organizations ?? [];
+  if (!supplierVisibleTo(supplier, user) && user.role !== "admin") {
+    return Response.json({ error: "Недостаточно прав" }, { status: 403 });
+  }
 
   try {
     if (body.action === "test" || body.action === "details") {
+      if (!canEditSupplier(supplier, user, orgs)) {
+        return Response.json({ error: "Ключи закреплены администратором" }, { status: 403 });
+      }
       const next = await ensureRosskoDelivery(supplier);
       if (next.rosskoDeliveryId !== supplier.rosskoDeliveryId) {
         await upsertSupplier(next);
       }
       const details = await rosskoDetails(next);
       return Response.json({ details, supplier: next });
+    }
+    if (!isDeskRole(user.role)) {
+      return Response.json({ error: "Недостаточно прав" }, { status: 403 });
     }
     if (body.action === "search") {
       const result = await rosskoSearch(supplier, body.query || "");
@@ -60,6 +79,12 @@ export async function POST(request: NextRequest) {
         return Response.json({ error: "В заказе нет позиций Росско" }, { status: 400 });
       }
       const ready = await ensureRosskoDelivery(supplier);
+      if (
+        canEditSupplier(supplier, user, orgs) &&
+        ready.rosskoDeliveryId !== supplier.rosskoDeliveryId
+      ) {
+        await upsertSupplier(ready);
+      }
       const resolved = await rosskoResolveLines(ready, lines);
       const result = await rosskoCheckout(ready, {
         deliveryId: body.deliveryId || ready.rosskoDeliveryId || "",

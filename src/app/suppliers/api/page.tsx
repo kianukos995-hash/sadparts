@@ -1,12 +1,12 @@
 "use client";
 
-import { RoleGate } from "@/components/role-gate";
+import { SuppliersGate } from "@/components/suppliers-gate";
 import { SuppliersBoard } from "@/components/suppliers-board";
 
 export default function ApiSuppliersPage() {
   return (
-    <RoleGate allow={["admin", "organization"]}>
+    <SuppliersGate>
       <SuppliersBoard kind="api" />
-    </RoleGate>
+    </SuppliersGate>
   );
 }

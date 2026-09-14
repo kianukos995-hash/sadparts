@@ -55,7 +55,11 @@ export function canSeeInvoices(role?: UserRole) {
 }
 
 export function canSeeSuppliers(role?: UserRole) {
-  return role === "admin" || role === "organization";
+  return role === "admin" || role === "organization" || role === "manager";
+}
+
+export function canSeeTeam(role?: UserRole) {
+  return role === "organization" || role === "manager";
 }
 
 export function canSeeSettings(role?: UserRole) {

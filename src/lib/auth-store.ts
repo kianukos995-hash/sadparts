@@ -260,6 +260,9 @@ function emptyAuth(): AuthFile {
         organizationId: EXAMPLE_ORG_ID,
         userId: "usr-manager",
         createdAt: now,
+        incomePercent: 5,
+        incomeFixed: 50,
+        shiftRate: 2500,
       },
     ],
   };
@@ -757,6 +760,9 @@ export function recordIssuedKey(input: {
   userId?: string;
   clientId?: string;
   organizationId?: string;
+  incomePercent?: number;
+  incomeFixed?: number;
+  shiftRate?: number;
 }) {
   return enqueue(async () => {
     const auth = await readAuthFile();
@@ -771,6 +777,9 @@ export function recordIssuedKey(input: {
       userId: input.userId,
       clientId: input.clientId,
       createdAt: new Date().toISOString(),
+      incomePercent: input.incomePercent,
+      incomeFixed: input.incomeFixed,
+      shiftRate: input.shiftRate,
     };
     auth.accessKeys.unshift(rec);
     await persist(auth);

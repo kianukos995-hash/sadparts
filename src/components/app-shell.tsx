@@ -41,6 +41,7 @@ import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLE_LABELS } from "@/lib/roles";
 import { homeHref } from "@/lib/scope";
+import { orgAllowsManagerSupplierEdit } from "@/lib/suppliers-scope";
 
 const ALL_GROUPS = [
   {
@@ -78,7 +79,7 @@ const ALL_GROUPS = [
   },
   {
     title: "Прайсы",
-    roles: ["admin", "organization"] as UserRole[],
+    roles: ["admin", "organization", "manager"] as UserRole[],
     items: [
       { href: "/suppliers/files", label: "Поставщики через файлы", icon: FileSpreadsheet },
       { href: "/suppliers/api", label: "Поставщики через API", icon: KeyRound },
@@ -90,6 +91,7 @@ const ALL_GROUPS = [
     roles: ["admin", "organization", "manager"] as UserRole[],
     items: [
       { href: "/organizations", label: "Организации", icon: Building2, roles: ["admin"] as UserRole[] },
+      { href: "/team", label: "Команда", icon: Users, roles: ["organization", "manager"] as UserRole[] },
       { href: "/history", label: "История визитов", icon: History },
       { href: "/staff", label: "Ключи и регистрации", icon: Shield, roles: ["admin"] as UserRole[] },
       { href: "/staff", label: "Ключи клиентов", icon: KeyRound, roles: ["organization", "manager"] as UserRole[] },
@@ -101,10 +103,15 @@ const ALL_GROUPS = [
 
 function NavLinks({ onNavigate, role }: { onNavigate?: () => void; role: UserRole }) {
   const pathname = usePathname();
-  const groups = ALL_GROUPS.filter((group) => group.roles.includes(role)).map((group) => ({
+  const { user } = useAuth();
+  const { organizations } = useAvtoPrice();
+  let groups = ALL_GROUPS.filter((group) => group.roles.includes(role)).map((group) => ({
     ...group,
     items: group.items.filter((item) => !item.roles || item.roles.includes(role)),
   }));
+  if (role === "manager" && !orgAllowsManagerSupplierEdit(organizations, user?.organizationId)) {
+    groups = groups.filter((group) => group.title !== "Прайсы");
+  }
   return (
     <div className="flex flex-col gap-5">
       {groups.map((group) => (

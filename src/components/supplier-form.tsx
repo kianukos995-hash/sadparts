@@ -45,6 +45,9 @@ function emptySupplier(source: SupplierSource = "api"): Supplier {
     createdAt: new Date().toISOString(),
     deliveryDaysMoscow: 2,
     deliveryNote: "",
+    ownerRole: "admin",
+    lockedByAdmin: false,
+    sharedWithOrgIds: [],
   };
 }
 

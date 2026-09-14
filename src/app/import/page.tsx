@@ -1,29 +1,33 @@
 "use client";
 
-import { RoleGate } from "@/components/role-gate";
 import { ImportWizard } from "@/components/import-wizard";
 import { ImportHistoryCard } from "@/components/import-history";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
+import { useAuth } from "@/hooks/use-auth";
+import { SuppliersGate } from "@/components/suppliers-gate";
+import { canEditSupplier } from "@/lib/suppliers-scope";
 
 export default function ImportPage() {
   return (
-    <RoleGate allow={["admin", "organization"]}>
+    <SuppliersGate>
       <ImportInner />
-    </RoleGate>
+    </SuppliersGate>
   );
 }
 
 function ImportInner() {
-  const { ready, suppliers } = useAvtoPrice();
+  const { user } = useAuth();
+  const { ready, suppliers, organizations } = useAvtoPrice();
+  const editable = suppliers.filter((item) => canEditSupplier(item, user, organizations));
 
   if (!ready) return <p className="text-sm text-muted-foreground">Готовлю загрузку…</p>;
 
-  if (suppliers.length === 0) {
+  if (editable.length === 0) {
     return (
       <div className="mx-auto max-w-xl py-16 text-center">
-        <h1 className="text-xl font-semibold">Сначала добавьте поставщика</h1>
+        <h1 className="text-xl font-semibold">Сначала добавьте своего поставщика</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Прайс привязывается к поставщику, даже если это просто файл с диска.
+          Прайс пишется только в своего поставщика. Предложенные администратором нельзя перезаписывать.
         </p>
       </div>
     );

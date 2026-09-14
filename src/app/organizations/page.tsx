@@ -27,6 +27,7 @@ function emptyOrg(): Organization {
     markupPercent: 14,
     maxMarkup: 30,
     accountStatus: "active",
+    managersCanEditSuppliers: false,
   };
 }
 
@@ -40,7 +41,8 @@ export default function OrganizationsPage() {
 
 function OrganizationsInner() {
   const { user } = useAuth();
-  const { ready, organizations, clients, upsertOrganization, removeOrganization } = useAvtoPrice();
+  const { ready, organizations, clients, suppliers, upsertOrganization, removeOrganization, shareSupplier } =
+    useAvtoPrice();
   const [draft, setDraft] = useState<Organization>(emptyOrg());
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -181,6 +183,50 @@ function OrganizationsInner() {
                       }}
                     />
                   </label>
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(editing.managersCanEditSuppliers)}
+                    onChange={(event) => {
+                      setOpenId(org.id);
+                      setDraft({ ...editing, managersCanEditSuppliers: event.target.checked });
+                    }}
+                  />
+                  Менеджеры организации могут править своих поставщиков
+                </label>
+                <div>
+                  <p className="mb-2 text-sm font-medium">Поставщики администратора</p>
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    Отметьте, чтобы открыть уже существующего поставщика этой организации. Свои
+                    поставщики организации не затрагиваются.
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {suppliers
+                      .filter((item) => (item.ownerRole ?? "admin") === "admin")
+                      .map((supplier) => {
+                        const shared = (supplier.sharedWithOrgIds ?? []).includes(org.id);
+                        return (
+                          <label key={supplier.id} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={shared}
+                              onChange={(event) => {
+                                void shareSupplier(supplier.id, org.id, event.target.checked).then(() =>
+                                  toast.success(
+                                    event.target.checked
+                                      ? `${supplier.name} открыт для «${org.name}»`
+                                      : `${supplier.name}: доступ отозван`,
+                                  ),
+                                );
+                              }}
+                            />
+                            {supplier.name}
+                            <span className="text-xs text-muted-foreground">замок</span>
+                          </label>
+                        );
+                      })}
+                  </div>
                 </div>
                 <label className="grid gap-1.5">
                   <Label>Комментарий</Label>

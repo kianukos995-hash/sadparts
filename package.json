@@ -10,7 +10,7 @@
     "lint": "eslint",
     "desktop": "node scripts/desktop.mjs",
     "test:rossko": "npx --yes tsx scripts/rossko-soap-check.ts",
-    "test:import": "npx --yes tsx scripts/price-import-check.ts && npx --yes tsx scripts/invoice-check.ts && npx --yes tsx scripts/money-check.ts"
+    "test:import": "npx --yes tsx scripts/price-import-check.ts && npx --yes tsx scripts/invoice-check.ts && npx --yes tsx scripts/money-check.ts && npx --yes tsx scripts/suppliers-hr-check.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

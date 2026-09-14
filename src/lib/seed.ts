@@ -118,6 +118,7 @@ export const DEFAULT_ORGANIZATIONS: Organization[] = [
     accessKey: "SP-ORG-DEMO1",
     accountStatus: "active",
     priceView: "clean",
+    managersCanEditSuppliers: false,
   },
 ];
 
@@ -148,6 +149,9 @@ export function createDemoSuppliers(): Supplier[] {
       lastSyncAt: isoHoursAgo(6),
       lastSyncStatus: "ok",
       lastSyncCount: 0,
+      ownerRole: "admin",
+      lockedByAdmin: true,
+      sharedWithOrgIds: [EXAMPLE_ORG_ID],
     },
     {
       id: "sup-autopiter",
@@ -172,6 +176,9 @@ export function createDemoSuppliers(): Supplier[] {
       lastSyncAt: isoHoursAgo(14),
       lastSyncStatus: "ok",
       lastSyncCount: 0,
+      ownerRole: "admin",
+      lockedByAdmin: true,
+      sharedWithOrgIds: [EXAMPLE_ORG_ID],
     },
     {
       id: "sup-exist",
@@ -196,6 +203,9 @@ export function createDemoSuppliers(): Supplier[] {
       lastSyncAt: isoHoursAgo(30),
       lastSyncStatus: "ok",
       lastSyncCount: 0,
+      ownerRole: "admin",
+      lockedByAdmin: true,
+      sharedWithOrgIds: [EXAMPLE_ORG_ID],
     },
     {
       id: "sup-file",
@@ -216,6 +226,9 @@ export function createDemoSuppliers(): Supplier[] {
       createdAt,
       deliveryDaysMoscow: 5,
       deliveryNote: "Самовывоз / ТК. До Москвы обычно 4–6 дней после отгрузки.",
+      ownerRole: "admin",
+      lockedByAdmin: true,
+      sharedWithOrgIds: [EXAMPLE_ORG_ID],
     },
   ];
 }
@@ -378,6 +391,20 @@ export function createInitialStore(): StoreSnapshot {
     purchases: [],
     warehouseLots: [],
     warehouseDocs: [],
+    managerMemberships: [
+      {
+        id: "mem-usr-manager",
+        userId: "usr-manager",
+        organizationId: EXAMPLE_ORG_ID,
+        incomePercent: 5,
+        incomeFixed: 50,
+        shiftRate: 2500,
+        createdAt: "2026-05-01T09:00:00.000Z",
+        updatedAt: "2026-05-01T09:00:00.000Z",
+      },
+    ],
+    scheduleDays: [],
+    scheduleArchives: [],
   };
 }
 

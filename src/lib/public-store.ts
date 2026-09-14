@@ -3,6 +3,7 @@ import {
   canSeeCost,
   canSeeMoney,
   canSeeSuppliers,
+  canSeeTeam,
   canSeeWarehouse,
   scopedByOrganization,
   scopedClients,
@@ -11,6 +12,12 @@ import {
 } from "@/lib/scope";
 import { publicOffer, publicSupplier, viewerPriceContext } from "@/lib/viewer-price";
 import type { AppSettings } from "@/lib/types";
+import {
+  catalogSupplierIds,
+  filterOffersForActor,
+  sanitizeSupplierForActor,
+  visibleSuppliers,
+} from "@/lib/suppliers-scope";
 
 export function publicStoreFor(
   user: PublicUser,
@@ -23,15 +30,22 @@ export function publicStoreFor(
   const orders = scopedOrders(user, store.orders, store.clients, keys).map((order) =>
     publicOrder(user, order),
   );
-  const hideSecrets = user.role !== "admin";
+  const orgs = store.organizations ?? [];
+  const catalogIds = catalogSupplierIds(store.suppliers, user);
   const suppliers = canSeeSuppliers(user.role)
-    ? store.suppliers.map((item) => publicSupplier(item, hideSecrets))
-    : store.suppliers.map((item) => publicSupplier(stripSupplier(item), true));
-  const offers = (store.offers ?? []).map((offer) => publicOffer(offer, ctx));
+    ? visibleSuppliers(store.suppliers, user).map((item) =>
+        sanitizeSupplierForActor(item, user, orgs),
+      )
+    : store.suppliers
+        .filter((item) => catalogIds.has(item.id))
+        .map((item) => publicSupplier(stripSupplier(item), true));
+  const offers = filterOffersForActor(store.offers ?? [], store.suppliers, user).map((offer) =>
+    publicOffer(offer, ctx),
+  );
   const organizations =
     user.role === "admin"
-      ? store.organizations ?? []
-      : (store.organizations ?? []).filter((item) => item.id === user.organizationId);
+      ? orgs
+      : orgs.filter((item) => item.id === user.organizationId);
   const money = canSeeMoney(user.role) ? scopedMoney(user, store.moneyMovements ?? []) : [];
   const warehouseOk = canSeeWarehouse(user.role);
   const purchases = warehouseOk
@@ -41,6 +55,24 @@ export function publicStoreFor(
     : [];
   const warehouseLots = warehouseOk ? scopedByOrganization(user, store.warehouseLots ?? []) : [];
   const warehouseDocs = warehouseOk ? scopedByOrganization(user, store.warehouseDocs ?? []) : [];
+  const teamOk = canSeeTeam(user.role);
+  const memberships = teamOk
+    ? (store.managerMemberships ?? []).filter((item) => {
+        if (item.organizationId !== user.organizationId) return false;
+        if (user.role === "manager") return item.userId === user.id;
+        return true;
+      })
+    : [];
+  const scheduleDays = teamOk
+    ? (store.scheduleDays ?? []).filter((item) => {
+        if (item.organizationId !== user.organizationId) return false;
+        if (user.role === "manager") return item.userId === user.id;
+        return true;
+      })
+    : [];
+  const scheduleArchives = teamOk
+    ? (store.scheduleArchives ?? []).filter((item) => item.organizationId === user.organizationId)
+    : [];
   return {
     ...store,
     suppliers,
@@ -54,6 +86,9 @@ export function publicStoreFor(
     purchases,
     warehouseLots,
     warehouseDocs,
+    managerMemberships: memberships,
+    scheduleDays,
+    scheduleArchives,
   };
 }
 
@@ -62,6 +97,8 @@ function stripSupplier(supplier: Supplier): Supplier {
     ...supplier,
     apiUrl: "",
     notes: supplier.deliveryNote,
+    apiKey: "",
+    apiKey2: "",
   };
 }
 

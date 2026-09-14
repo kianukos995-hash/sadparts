@@ -152,6 +152,10 @@ function DeskSettings() {
         </CardContent>
       </Card>
 
+      {user?.role === "organization" ? (
+        <OrgSupplierManagersCard />
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle>Коридоры выданных ключей</CardTitle>
@@ -328,7 +332,9 @@ function DeskSettings() {
             <CardDescription>Ключи и срок до Москвы. Видны только администратору.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2">
-            {suppliers.map((supplier) => (
+            {suppliers
+              .filter((supplier) => (supplier.ownerRole ?? "admin") === "admin")
+              .map((supplier) => (
               <div
                 key={supplier.id}
                 className="flex flex-col gap-2 rounded-lg border px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
@@ -753,4 +759,47 @@ function corridorClients(clients: Client[], _users: StaffUser[], actor?: PublicU
       items: mine,
     },
   ].filter((group) => group.items.length);
+}
+
+function OrgSupplierManagersCard() {
+  const { user } = useAuth();
+  const { organizations, upsertOrganization } = useAvtoPrice();
+  const org = organizations.find((item) => item.id === user?.organizationId);
+  if (!org) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Менеджеры и поставщики</CardTitle>
+        <CardDescription>
+          По умолчанию менеджеры видят каталог, но не правят ключи. Включите, если им можно добавлять
+          своих поставщиков организации.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={Boolean(org.managersCanEditSuppliers)}
+            onChange={(event) => {
+              void upsertOrganization({
+                ...org,
+                managersCanEditSuppliers: event.target.checked,
+              })
+                .then(() =>
+                  toast.success(
+                    event.target.checked
+                      ? "Менеджеры могут править своих поставщиков"
+                      : "Поставщиков правит только организация",
+                  ),
+                )
+                .catch((error: unknown) =>
+                  toast.error(error instanceof Error ? error.message : "Ошибка"),
+                );
+            }}
+          />
+          Менеджеры могут добавлять, править и удалять своих поставщиков организации
+        </label>
+      </CardContent>
+    </Card>
+  );
 }

@@ -28,6 +28,7 @@ import type {
   AppSettings,
   Client,
   ImportMode,
+  ManagerMembership,
   MoneyMovement,
   Offer,
   Order,
@@ -35,6 +36,8 @@ import type {
   PaymentMethod,
   PublicUser,
   PurchaseOrder,
+  ScheduleArchive,
+  ScheduleDay,
   StoreSnapshot,
   Supplier,
   SupplierBill,
@@ -96,9 +99,22 @@ function isStore(value: unknown): value is StoreSnapshot {
 }
 
 function migrateStore(store: StoreSnapshot): StoreSnapshot {
+  const from = store.version ?? 0;
+  let organizations = Array.isArray(store.organizations) ? store.organizations : [];
+  if (from < 8 && !organizations.some((item) => item.id === EXAMPLE_ORG_ID)) {
+    organizations = [...DEFAULT_ORGANIZATIONS, ...organizations];
+  }
+  organizations = organizations.map((org) => ({
+    ...org,
+    managersCanEditSuppliers: Boolean(org.managersCanEditSuppliers),
+  }));
+  const orgIds = organizations.map((item) => item.id);
   const suppliers = store.suppliers.map((supplier) => {
     const fallback = DEFAULT_DELIVERY[supplier.id];
     const rossko = supplier.id === "sup-rossko" || supplier.demoSlug === "rossko";
+    const ownerRole = supplier.ownerRole ?? "admin";
+    const grandfatherShare =
+      from < 10 && ownerRole === "admin" && !Array.isArray(supplier.sharedWithOrgIds);
     return {
       ...supplier,
       apiKey2: supplier.apiKey2 ?? (rossko ? DEMO_KEYS.rossko2 : ""),
@@ -107,6 +123,14 @@ function migrateStore(store: StoreSnapshot): StoreSnapshot {
       deliveryDaysMoscow: supplier.deliveryDaysMoscow ?? fallback?.days ?? 2,
       deliveryNote: supplier.deliveryNote ?? fallback?.note ?? "",
       columnMap: { ...DEFAULT_COLUMN_MAP, ...supplier.columnMap },
+      ownerRole,
+      ownerId: ownerRole === "organization" ? supplier.ownerId : undefined,
+      lockedByAdmin: supplier.lockedByAdmin ?? ownerRole === "admin",
+      sharedWithOrgIds: Array.isArray(supplier.sharedWithOrgIds)
+        ? supplier.sharedWithOrgIds
+        : grandfatherShare
+          ? orgIds
+          : [],
     };
   });
   const supplierDays = new Map(suppliers.map((item) => [item.id, item.deliveryDaysMoscow]));
@@ -177,9 +201,26 @@ function migrateStore(store: StoreSnapshot): StoreSnapshot {
       issuedByUserId: client.issuedByUserId,
     };
   });
-  let organizations = Array.isArray(store.organizations) ? store.organizations : [];
-  if ((store.version ?? 0) < 8 && !organizations.some((item) => item.id === EXAMPLE_ORG_ID)) {
-    organizations = [...DEFAULT_ORGANIZATIONS, ...organizations];
+  let managerMemberships = Array.isArray(store.managerMemberships) ? store.managerMemberships : [];
+  if (
+    from < 10 &&
+    organizations.some((item) => item.id === EXAMPLE_ORG_ID) &&
+    !managerMemberships.some((item) => item.userId === "usr-manager")
+  ) {
+    const now = new Date().toISOString();
+    managerMemberships = [
+      {
+        id: "mem-usr-manager",
+        userId: "usr-manager",
+        organizationId: EXAMPLE_ORG_ID,
+        incomePercent: 5,
+        incomeFixed: 50,
+        shiftRate: 2500,
+        createdAt: now,
+        updatedAt: now,
+      },
+      ...managerMemberships,
+    ];
   }
   return {
     ...store,
@@ -194,6 +235,9 @@ function migrateStore(store: StoreSnapshot): StoreSnapshot {
     purchases: Array.isArray(store.purchases) ? store.purchases : [],
     warehouseLots: Array.isArray(store.warehouseLots) ? store.warehouseLots : [],
     warehouseDocs: Array.isArray(store.warehouseDocs) ? store.warehouseDocs : [],
+    managerMemberships,
+    scheduleDays: Array.isArray(store.scheduleDays) ? store.scheduleDays : [],
+    scheduleArchives: Array.isArray(store.scheduleArchives) ? store.scheduleArchives : [],
   };
 }
 
@@ -779,6 +823,103 @@ export function removeSupplierBill(id: string) {
         item.supplierBillId === id ? { ...item, supplierBillId: undefined } : item,
       ),
     });
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function shareSupplier(supplierId: string, organizationId: string, shared: boolean) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const current = store.suppliers.find((item) => item.id === supplierId);
+    if (!current) throw new Error("Поставщик не найден");
+    if ((current.ownerRole ?? "admin") !== "admin") {
+      throw new Error("Делить можно только поставщика администратора");
+    }
+    const ids = new Set(current.sharedWithOrgIds ?? []);
+    if (shared) ids.add(organizationId);
+    else ids.delete(organizationId);
+    const next: StoreSnapshot = {
+      ...store,
+      suppliers: store.suppliers.map((item) =>
+        item.id === supplierId ? { ...item, sharedWithOrgIds: Array.from(ids) } : item,
+      ),
+    };
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function upsertManagerMembership(membership: ManagerMembership) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const now = new Date().toISOString();
+    const existing = (store.managerMemberships ?? []).find(
+      (item) =>
+        item.id === membership.id ||
+        (item.userId === membership.userId && item.organizationId === membership.organizationId),
+    );
+    const nextRow: ManagerMembership = {
+      id: existing?.id ?? membership.id ?? crypto.randomUUID(),
+      userId: membership.userId,
+      organizationId: membership.organizationId,
+      incomePercent: Number(membership.incomePercent) || 0,
+      incomeFixed: Number(membership.incomeFixed) || 0,
+      shiftRate: Number(membership.shiftRate) || 0,
+      createdAt: existing?.createdAt ?? membership.createdAt ?? now,
+      updatedAt: now,
+    };
+    const list = store.managerMemberships ?? [];
+    const managerMemberships = existing
+      ? list.map((item) => (item.id === existing.id ? nextRow : item))
+      : [nextRow, ...list];
+    const next: StoreSnapshot = { ...store, managerMemberships };
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function upsertScheduleDay(day: ScheduleDay) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const days = store.scheduleDays ?? [];
+    const match = (item: ScheduleDay) =>
+      item.date === day.date &&
+      item.userId === day.userId &&
+      item.organizationId === day.organizationId;
+    let scheduleDays: ScheduleDay[];
+    if (!day.mark) {
+      scheduleDays = days.filter((item) => !match(item));
+    } else if (days.some(match)) {
+      scheduleDays = days.map((item) => (match(item) ? day : item));
+    } else {
+      scheduleDays = [...days, day];
+    }
+    const next: StoreSnapshot = { ...store, scheduleDays };
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function archiveScheduleYear(organizationId: string, year: number) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const prefix = `${year}-`;
+    const days = (store.scheduleDays ?? []).filter(
+      (item) => item.organizationId === organizationId && item.date.startsWith(prefix),
+    );
+    const row: ScheduleArchive = {
+      id: `arch-${organizationId}-${year}`,
+      organizationId,
+      year,
+      days,
+      archivedAt: new Date().toISOString(),
+    };
+    const archives = store.scheduleArchives ?? [];
+    const scheduleArchives = archives.some((item) => item.id === row.id)
+      ? archives.map((item) => (item.id === row.id ? row : item))
+      : [row, ...archives];
+    const next: StoreSnapshot = { ...store, scheduleArchives };
     await persistStore(next);
     return next;
   });

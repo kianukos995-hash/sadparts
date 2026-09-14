@@ -18,11 +18,13 @@ import {
 import { PriceListUpload } from "@/components/price-list-upload";
 import { SupplierFormDialog } from "@/components/supplier-form";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
+import { useAuth } from "@/hooks/use-auth";
 import { AUTH_MODE_LABELS } from "@/lib/constants";
 import { formatDateTime, formatDays, maskKey } from "@/lib/format";
 import { isApiSupplier, isFileSupplier } from "@/lib/money";
 import { buildSyncLog, syncSupplier } from "@/lib/sync";
 import type { Supplier, SupplierSource } from "@/lib/types";
+import { canDeleteSupplier, canEditSupplier, isAdminOwnedSupplier } from "@/lib/suppliers-scope";
 
 function keySummary(supplier: Supplier) {
   if (supplier.adapter === "rossko") {
@@ -36,37 +38,63 @@ function keySummary(supplier: Supplier) {
   return mapped ? `карта ${mapped} полей` : "файл";
 }
 
+function ownershipBadge(supplier: Supplier) {
+  if (isAdminOwnedSupplier(supplier) || supplier.lockedByAdmin) {
+    return (
+      <Badge variant="outline" className="border-amber-400 text-amber-800">
+        Админ · замок
+      </Badge>
+    );
+  }
+  return <Badge variant="secondary">Свой</Badge>;
+}
+
 const COPY: Record<
   "file" | "api",
   { title: string; hint: string; empty: string; add: string; source: SupplierSource }
 > = {
   file: {
     title: "Поставщики через файлы",
-    hint: "CSV, ZIP, XLSX и jsonl-каталоги на диске. Росско после загрузки прайса тоже здесь — файл лежит в data/catalogs.",
-    empty: "Файловых поставщиков нет. Добавьте источник и загрузите прайс.",
+    hint: "CSV, ZIP, XLSX и jsonl-каталоги на диске. Список: свои (редактируемые) и предложенные администратором (замок).",
+    empty: "Файловых поставщиков нет. Добавьте свой источник или попросите администратора открыть доступ.",
     add: "Добавить из файла",
     source: "file",
   },
   api: {
     title: "Поставщики через API",
-    hint: "Ключи, URL и синхронизация. Росско SOAP (KEY1/KEY2), Автопитер, Exist и любой JSON-коннектор.",
-    empty: "API-поставщиков нет. Добавьте ключ и адрес прайса.",
+    hint: "Свои ключи и URL можно менять. Поставщики администратора только для чтения — ключи скрыты.",
+    empty: "API-поставщиков нет. Добавьте свой ключ или дождитесь предложения администратора.",
     add: "Добавить API",
     source: "api",
   },
 };
 
 export function SuppliersBoard({ kind }: { kind: "file" | "api" }) {
-  const { ready, error, refresh, suppliers, upsertSupplier, removeSupplier, replaceOffers } =
-    useAvtoPrice();
+  const { user } = useAuth();
+  const {
+    ready,
+    error,
+    refresh,
+    suppliers,
+    organizations,
+    upsertSupplier,
+    removeSupplier,
+    replaceOffers,
+    shareSupplier,
+  } = useAvtoPrice();
   const [open, setOpen] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const copy = COPY[kind];
   const list = suppliers.filter((supplier) =>
     kind === "file" ? isFileSupplier(supplier) : isApiSupplier(supplier),
   );
+  const admin = user?.role === "admin";
 
   async function runSync(supplier: Supplier) {
+    if (!canEditSupplier(supplier, user, organizations)) {
+      toast.error("Поставщика закрепил администратор");
+      return;
+    }
     if (supplier.adapter === "rossko") {
       setSyncingId(supplier.id);
       try {
@@ -173,72 +201,110 @@ export function SuppliersBoard({ kind }: { kind: "file" | "api" }) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {list.map((supplier) => (
-              <TableRow key={supplier.id}>
-                <TableCell>
-                  <Link href={`/suppliers/${supplier.id}`} className="font-medium hover:underline">
-                    {supplier.name}
-                  </Link>
-                  <p className="text-xs text-muted-foreground">{supplier.code}</p>
-                </TableCell>
-                <TableCell className="hidden md:table-cell">
-                  <div className="flex flex-wrap gap-1">
-                    <Badge variant="secondary">{supplier.source === "api" ? "API" : "Файл"}</Badge>
-                    {supplier.source === "api" ? (
-                      <Badge variant="outline">{AUTH_MODE_LABELS[supplier.authMode]}</Badge>
+            {list.map((supplier) => {
+              const editable = canEditSupplier(supplier, user, organizations);
+              return (
+                <TableRow key={supplier.id}>
+                  <TableCell>
+                    <Link href={`/suppliers/${supplier.id}`} className="font-medium hover:underline">
+                      {supplier.name}
+                    </Link>
+                    <div className="mt-1 flex flex-wrap items-center gap-1">
+                      <p className="text-xs text-muted-foreground">{supplier.code}</p>
+                      {ownershipBadge(supplier)}
+                    </div>
+                    {admin && organizations.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                        {organizations.map((org) => {
+                          const shared = (supplier.sharedWithOrgIds ?? []).includes(org.id);
+                          return (
+                            <label key={org.id} className="flex items-center gap-1.5 text-xs">
+                              <input
+                                type="checkbox"
+                                checked={shared}
+                                onChange={(event) => {
+                                  void shareSupplier(supplier.id, org.id, event.target.checked)
+                                    .then(() =>
+                                      toast.success(
+                                        event.target.checked
+                                          ? `Открыто для «${org.name}»`
+                                          : `Доступ «${org.name}» отозван`,
+                                      ),
+                                    )
+                                    .catch((err: unknown) =>
+                                      toast.error(err instanceof Error ? err.message : "Ошибка"),
+                                    );
+                                }}
+                              />
+                              {org.name}
+                            </label>
+                          );
+                        })}
+                      </div>
                     ) : null}
-                    {kind === "file" && isApiSupplier(supplier) ? (
-                      <Badge variant="outline">есть API</Badge>
-                    ) : null}
-                  </div>
-                </TableCell>
-                <TableCell className="hidden font-mono text-xs lg:table-cell">
-                  {keySummary(supplier)}
-                </TableCell>
-                <TableCell>
-                  <p className="text-sm">{formatDateTime(supplier.lastSyncAt)}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {supplier.lastSyncStatus === "error"
-                      ? supplier.lastSyncError
-                      : `${supplier.catalogCount ?? supplier.lastSyncCount ?? 0} позиций`}
-                  </p>
-                </TableCell>
-                <TableCell className="hidden md:table-cell">
-                  <p className="text-sm">{formatDays(supplier.deliveryDaysMoscow)}</p>
-                  <p className="max-w-48 truncate text-xs text-muted-foreground">
-                    {supplier.deliveryNote || "—"}
-                  </p>
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex flex-wrap justify-end gap-1">
-                    <PriceListUpload supplier={supplier} />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={
-                        syncingId === supplier.id ||
-                        (supplier.source !== "api" && supplier.adapter !== "rossko")
-                      }
-                      onClick={() => void runSync(supplier)}
-                    >
-                      <RefreshCw className={syncingId === supplier.id ? "animate-spin" : ""} />
-                      {supplier.adapter === "rossko" ? "Ключи" : "Синхр."}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => {
-                        if (confirm(`Удалить «${supplier.name}» и его прайс?`)) {
-                          void removeSupplier(supplier.id);
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    <div className="flex flex-wrap gap-1">
+                      <Badge variant="secondary">{supplier.source === "api" ? "API" : "Файл"}</Badge>
+                      {supplier.source === "api" ? (
+                        <Badge variant="outline">{AUTH_MODE_LABELS[supplier.authMode]}</Badge>
+                      ) : null}
+                      {kind === "file" && isApiSupplier(supplier) ? (
+                        <Badge variant="outline">есть API</Badge>
+                      ) : null}
+                    </div>
+                  </TableCell>
+                  <TableCell className="hidden font-mono text-xs lg:table-cell">
+                    {editable ? keySummary(supplier) : "скрыты"}
+                  </TableCell>
+                  <TableCell>
+                    <p className="text-sm">{formatDateTime(supplier.lastSyncAt)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {supplier.lastSyncStatus === "error"
+                        ? supplier.lastSyncError
+                        : `${supplier.catalogCount ?? supplier.lastSyncCount ?? 0} позиций`}
+                    </p>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    <p className="text-sm">{formatDays(supplier.deliveryDaysMoscow)}</p>
+                    <p className="max-w-48 truncate text-xs text-muted-foreground">
+                      {supplier.deliveryNote || "—"}
+                    </p>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex flex-wrap justify-end gap-1">
+                      {editable ? <PriceListUpload supplier={supplier} /> : null}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={
+                          !editable ||
+                          syncingId === supplier.id ||
+                          (supplier.source !== "api" && supplier.adapter !== "rossko")
                         }
-                      }}
-                    >
-                      <Trash2 />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+                        onClick={() => void runSync(supplier)}
+                      >
+                        <RefreshCw className={syncingId === supplier.id ? "animate-spin" : ""} />
+                        {supplier.adapter === "rossko" ? "Ключи" : "Синхр."}
+                      </Button>
+                      {canDeleteSupplier(supplier, user, organizations) ? (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => {
+                            if (confirm(`Удалить «${supplier.name}» и его прайс?`)) {
+                              void removeSupplier(supplier.id);
+                            }
+                          }}
+                        >
+                          <Trash2 />
+                        </Button>
+                      ) : null}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       )}
