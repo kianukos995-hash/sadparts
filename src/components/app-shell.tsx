@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   Building2,
@@ -20,10 +20,20 @@ import {
   Settings,
   ShoppingCart,
   Shield,
+  UserRound,
+  Warehouse,
   Wallet,
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import type { PublicSettings, UserRole } from "@/lib/types";
@@ -51,6 +61,7 @@ const ALL_GROUPS = [
       { href: "/cart", label: "Корзина", icon: ShoppingCart },
       { href: "/orders", label: "Заказы", icon: ClipboardList },
       { href: "/clients", label: "Клиенты", icon: Users, roles: ["client"] as UserRole[] },
+      { href: "/settings", label: "Настройки", icon: Settings },
     ],
   },
   {
@@ -59,7 +70,9 @@ const ALL_GROUPS = [
     items: [
       { href: "/cart", label: "Корзина", icon: ShoppingCart },
       { href: "/orders", label: "Заказы", icon: ClipboardList },
-      { href: "/money", label: "Деньги", icon: Wallet, roles: ["admin", "organization"] as UserRole[] },
+      { href: "/invoices", label: "Накладные", icon: FileSpreadsheet },
+      { href: "/warehouse", label: "Склад", icon: Warehouse },
+      { href: "/money", label: "Деньги", icon: Wallet, roles: ["admin", "organization", "manager"] as UserRole[] },
       { href: "/clients", label: "Клиенты", icon: Users },
     ],
   },
@@ -81,7 +94,7 @@ const ALL_GROUPS = [
       { href: "/staff", label: "Ключи и регистрации", icon: Shield, roles: ["admin"] as UserRole[] },
       { href: "/staff", label: "Ключи клиентов", icon: KeyRound, roles: ["organization", "manager"] as UserRole[] },
       { href: "/telegram", label: "Telegram-бот", icon: Send, roles: ["admin"] as UserRole[] },
-      { href: "/settings", label: "Настройки", icon: Settings, roles: ["admin", "organization"] as UserRole[] },
+      { href: "/settings", label: "Настройки", icon: Settings },
     ],
   },
 ];
@@ -227,10 +240,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </span>
               ) : null}
             </Link>
-            <Button variant="outline" size="sm" onClick={() => void logout()}>
-              <LogOut />
-              <span className="hidden sm:inline">Выйти</span>
-            </Button>
+            <ProfileMenu />
           </div>
         </header>
         <main className="flex-1 px-4 py-5 md:px-8 md:py-7">{children}</main>
@@ -267,5 +277,43 @@ function BrandMark() {
       </span>
       <span className="text-sm font-semibold">SadParts Prices</span>
     </div>
+  );
+}
+
+function ProfileMenu() {
+  const router = useRouter();
+  const { user, logout } = useAuth();
+  const initials = (user?.fio || user?.name || "?").slice(0, 1).toUpperCase();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger className="inline-flex size-9 items-center justify-center overflow-hidden rounded-full border bg-muted text-sm font-semibold">
+        {user?.avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- avatar from local media
+          <img src={user.avatarUrl} alt="" className="size-9 object-cover" />
+        ) : (
+          initials
+        )}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-52">
+        <DropdownMenuLabel>
+          <p className="truncate text-sm text-foreground">{user?.fio || user?.name}</p>
+          <p className="truncate text-xs font-normal">{user?.email}</p>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => router.push("/profile")}>
+          <UserRound />
+          Профиль
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => router.push("/settings")}>
+          <Settings />
+          Настройки
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" onClick={() => void logout()}>
+          <LogOut />
+          Выйти
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

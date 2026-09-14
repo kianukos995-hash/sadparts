@@ -66,6 +66,8 @@ export const DEFAULT_CLIENTS: Client[] = [
     createdAt: "2026-03-12T09:00:00.000Z",
     telegramChatId: "",
     car: "Audi A4",
+    carMake: "Audi",
+    carModel: "A4",
     vin: "WAUZZZ8K9BA123456",
     plate: "А123АА777",
     year: "2012",
@@ -373,6 +375,9 @@ export function createInitialStore(): StoreSnapshot {
     moneyMovements: [],
     supplierBills: [],
     organizations: DEFAULT_ORGANIZATIONS,
+    purchases: [],
+    warehouseLots: [],
+    warehouseDocs: [],
   };
 }
 

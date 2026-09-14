@@ -1,7 +1,7 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { AccessKeyRecord, AccountStatus, PublicUser, UserRole } from "@/lib/types";
+import type { AccessKeyRecord, AccountStatus, PriceView, PublicUser, UserRole } from "@/lib/types";
 import { EXAMPLE_ORG_ID, EXAMPLE_ORG_USER_ID } from "@/lib/constants";
 import { keyedUserIdsFor } from "@/lib/scope";
 
@@ -28,6 +28,17 @@ export interface AuthUser {
   emailCodeExpires?: string;
   lastLoginAt?: string;
   createdAt: string;
+  seeCost?: boolean;
+  avatarUrl?: string;
+  phone?: string;
+  fio?: string;
+  carMake?: string;
+  carModel?: string;
+  vin?: string;
+  plate?: string;
+  year?: string;
+  color?: string;
+  priceView?: PriceView;
 }
 
 export interface AuthSession {
@@ -123,6 +134,17 @@ export function publicUser(user: AuthUser): PublicUser {
     clientId: user.clientId,
     organizationId: user.organizationId,
     issuedByUserId: user.issuedByUserId,
+    seeCost: user.seeCost,
+    avatarUrl: user.avatarUrl,
+    phone: user.phone,
+    fio: user.fio,
+    carMake: user.carMake,
+    carModel: user.carModel,
+    vin: user.vin,
+    plate: user.plate,
+    year: user.year,
+    color: user.color,
+    priceView: user.priceView,
   };
 }
 
@@ -573,7 +595,10 @@ export function verifyEmail(email: string, code: string) {
 
 function staffPayload(auth: AuthFile, actor?: PublicUser) {
   const keys = auth.accessKeys ?? [];
-  let users = auth.users.filter((item) => item.role !== "guest");
+  let users = auth.users;
+  if (actor && actor.role !== "admin") {
+    users = users.filter((item) => item.role !== "guest");
+  }
   let notices = auth.notices;
   let mailbox = auth.mailbox;
   let scopedKeys = keys;
@@ -869,5 +894,60 @@ export function listAccessKeys() {
   return enqueue(async () => {
     const auth = await readAuthFile();
     return auth.accessKeys ?? [];
+  });
+}
+
+export function updateProfile(
+  userId: string,
+  patch: {
+    name?: string;
+    email?: string;
+    fio?: string;
+    phone?: string;
+    avatarUrl?: string;
+    carMake?: string;
+    carModel?: string;
+    vin?: string;
+    plate?: string;
+    year?: string;
+    color?: string;
+    priceView?: PriceView;
+  },
+) {
+  return enqueue(async () => {
+    const auth = await readAuthFile();
+    const user = auth.users.find((item) => item.id === userId);
+    if (!user) throw new Error("Пользователь не найден");
+    if (typeof patch.name === "string" && patch.name.trim()) user.name = patch.name.trim();
+    if (typeof patch.email === "string" && patch.email.includes("@") && user.role !== "guest") {
+      const email = patch.email.trim().toLowerCase();
+      if (auth.users.some((item) => item.id !== userId && item.email === email)) {
+        throw new Error("Этот email уже занят");
+      }
+      user.email = email;
+    }
+    if (typeof patch.fio === "string") user.fio = patch.fio.trim();
+    if (typeof patch.phone === "string") user.phone = patch.phone.trim();
+    if (typeof patch.avatarUrl === "string") user.avatarUrl = patch.avatarUrl;
+    if (typeof patch.carMake === "string") user.carMake = patch.carMake.trim();
+    if (typeof patch.carModel === "string") user.carModel = patch.carModel.trim();
+    if (typeof patch.vin === "string") user.vin = patch.vin.trim();
+    if (typeof patch.plate === "string") user.plate = patch.plate.trim();
+    if (typeof patch.year === "string") user.year = patch.year.trim();
+    if (typeof patch.color === "string") user.color = patch.color.trim();
+    if (patch.priceView === "clean" || patch.priceView === "retail") user.priceView = patch.priceView;
+    await persist(auth);
+    return publicUser(user);
+  });
+}
+
+export function setUserSeeCost(userId: string, seeCost: boolean) {
+  return enqueue(async () => {
+    const auth = await readAuthFile();
+    const user = auth.users.find((item) => item.id === userId);
+    if (!user) throw new Error("Пользователь не найден");
+    user.seeCost = seeCost;
+    await persist(auth);
+    return publicUser(user);
   });
 }

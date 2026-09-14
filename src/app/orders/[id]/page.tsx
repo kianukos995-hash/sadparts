@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { OrderEditor } from "@/components/order-editor";
+import { OrderActionsSidebar } from "@/components/order-actions";
 import { RosskoCheckout } from "@/components/rossko-checkout";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { cn } from "@/lib/utils";
@@ -38,14 +39,25 @@ export default function OrderDetailPage() {
           {order.status === "draft" ? "Корзина" : "Список заказов"}
         </Link>
       </div>
-      <OrderEditor
-        order={order}
-        listHref={listHref}
-        onAssembled={() => router.push(`/orders/${order.id}`)}
-        onDeleted={() => router.push(listHref)}
-        onReturnedToCart={() => router.push(`/cart?id=${order.id}`)}
-      />
-      <RosskoCheckout order={order} />
+      <div className="grid items-start gap-4 xl:grid-cols-[1fr_20rem]">
+        <div className="grid gap-4">
+          <OrderEditor
+            order={order}
+            listHref={listHref}
+            onAssembled={() => router.push(`/orders/${order.id}`)}
+            onDeleted={() => router.push(listHref)}
+            onReturnedToCart={() => router.push(`/cart?id=${order.id}`)}
+          />
+          <RosskoCheckout order={order} />
+        </div>
+        <OrderActionsSidebar
+          order={order}
+          onPosted={() => router.push(`/orders/${order.id}`)}
+          onSaved={(next) =>
+            router.push(next.status === "draft" ? `/cart?id=${next.id}` : `/orders/${next.id}`)
+          }
+        />
+      </div>
     </div>
   );
 }

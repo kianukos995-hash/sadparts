@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { KeyRound, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,28 +9,53 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { RoleGate } from "@/components/role-gate";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SupplierFormDialog } from "@/components/supplier-form";
 import { PriceBandsEditor } from "@/components/price-bands-editor";
 import { PriceFormula } from "@/components/price-formula";
+import { ProfileFields } from "@/components/profile-fields";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { useAuth } from "@/hooks/use-auth";
 import { formatDays, maskKey } from "@/lib/format";
-import { DEFAULT_PRICE_BANDS, markupForPrice, sanitizeBands } from "@/lib/price-bands";
+import { DEFAULT_PRICE_BANDS, formatBandLabel, markupForPrice, sanitizeBands } from "@/lib/price-bands";
 import { priceBreakdown } from "@/lib/pricing";
-import type { PriceBand, Supplier } from "@/lib/types";
+import type { Client, Organization, PriceBand, PriceView, PublicUser, Supplier } from "@/lib/types";
+
+type StaffUser = PublicUser & { createdAt?: string; lastLoginAt?: string };
 
 export default function SettingsPage() {
+  const { user } = useAuth();
+  if (!user) return null;
+  if (user.role === "client" || user.role === "guest") return <ClientSettings />;
+  return <DeskSettings />;
+}
+
+function ClientSettings() {
   return (
-    <RoleGate allow={["admin", "organization"]}>
-      <SettingsInner />
-    </RoleGate>
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Настройки</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          ФИО, контакты, автомобиль и как показывать цену. Закупочную цену не показываем, пока
+          администратор явно не включит её для вашего аккаунта.
+        </p>
+      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Профиль и автомобиль</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ProfileFields />
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
-function SettingsInner() {
+function DeskSettings() {
   const { user } = useAuth();
   const admin = user?.role === "admin";
+  const canTrade = admin || user?.role === "organization";
   const {
     ready,
     suppliers,
@@ -40,6 +65,8 @@ function SettingsInner() {
     saveTradeSettings,
     organizations,
     upsertOrganization,
+    clients,
+    upsertClient,
   } = useAvtoPrice();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | undefined>();
@@ -53,6 +80,16 @@ function SettingsInner() {
   const [vat, setVat] = useState<string | null>(null);
   const [notifyChat, setNotifyChat] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [users, setUsers] = useState<StaffUser[]>([]);
+
+  useEffect(() => {
+    void fetch("/api/auth/users")
+      .then(async (response) => {
+        const data = (await response.json()) as { users?: StaffUser[] };
+        setUsers(data.users ?? []);
+      })
+      .catch(() => undefined);
+  }, []);
 
   const markupValue = markup ?? String(settings.markupPercent);
   const noteValue = hubNote ?? settings.moscowHubNote;
@@ -75,6 +112,11 @@ function SettingsInner() {
   const vatValue = vat ?? String(settings.vatPercent ?? 0);
   const notifyChatValue = notifyChat ?? settings.telegramNotifyChatId ?? "";
 
+  const corridorTargets = useMemo(
+    () => corridorClients(clients, users, user),
+    [clients, users, user],
+  );
+
   if (!ready) return <p className="text-sm text-muted-foreground">Загружаю настройки…</p>;
 
   return (
@@ -84,8 +126,8 @@ function SettingsInner() {
           <h1 className="text-2xl font-semibold tracking-tight">Настройки</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {admin
-              ? "Наценка склада, срок до Москвы и ключи API поставщиков."
-              : "Свои коридоры наценки. Цены и ключи администратора скрыты. Потолок задаёт админ."}
+              ? "Коридоры для всех рангов ниже, справочник и ключи API. Закуп у клиента/организации виден только если вы включили «видеть закуп»."
+              : "Коридоры для клиентов и гостей, которым вы выдали ключ. Чужой закуп скрыт."}
           </p>
         </div>
         {admin ? (
@@ -103,12 +145,60 @@ function SettingsInner() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Мой профиль</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ProfileFields showCar={false} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Коридоры выданных ключей</CardTitle>
+          <CardDescription>Группы свёрнуты. Откройте строку, чтобы править наценку и скидку.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-2">
+          {corridorTargets.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Пока нет карточек с вашим ключом.</p>
+          ) : (
+            corridorTargets.map((group) => (
+              <details key={group.id} className="rounded-lg border px-3 py-2">
+                <summary className="cursor-pointer text-sm font-medium">
+                  {group.title} · {group.items.length}
+                </summary>
+                <div className="mt-3 grid gap-2">
+                  {group.items.map((client) => (
+                    <PolicyAccordion
+                      key={client.id}
+                      title={client.name}
+                      hint={`${client.email || client.phone || ""} · скидка ${client.discountPercent}%`}
+                    >
+                      <ClientPolicyForm
+                        client={client}
+                        bands={bandsValue}
+                        allowMax={admin}
+                        onSave={(next) =>
+                          void upsertClient(next).then(() => toast.success("Политика сохранена"))
+                        }
+                      />
+                    </PolicyAccordion>
+                  ))}
+                </div>
+              </details>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      {admin ? <AdminDirectory users={users} /> : null}
+
+      {canTrade ? (
+      <>
+      <Card>
+        <CardHeader>
           <CardTitle>Торговля</CardTitle>
           <CardDescription>
-            Цена клиенту = закуп + наценка по категории − скидка клиента. Наценка от закупа, скидка от
-            цены с наценкой. Пример: 1000 ₽, коридор 16%, скидка 8% → 1000 + 160 − 92,80 = 1067,20 ₽.
-            Коридоры можно переопределить в карточке клиента. Наценка 0% — это 0%, а не подмена на
-            значение по умолчанию.
+            Цена клиенту = закуп + наценка по категории − скидка клиента. Наценка 0% — это 0%.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -124,11 +214,7 @@ function SettingsInner() {
           </label>
           <label className="grid gap-1.5 sm:col-span-2">
             <Label>Комментарий по доставке до Москвы</Label>
-            <Textarea
-              rows={3}
-              value={noteValue}
-              onChange={(event) => setHubNote(event.target.value)}
-            />
+            <Textarea rows={3} value={noteValue} onChange={(event) => setHubNote(event.target.value)} />
           </label>
           <div className="sm:col-span-2">
             <Label className="mb-2 block">Ценовые категории</Label>
@@ -143,10 +229,7 @@ function SettingsInner() {
           {admin ? (
             <>
               <div className="sm:col-span-2">
-                <Label className="mb-2 block">Категории наценки для гостя (скидки нет)</Label>
-                <p className="mb-2 text-xs text-muted-foreground">
-                  Гость собирает заказ по рыночной наценке этих коридоров. Чистая цена, без подсказок закупа.
-                </p>
+                <Label className="mb-2 block">Категории наценки для гостя</Label>
                 <PriceBandsEditor bands={guestBandsValue} onChange={setGuestBands} />
               </div>
               <div className="sm:col-span-2">
@@ -173,8 +256,7 @@ function SettingsInner() {
                     markupPercent: Number.parseFloat(markupValue.replace(",", ".")) || 0,
                     priceBands: bandsValue.map((band) => ({
                       ...band,
-                      markupPercent:
-                        cap == null ? band.markupPercent : Math.min(band.markupPercent, cap),
+                      markupPercent: cap == null ? band.markupPercent : Math.min(band.markupPercent, cap),
                     })),
                   })
                     .then(() => toast.success("Наценки организации сохранены"))
@@ -211,10 +293,7 @@ function SettingsInner() {
       <Card>
         <CardHeader>
           <CardTitle>Накладная ЗК</CardTitle>
-          <CardDescription>
-            Шапка Excel и печати берётся отсюда. Шаблон — «Заказ клиента ЗК-500». Номера заказов:
-            ЗК-0001, ЗК-0002…
-          </CardDescription>
+          <CardDescription>Шапка Excel и печати. Номера: ЗК-0001… в своей книге.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <label className="grid gap-1.5 sm:col-span-2">
@@ -223,11 +302,7 @@ function SettingsInner() {
           </label>
           <label className="grid gap-1.5 sm:col-span-2">
             <Label>Адрес (строка 2)</Label>
-            <Textarea
-              rows={2}
-              value={sellerAddressValue}
-              onChange={(event) => setSellerAddress(event.target.value)}
-            />
+            <Textarea rows={2} value={sellerAddressValue} onChange={(event) => setSellerAddress(event.target.value)} />
           </label>
           <label className="grid gap-1.5">
             <Label>НДС, % (0 — не облагается)</Label>
@@ -239,32 +314,21 @@ function SettingsInner() {
               value={notifyChatValue}
               onChange={(event) => setNotifyChat(event.target.value)}
               placeholder="если у клиента нет своего"
-              list="telegram-chats"
             />
-            <datalist id="telegram-chats">
-              {settings.telegramChats?.map((chat) => (
-                <option key={chat.id} value={chat.id}>
-                  {chat.title}
-                </option>
-              ))}
-            </datalist>
           </label>
         </CardContent>
       </Card>
+      </>
+      ) : null}
 
       {admin ? (
-      <Card>
-        <CardHeader>
-          <CardTitle>Поставщики и API</CardTitle>
-          <CardDescription>
-            Добавляйте, правите и удаляйте источники. В карточке ключа укажите срок до Москвы.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-2">
-          {suppliers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Поставщиков нет.</p>
-          ) : (
-            suppliers.map((supplier) => (
+        <Card>
+          <CardHeader>
+            <CardTitle>Поставщики и API</CardTitle>
+            <CardDescription>Ключи и срок до Москвы. Видны только администратору.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-2">
+            {suppliers.map((supplier) => (
               <div
                 key={supplier.id}
                 className="flex flex-col gap-2 rounded-lg border px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
@@ -304,33 +368,389 @@ function SettingsInner() {
                   </Button>
                 </div>
               </div>
-            ))
-          )}
-          <Button
-            variant="outline"
-            className="mt-2 w-fit"
-            onClick={() => {
-              setEditing(undefined);
-              setOpen(true);
-            }}
-          >
-            <Plus />
-            Новый поставщик
-          </Button>
-        </CardContent>
-      </Card>
+            ))}
+            <Button
+              variant="outline"
+              className="mt-2 w-fit"
+              onClick={() => {
+                setEditing(undefined);
+                setOpen(true);
+              }}
+            >
+              <Plus />
+              Новый поставщик
+            </Button>
+          </CardContent>
+        </Card>
       ) : null}
 
       {admin ? (
-      <SupplierFormDialog
-        open={open}
-        onOpenChange={setOpen}
-        initial={editing}
-        onSave={(supplier) => {
-          upsertSupplier(supplier).then(() => toast.success("Поставщик сохранён"));
-        }}
-      />
+        <SupplierFormDialog
+          open={open}
+          onOpenChange={setOpen}
+          initial={editing}
+          onSave={(supplier) => {
+            upsertSupplier(supplier).then(() => toast.success("Поставщик сохранён"));
+          }}
+        />
       ) : null}
     </div>
   );
+}
+
+function AdminDirectory({ users }: { users: StaffUser[] }) {
+  const { organizations, clients, upsertOrganization, upsertClient, settings } = useAvtoPrice();
+  const [tab, setTab] = useState("orgs");
+  const managers = users.filter((item) => item.role === "manager");
+  const clientUsers = users.filter((item) => item.role === "client");
+  const guests = users.filter((item) => item.role === "guest");
+  const bands = sanitizeBands(settings.priceBands?.length ? settings.priceBands : DEFAULT_PRICE_BANDS);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Справочник</CardTitle>
+        <CardDescription>
+          Организации, менеджеры, клиенты и гости. Строка открывает полную ценовую политику, включая
+          «видеть закуп».
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList variant="line" className="mb-3 flex-wrap justify-start">
+            <TabsTrigger value="orgs">Организации</TabsTrigger>
+            <TabsTrigger value="managers">Менеджеры в организациях</TabsTrigger>
+            <TabsTrigger value="clients">Клиенты</TabsTrigger>
+            <TabsTrigger value="guests">Гости</TabsTrigger>
+          </TabsList>
+          <TabsContent value="orgs">
+            {organizations.map((org) => {
+              const account = users.find(
+                (item) => item.role === "organization" && item.organizationId === org.id,
+              );
+              return (
+                <PolicyAccordion
+                  key={org.id}
+                  title={org.name}
+                  hint={`${org.email || ""} · потолок ${org.maxMarkup ?? "нет"}%`}
+                >
+                  <OrgPolicyForm
+                    org={org}
+                    account={account}
+                    bands={bands}
+                    onSave={(next) =>
+                      void upsertOrganization(next).then(() => toast.success("Организация сохранена"))
+                    }
+                  />
+                </PolicyAccordion>
+              );
+            })}
+          </TabsContent>
+          <TabsContent value="managers">
+            {managers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Менеджеров нет.</p>
+            ) : (
+              managers.map((person) => {
+                const org = organizations.find((item) => item.id === person.organizationId);
+                const client = clients.find((item) => item.id === person.clientId || item.email === person.email);
+                return (
+                  <PolicyAccordion
+                    key={person.id}
+                    title={person.name}
+                    hint={`${person.email} · ${org?.name || "без организации"}`}
+                  >
+                    <UserSeeCost userId={person.id} seeCost={Boolean(person.seeCost)} />
+                    {client ? (
+                      <ClientPolicyForm
+                        client={client}
+                        bands={bands}
+                        allowMax
+                        onSave={(next) => void upsertClient(next).then(() => toast.success("Сохранено"))}
+                      />
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Карточки клиента нет — только флаг закупа.</p>
+                    )}
+                  </PolicyAccordion>
+                );
+              })
+            )}
+          </TabsContent>
+          <TabsContent value="clients">
+            {clientUsers.map((person) => {
+              const client =
+                clients.find((item) => item.id === person.clientId) ||
+                clients.find((item) => item.email === person.email);
+              return (
+                <PolicyAccordion key={person.id} title={person.name} hint={person.email}>
+                  <UserSeeCost userId={person.id} seeCost={Boolean(person.seeCost)} />
+                  {client ? (
+                    <ClientPolicyForm
+                      client={client}
+                      bands={bands}
+                      allowMax
+                      onSave={(next) => void upsertClient(next).then(() => toast.success("Сохранено"))}
+                    />
+                  ) : null}
+                </PolicyAccordion>
+              );
+            })}
+          </TabsContent>
+          <TabsContent value="guests">
+            {guests.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Гостей ещё не было.</p>
+            ) : (
+              guests.map((person) => {
+                const client = clients.find((item) => item.id === person.clientId);
+                return (
+                  <PolicyAccordion key={person.id} title={person.name} hint={person.email}>
+                    <UserSeeCost userId={person.id} seeCost={Boolean(person.seeCost)} />
+                    {client ? (
+                      <ClientPolicyForm
+                        client={client}
+                        bands={bands}
+                        allowMax
+                        onSave={(next) => void upsertClient(next).then(() => toast.success("Сохранено"))}
+                      />
+                    ) : null}
+                  </PolicyAccordion>
+                );
+              })
+            )}
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PolicyAccordion({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details className="mb-2 rounded-lg border px-3 py-2">
+      <summary className="cursor-pointer">
+        <span className="font-medium">{title}</span>
+        {hint ? <span className="ml-2 text-xs text-muted-foreground">{hint}</span> : null}
+      </summary>
+      <div className="mt-3 grid gap-3">{children}</div>
+    </details>
+  );
+}
+
+function UserSeeCost({ userId, seeCost }: { userId: string; seeCost: boolean }) {
+  const { refresh } = useAuth();
+  const [on, setOn] = useState(seeCost);
+  return (
+    <label className="flex items-center gap-2 text-sm">
+      <input
+        type="checkbox"
+        checked={on}
+        onChange={(event) => {
+          const next = event.target.checked;
+          setOn(next);
+          void fetch("/api/auth/users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "set-see-cost", userId, seeCost: next }),
+          })
+            .then(async (response) => {
+              if (!response.ok) throw new Error("Не сохранить флаг");
+              toast.success(next ? "Закуп открыт" : "Закуп скрыт");
+              await refresh();
+            })
+            .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Ошибка"));
+        }}
+      />
+      Видеть сырой закуп
+    </label>
+  );
+}
+
+function ClientPolicyForm({
+  client,
+  bands,
+  allowMax,
+  onSave,
+}: {
+  client: Client;
+  bands: PriceBand[];
+  allowMax?: boolean;
+  onSave: (client: Client) => void;
+}) {
+  const [draft, setDraft] = useState(client);
+  return (
+    <div className="grid gap-3">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <NumberField
+          label="Наценка, %"
+          value={draft.markupPercent ?? ""}
+          onChange={(value) => setDraft({ ...draft, markupPercent: value })}
+        />
+        <NumberField
+          label="Скидка, %"
+          value={draft.discountPercent}
+          onChange={(value) => setDraft({ ...draft, discountPercent: value ?? 0 })}
+        />
+        {allowMax ? (
+          <NumberField
+            label="Потолок, %"
+            value={draft.maxMarkup ?? ""}
+            onChange={(value) => setDraft({ ...draft, maxMarkup: value })}
+          />
+        ) : null}
+        <label className="grid gap-1.5">
+          <Label>Вид цены</Label>
+          <select
+            className="h-9 rounded-lg border bg-transparent px-3 text-sm"
+            value={draft.priceView ?? "clean"}
+            onChange={(event) => setDraft({ ...draft, priceView: event.target.value as PriceView })}
+          >
+            <option value="clean">Своя цена</option>
+            <option value="retail">Розница − скидка</option>
+          </select>
+        </label>
+      </div>
+      <div className="grid gap-2">
+        <Label>Наценки по коридорам</Label>
+        {bands.map((band) => (
+          <label key={band.id} className="grid grid-cols-[1fr_6rem] items-center gap-2 text-sm">
+            <span className="text-muted-foreground">
+              {formatBandLabel(band)} · база {band.markupPercent}%
+            </span>
+            <Input
+              type="number"
+              min={0}
+              step="0.1"
+              placeholder={String(band.markupPercent)}
+              value={draft.bandMarkups?.[band.id] ?? ""}
+              onChange={(event) => {
+                const raw = event.target.value;
+                const next = { ...(draft.bandMarkups ?? {}) };
+                if (raw === "") delete next[band.id];
+                else next[band.id] = Number.parseFloat(raw) || 0;
+                setDraft({ ...draft, bandMarkups: next });
+              }}
+            />
+          </label>
+        ))}
+      </div>
+      <Button size="sm" className="w-fit" onClick={() => onSave(draft)}>
+        Сохранить политику
+      </Button>
+    </div>
+  );
+}
+
+function OrgPolicyForm({
+  org,
+  account,
+  bands,
+  onSave,
+}: {
+  org: Organization;
+  account?: StaffUser;
+  bands: PriceBand[];
+  onSave: (org: Organization) => void;
+}) {
+  const [draft, setDraft] = useState(org);
+  return (
+    <div className="grid gap-3">
+      {account ? <UserSeeCost userId={account.id} seeCost={Boolean(account.seeCost)} /> : null}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <NumberField
+          label="Наценка, %"
+          value={draft.markupPercent ?? ""}
+          onChange={(value) => setDraft({ ...draft, markupPercent: value })}
+        />
+        <NumberField
+          label="Скидка, %"
+          value={draft.discountPercent}
+          onChange={(value) => setDraft({ ...draft, discountPercent: value ?? 0 })}
+        />
+        <NumberField
+          label="Потолок, %"
+          value={draft.maxMarkup ?? ""}
+          onChange={(value) => setDraft({ ...draft, maxMarkup: value })}
+        />
+      </div>
+      <div className="grid gap-2">
+        <Label>Коридоры организации</Label>
+        <PriceBandsEditor
+          bands={sanitizeBands(draft.priceBands?.length ? draft.priceBands : bands)}
+          onChange={(next) => setDraft({ ...draft, priceBands: next })}
+        />
+      </div>
+      <Button size="sm" className="w-fit" onClick={() => onSave(draft)}>
+        Сохранить политику
+      </Button>
+    </div>
+  );
+}
+
+function NumberField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number | "";
+  onChange: (value: number | undefined) => void;
+}) {
+  return (
+    <label className="grid gap-1.5">
+      <Label>{label}</Label>
+      <Input
+        type="number"
+        min={0}
+        value={value}
+        onChange={(event) =>
+          onChange(event.target.value === "" ? undefined : Number.parseFloat(event.target.value) || 0)
+        }
+      />
+    </label>
+  );
+}
+
+function corridorClients(clients: Client[], _users: StaffUser[], actor?: PublicUser | null) {
+  if (!actor) return [];
+  if (actor.role === "admin") {
+    return [
+      {
+        id: "org-clients",
+        title: "Клиенты организаций",
+        items: clients.filter((item) => item.organizationId && !item.id.startsWith("cli-guest")),
+      },
+      {
+        id: "own-clients",
+        title: "Клиенты склада",
+        items: clients.filter(
+          (item) => !item.organizationId && item.id !== "cli-guest" && !item.id.startsWith("cli-guest"),
+        ),
+      },
+      {
+        id: "guests",
+        title: "Гости",
+        items: clients.filter((item) => item.id === "cli-guest" || item.id.startsWith("cli-guest")),
+      },
+    ].filter((group) => group.items.length);
+  }
+  const mine = clients.filter(
+    (item) =>
+      item.issuedByUserId === actor.id ||
+      item.ownerUserId === actor.id ||
+      (actor.organizationId && item.organizationId === actor.organizationId),
+  );
+  return [
+    {
+      id: "issued",
+      title: "Выданные ключи · клиенты и гости",
+      items: mine,
+    },
+  ].filter((group) => group.items.length);
 }

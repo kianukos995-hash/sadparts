@@ -39,6 +39,7 @@ import { PriceFormula } from "@/components/price-formula";
 import { clientPriceBreakdown } from "@/lib/pricing";
 import { sortOffers } from "@/lib/sort-offers";
 import { availableStock, formatFreeStock, reservedQty } from "@/lib/stock";
+import { ownQty } from "@/lib/warehouse";
 import type { Offer } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { normalizeSku } from "@/lib/format";
@@ -55,6 +56,7 @@ function QuotePageInner() {
     setActiveDraftId,
     removeOrder,
     draft,
+    warehouseLots,
   } = useAvtoPrice();
   const [sku, setSku] = useState("");
   const [name, setName] = useState("");
@@ -454,7 +456,7 @@ function QuotePageInner() {
               ) : null}
               <TableHead className="text-right">Цена</TableHead>
               <TableHead className="hidden text-right md:table-cell">Срок</TableHead>
-              <TableHead className="text-right">Ост.</TableHead>
+              <TableHead className="text-right">Ост. у пост.</TableHead>
               <TableHead />
             </TableRow>
           </TableHeader>
@@ -556,7 +558,13 @@ function QuotePageInner() {
                       {formatDays(offer.deliveryDays)}
                     </TableCell>
                     <TableCell className="text-right">
-                      {formatFreeStock(availableStock(offer, orders), reservedQty(orders, offer.id))}
+                      <p>{formatFreeStock(availableStock(offer, orders), reservedQty(orders, offer.id))}</p>
+                      <p className="text-[10px] text-muted-foreground">у поставщика</p>
+                      {!viewer.locked ? (
+                        <p className="text-[10px] text-muted-foreground">
+                          свой склад {ownQty(warehouseLots, offer.sku, offer.brand, viewer.user?.organizationId)} шт.
+                        </p>
+                      ) : null}
                     </TableCell>
                     <TableCell onClick={(event) => event.stopPropagation()}>
                       <AddToOrderButtons
@@ -585,7 +593,7 @@ function QuotePageInner() {
                                   {row.warehouse || "не указан"}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  {formatDays(row.deliveryDays)} с этого склада ·{" "}
+                                  {formatDays(row.deliveryDays)} с этого склада · у поставщика{" "}
                                   {formatStock(row.stock)}
                                 </p>
                               </div>

@@ -8,6 +8,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { OrderEditor } from "@/components/order-editor";
+import { OrderActionsSidebar } from "@/components/order-actions";
 import { RosskoCheckout } from "@/components/rossko-checkout";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { useAuth } from "@/hooks/use-auth";
@@ -58,6 +59,7 @@ function CartPageInner() {
               clients,
               settings.markupPercent,
               selected?.clientId || user?.clientId,
+              { organizationId: user?.organizationId, createdByUserId: user?.id },
             );
             void upsertOrder(created).then(() => {
               setActiveDraftId(created.id);
@@ -149,15 +151,22 @@ function CartPageInner() {
       )}
 
       {selected ? (
-        <>
-          <OrderEditor
+        <div className="grid items-start gap-4 xl:grid-cols-[1fr_20rem]">
+          <div className="grid gap-4">
+            <OrderEditor
+              order={selected}
+              listHref="/cart"
+              onAssembled={(next) => router.push(`/orders/${next.id}`)}
+              onDeleted={() => router.push("/cart")}
+            />
+            <RosskoCheckout order={selected} />
+          </div>
+          <OrderActionsSidebar
             order={selected}
-            listHref="/cart"
-            onAssembled={(next) => router.push(`/orders/${next.id}`)}
-            onDeleted={() => router.push("/cart")}
+            onPosted={(next) => router.push(`/orders/${next.id}`)}
+            onSaved={(next) => router.push(`/cart?id=${next.id}`)}
           />
-          <RosskoCheckout order={selected} />
-        </>
+        </div>
       ) : null}
     </div>
   );

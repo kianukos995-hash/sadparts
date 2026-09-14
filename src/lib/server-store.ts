@@ -14,6 +14,16 @@ import {
   roundCash,
   syncOrderPaidAmounts,
 } from "@/lib/money";
+import { writeOfferPatch } from "@/lib/offer-patches";
+import { findPriceOffer } from "@/lib/catalog-query";
+import {
+  applyOrderWarehouseOut,
+  applyPurchasePosting,
+  applyReceipt,
+  isPostedStatus,
+  reverseOrderWarehouseOut,
+  reversePurchasePosting,
+} from "@/lib/warehouse";
 import type {
   AppSettings,
   Client,
@@ -23,6 +33,8 @@ import type {
   Order,
   Organization,
   PaymentMethod,
+  PublicUser,
+  PurchaseOrder,
   StoreSnapshot,
   Supplier,
   SupplierBill,
@@ -179,6 +191,9 @@ function migrateStore(store: StoreSnapshot): StoreSnapshot {
     orders: syncOrderPaidAmounts(orders, moneyMovements),
     moneyMovements,
     supplierBills,
+    purchases: Array.isArray(store.purchases) ? store.purchases : [],
+    warehouseLots: Array.isArray(store.warehouseLots) ? store.warehouseLots : [],
+    warehouseDocs: Array.isArray(store.warehouseDocs) ? store.warehouseDocs : [],
   };
 }
 
@@ -199,6 +214,7 @@ function normalizeMovement(item: MoneyMovement): MoneyMovement {
     orderId: item.orderId || undefined,
     supplierId: item.supplierId || undefined,
     supplierBillId: item.supplierBillId || undefined,
+    organizationId: item.organizationId || undefined,
     createdAt: item.createdAt || item.at || new Date().toISOString(),
   };
 }
@@ -278,7 +294,10 @@ async function readStoreFile(): Promise<StoreSnapshot> {
         !Array.isArray(parsed.clients) ||
         !Array.isArray(parsed.moneyMovements) ||
         !Array.isArray(parsed.supplierBills) ||
-        !Array.isArray(parsed.organizations)
+        !Array.isArray(parsed.organizations) ||
+        !Array.isArray(parsed.purchases) ||
+        !Array.isArray(parsed.warehouseLots) ||
+        !Array.isArray(parsed.warehouseDocs)
       ) {
         await persistStore(migrated);
       }
@@ -543,16 +562,53 @@ export function removeClient(id: string) {
   });
 }
 
-export function upsertOrder(order: Order) {
+function catalogLines(order: Order) {
+  return order.lines.filter((line) => (line.fulfillFrom ?? "supplier") !== "own");
+}
+
+async function applyCatalogQty(store: StoreSnapshot, order: Order, sign: -1 | 1): Promise<StoreSnapshot> {
+  let offers = store.offers;
+  for (const line of catalogLines(order)) {
+    const qty = Math.max(0, Math.round(line.qty || 0));
+    if (!qty) continue;
+    const found =
+      offers.find((item) => item.id === line.offerId) ??
+      (await findPriceOffer(store.suppliers, offers, line.offerId));
+    const current = found?.stock ?? 0;
+    const nextStock = current + sign * qty;
+    const supplierId = line.supplierId || found?.supplierId || "";
+    if (supplierId) {
+      await writeOfferPatch(supplierId, line.offerId, { stock: nextStock });
+    }
+    if (found && offers.some((item) => item.id === found.id)) {
+      offers = offers.map((item) => (item.id === found.id ? { ...item, stock: nextStock } : item));
+    }
+  }
+  return { ...store, offers };
+}
+
+export function upsertOrder(order: Order, actor?: PublicUser) {
   return enqueue(async () => {
-    const store = await readStoreFile();
-    const exists = store.orders.some((item) => item.id === order.id);
-    const next: StoreSnapshot = {
-      ...store,
+    let store = await readStoreFile();
+    const prev = store.orders.find((item) => item.id === order.id);
+    let nextOrder = { ...order };
+    const becomingPosted = !isPostedStatus(prev?.status ?? "draft") && isPostedStatus(nextOrder.status);
+    const becomingDraft = prev && isPostedStatus(prev.status) && nextOrder.status === "draft";
+    if (becomingPosted && actor) {
+      store = applyOrderWarehouseOut(store, nextOrder, actor);
+      store = await applyCatalogQty(store, nextOrder, -1);
+      nextOrder = { ...nextOrder, postedAt: nextOrder.postedAt || new Date().toISOString() };
+    } else if (becomingDraft && prev) {
+      store = reverseOrderWarehouseOut(store, prev);
+      store = await applyCatalogQty(store, prev, 1);
+      nextOrder = { ...nextOrder, postedAt: undefined };
+    }
+    const exists = store.orders.some((item) => item.id === nextOrder.id);
+    const next: StoreSnapshot = withMoney(store, {
       orders: exists
-        ? store.orders.map((item) => (item.id === order.id ? order : item))
-        : [order, ...store.orders],
-    };
+        ? store.orders.map((item) => (item.id === nextOrder.id ? nextOrder : item))
+        : [nextOrder, ...store.orders],
+    });
     await persistStore(next);
     return next;
   });
@@ -560,13 +616,89 @@ export function upsertOrder(order: Order) {
 
 export function removeOrder(id: string) {
   return enqueue(async () => {
-    const store = await readStoreFile();
+    let store = await readStoreFile();
+    const prev = store.orders.find((item) => item.id === id);
+    if (prev && isPostedStatus(prev.status)) {
+      store = reverseOrderWarehouseOut(store, prev);
+      store = await applyCatalogQty(store, prev, 1);
+    }
     const next = withMoney(store, {
       orders: store.orders.filter((item) => item.id !== id),
       moneyMovements: (store.moneyMovements ?? []).map((item) =>
         item.orderId === id ? { ...item, orderId: undefined } : item,
       ),
     });
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function upsertPurchase(purchase: PurchaseOrder) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const exists = (store.purchases ?? []).some((item) => item.id === purchase.id);
+    const next: StoreSnapshot = {
+      ...store,
+      purchases: exists
+        ? (store.purchases ?? []).map((item) => (item.id === purchase.id ? purchase : item))
+        : [purchase, ...(store.purchases ?? [])],
+    };
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function removePurchase(id: string) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const prev = (store.purchases ?? []).find((item) => item.id === id);
+    if (prev?.status === "posted") {
+      throw new Error("Сначала отмените проведение закупки");
+    }
+    const next: StoreSnapshot = {
+      ...store,
+      purchases: (store.purchases ?? []).filter((item) => item.id !== id),
+    };
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function postPurchase(id: string, actor: PublicUser) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const purchase = (store.purchases ?? []).find((item) => item.id === id);
+    if (!purchase) throw new Error("Закупка не найдена");
+    if (purchase.lines.length === 0) throw new Error("В закупке нет позиций");
+    const next = applyPurchasePosting(store, purchase, actor);
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function unpostPurchase(id: string) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const purchase = (store.purchases ?? []).find((item) => item.id === id);
+    if (!purchase) throw new Error("Закупка не найдена");
+    const next = reversePurchasePosting(store, purchase);
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function createWarehouseReceipt(input: {
+  supplierId?: string;
+  party: string;
+  lines: { sku: string; brand: string; name?: string; qty: number; warehouse: string }[];
+  organizationId?: string;
+  createdByUserId: string;
+  purchaseId?: string;
+  number?: string;
+}) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const next = applyReceipt(store, input);
     await persistStore(next);
     return next;
   });

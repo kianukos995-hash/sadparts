@@ -7,6 +7,7 @@ import {
   recordIssuedKey,
   requestAccessKey,
   revokeAccessKey,
+  setUserSeeCost,
   updateUserStatus,
 } from "@/lib/auth-store";
 import { fail, requireUser } from "@/lib/session";
@@ -48,6 +49,7 @@ export async function POST(request: Request) {
       keyId?: string;
       organizationId?: string;
       target?: "admin" | "organization";
+      seeCost?: boolean;
     };
     if (body.noticesRead) {
       if (!canIssueKeys(actor.role)) return Response.json({ error: "Недостаточно прав" }, { status: 403 });
@@ -85,6 +87,20 @@ export async function POST(request: Request) {
     }
     if (!canIssueKeys(actor.role)) {
       return Response.json({ error: "Недостаточно прав" }, { status: 403 });
+    }
+    if (body.action === "set-see-cost" && body.userId) {
+      if (actor.role !== "admin") {
+        return Response.json({ error: "Только администратор включает закуп" }, { status: 403 });
+      }
+      const updated = await setUserSeeCost(body.userId, Boolean(body.seeCost));
+      await logActivity({
+        userId: actor.id,
+        email: actor.email,
+        role: actor.role,
+        action: "see_cost",
+        detail: `${updated.email}: ${updated.seeCost ? "видит закуп" : "закуп скрыт"}`,
+      });
+      return Response.json({ user: updated });
     }
     if (body.action === "create-user") {
       if (actor.role === "manager") {

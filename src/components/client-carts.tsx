@@ -4,6 +4,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
+import { useAuth } from "@/hooks/use-auth";
 import { emptyDraft } from "@/lib/order";
 import type { Client } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -18,6 +19,7 @@ export function ClientCartBar({
   onSelectDraft?: (id: string) => void;
 }) {
   const { clients, drafts, draft, orders, setActiveDraftId, upsertOrder, settings } = useAvtoPrice();
+  const { user } = useAuth();
 
   async function newCart(client?: Client) {
     const created = emptyDraft(
@@ -25,6 +27,7 @@ export function ClientCartBar({
       clients,
       settings.markupPercent,
       client?.id || clientId || "",
+      { organizationId: user?.organizationId, createdByUserId: user?.id },
     );
     await upsertOrder(created);
     setActiveDraftId(created.id);

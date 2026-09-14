@@ -122,7 +122,7 @@ function ClientsInner() {
                     client={client}
                     bands={settings.priceBands}
                     fallback={settings.markupPercent}
-                    showCost={user?.role === "admin" || user?.role === "organization" || user?.role === "manager"}
+                    showCost={Boolean(user && (user.role === "admin" || user.seeCost))}
                     onEdit={() => {
                       setDraft(client);
                       setOpen(true);
@@ -312,6 +312,18 @@ function ClientsInner() {
             </Section>
             <Section title="Автомобиль">
               <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Марка">
+                  <Input
+                    value={draft.carMake ?? ""}
+                    onChange={(event) => setDraft((prev) => ({ ...prev, carMake: event.target.value }))}
+                  />
+                </Field>
+                <Field label="Модель">
+                  <Input
+                    value={draft.carModel ?? ""}
+                    onChange={(event) => setDraft((prev) => ({ ...prev, carModel: event.target.value }))}
+                  />
+                </Field>
                 <Field label="Автомобиль">
                   <Input
                     value={draft.car ?? ""}

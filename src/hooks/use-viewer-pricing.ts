@@ -3,7 +3,7 @@
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { useAuth } from "@/hooks/use-auth";
 import { bandsForRole } from "@/lib/roles";
-import { canSeeAnyCost, canSeeCost, canSeeOwnCost, clientNavOnly } from "@/lib/scope";
+import { canSeeCost, clientNavOnly } from "@/lib/scope";
 import { priceViewFor } from "@/lib/price-view";
 import type { Client } from "@/lib/types";
 
@@ -22,19 +22,18 @@ export function useViewerPricing(selectedClientId?: string) {
     org?.priceBands ?? settings.organizationPriceBands,
     Boolean(org) && user?.role !== "admin",
   );
-  const showAdminCost = canSeeCost(user?.role);
-  const showOwnCost = canSeeOwnCost(user?.role);
+  const showCost = canSeeCost(user?.role, user?.seeCost);
   return {
     user,
     client,
     clientId: clientId ?? "",
     locked,
     bands,
-    view: priceViewFor(user?.role, client),
-    showCost: canSeeAnyCost(user?.role),
-    showAdminCost,
-    showOwnCost,
-    costLabel: showAdminCost ? "Закуп" : "Себестоимость",
+    view: priceViewFor(user, client),
+    showCost,
+    showAdminCost: user?.role === "admin",
+    showOwnCost: showCost && user?.role !== "admin",
+    costLabel: user?.role === "admin" ? "Закуп" : "Себестоимость",
     fallbackMarkup: settings.markupPercent,
     maxMarkup: client?.maxMarkup ?? org?.maxMarkup ?? settings.maxMarkup ?? undefined,
     org,

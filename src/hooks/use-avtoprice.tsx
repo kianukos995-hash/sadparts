@@ -15,10 +15,13 @@ import type {
   Order,
   Organization,
   PublicSettings,
+  PurchaseOrder,
   StoreSnapshot,
   Supplier,
   SupplierBill,
   SyncLog,
+  WarehouseDoc,
+  WarehouseLot,
 } from "@/lib/types";
 
 const EMPTY_STORE: StoreSnapshot = {
@@ -31,6 +34,9 @@ const EMPTY_STORE: StoreSnapshot = {
   moneyMovements: [],
   supplierBills: [],
   organizations: [],
+  purchases: [],
+  warehouseLots: [],
+  warehouseDocs: [],
 };
 
 const EMPTY_PUBLIC: PublicSettings = {
@@ -66,6 +72,9 @@ export interface AvtoPriceApi {
   orders: Order[];
   moneyMovements: MoneyMovement[];
   supplierBills: SupplierBill[];
+  purchases: PurchaseOrder[];
+  warehouseLots: WarehouseLot[];
+  warehouseDocs: WarehouseDoc[];
   drafts: Order[];
   draft: Order | null;
   activeDraftId: string;
@@ -91,6 +100,16 @@ export interface AvtoPriceApi {
   removeMoneyMovement: (id: string) => Promise<void>;
   upsertSupplierBill: (bill: SupplierBill) => Promise<void>;
   removeSupplierBill: (id: string) => Promise<void>;
+  upsertPurchase: (purchase: PurchaseOrder) => Promise<void>;
+  removePurchase: (id: string) => Promise<void>;
+  postPurchase: (id: string) => Promise<void>;
+  unpostPurchase: (id: string) => Promise<void>;
+  createWarehouseReceipt: (receipt: {
+    supplierId?: string;
+    party: string;
+    lines: { sku: string; brand: string; name?: string; qty: number; warehouse: string }[];
+    number?: string;
+  }) => Promise<void>;
   addToDraft: (
     offer: Offer,
     qty?: number,
@@ -145,26 +164,6 @@ function mergeOrders(server: Order[], local: Order[]) {
   );
 }
 
-async function postStock(direction: "take" | "release", order: Order) {
-  if (order.lines.length === 0) return;
-  const response = await fetch("/api/catalog/stock", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      direction,
-      items: order.lines.map((line) => ({
-        offerId: line.offerId,
-        supplierId: line.supplierId,
-        qty: line.qty,
-      })),
-    }),
-  });
-  if (!response.ok) {
-    const data = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(data.error || "Не обновить остаток");
-  }
-}
-
 async function mutate(body: unknown) {
   const response = await fetch("/api/store/mutate", {
     method: "POST",
@@ -205,6 +204,9 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
         moneyMovements: data.moneyMovements ?? [],
         supplierBills: data.supplierBills ?? [],
         organizations: data.organizations ?? [],
+        purchases: data.purchases ?? [],
+        warehouseLots: data.warehouseLots ?? [],
+        warehouseDocs: data.warehouseDocs ?? [],
       });
       return orders;
     },
@@ -315,7 +317,6 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
   }, [applyStore]);
 
   const upsertOrder = useCallback(async (order: Order) => {
-    const prev = store.orders.find((item) => item.id === order.id);
     dirty.current = true;
     const next = { ...order, updatedAt: new Date().toISOString() };
     setStore((current) => {
@@ -327,31 +328,22 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       return { ...current, orders };
     });
     try {
-      if (prev?.status === "draft" && next.status === "assembled") {
-        await postStock("take", next);
-      } else if (prev && prev.status !== "draft" && next.status === "draft") {
-        await postStock("release", prev);
-      }
       applyStore(await mutate({ action: "upsertOrder", order: next }));
       dirty.current = false;
     } catch (error) {
       dirty.current = true;
       throw error;
     }
-  }, [applyStore, store.orders, userId]);
+  }, [applyStore, userId]);
 
   const removeOrder = useCallback(async (id: string) => {
-    const prev = store.orders.find((item) => item.id === id);
-    if (prev && prev.status !== "draft") {
-      await postStock("release", prev);
-    }
     setStore((current) => {
       const orders = current.orders.filter((item) => item.id !== id);
       saveLocalOrders(orders, userId);
       return { ...current, orders };
     });
     applyStore(await mutate({ action: "removeOrder", orderId: id }));
-  }, [applyStore, store.orders, userId]);
+  }, [applyStore, userId]);
 
   const addToDraft = useCallback(
     async (
@@ -360,24 +352,25 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       options?: { newOrder?: boolean; orderId?: string; clientId?: string },
     ) => {
       const targetClientId = (locked ? clientId : "") || options?.clientId;
+      const draftExtra = { organizationId: user?.organizationId, createdByUserId: userId };
       const drafts = findDrafts(store.orders);
       let draft: Order;
       if (options?.newOrder) {
-        draft = emptyDraft(store.orders, store.clients, settings.markupPercent, targetClientId);
+        draft = emptyDraft(store.orders, store.clients, settings.markupPercent, targetClientId, draftExtra);
       } else if (options?.orderId) {
         draft =
           store.orders.find((item) => item.id === options.orderId) ??
           drafts.find((item) => item.id === options.orderId) ??
-          emptyDraft(store.orders, store.clients, settings.markupPercent, targetClientId);
+          emptyDraft(store.orders, store.clients, settings.markupPercent, targetClientId, draftExtra);
       } else if (targetClientId) {
         draft =
           findDraftForClient(store.orders, targetClientId) ??
-          emptyDraft(store.orders, store.clients, settings.markupPercent, targetClientId);
+          emptyDraft(store.orders, store.clients, settings.markupPercent, targetClientId, draftExtra);
       } else {
         draft =
           drafts.find((item) => item.id === activeDraftId) ??
           findDraft(store.orders) ??
-          emptyDraft(store.orders, store.clients, settings.markupPercent, targetClientId);
+          emptyDraft(store.orders, store.clients, settings.markupPercent, targetClientId, draftExtra);
       }
       if (targetClientId && draft.clientId !== targetClientId) {
         const client = store.clients.find((item) => item.id === targetClientId);
@@ -460,6 +453,34 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
     applyStore(await mutate({ action: "removeSupplierBill", billId: id }));
   }, [applyStore]);
 
+  const upsertPurchase = useCallback(async (purchase: PurchaseOrder) => {
+    applyStore(await mutate({ action: "upsertPurchase", purchase }));
+  }, [applyStore]);
+
+  const removePurchase = useCallback(async (id: string) => {
+    applyStore(await mutate({ action: "removePurchase", purchaseId: id }));
+  }, [applyStore]);
+
+  const postPurchase = useCallback(async (id: string) => {
+    applyStore(await mutate({ action: "postPurchase", purchaseId: id }));
+  }, [applyStore]);
+
+  const unpostPurchase = useCallback(async (id: string) => {
+    applyStore(await mutate({ action: "unpostPurchase", purchaseId: id }));
+  }, [applyStore]);
+
+  const createWarehouseReceipt = useCallback(
+    async (receipt: {
+      supplierId?: string;
+      party: string;
+      lines: { sku: string; brand: string; name?: string; qty: number; warehouse: string }[];
+      number?: string;
+    }) => {
+      applyStore(await mutate({ action: "createWarehouseReceipt", receipt }));
+    },
+    [applyStore],
+  );
+
   const drafts = useMemo(() => findDrafts(store.orders), [store.orders]);
   const draft = drafts.find((item) => item.id === activeDraftId) ?? findDraft(store.orders);
 
@@ -475,6 +496,9 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       orders: store.orders,
       moneyMovements: store.moneyMovements ?? [],
       supplierBills: store.supplierBills ?? [],
+      purchases: store.purchases ?? [],
+      warehouseLots: store.warehouseLots ?? [],
+      warehouseDocs: store.warehouseDocs ?? [],
       drafts,
       draft,
       activeDraftId: draft?.id ?? "",
@@ -495,6 +519,11 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       removeMoneyMovement,
       upsertSupplierBill,
       removeSupplierBill,
+      upsertPurchase,
+      removePurchase,
+      postPurchase,
+      unpostPurchase,
+      createWarehouseReceipt,
       addToDraft,
       saveTradeSettings,
       resetDemo,
@@ -522,6 +551,11 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       removeMoneyMovement,
       upsertSupplierBill,
       removeSupplierBill,
+      upsertPurchase,
+      removePurchase,
+      postPurchase,
+      unpostPurchase,
+      createWarehouseReceipt,
       addToDraft,
       saveTradeSettings,
       resetDemo,

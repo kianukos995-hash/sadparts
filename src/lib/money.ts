@@ -89,10 +89,10 @@ export function syncOrderPaidAmounts(orders: Order[], movements: MoneyMovement[]
     if (item.direction !== "income" || !item.orderId) continue;
     paid.set(item.orderId, roundCash((paid.get(item.orderId) ?? 0) + item.amount));
   }
-  if (paid.size === 0) return orders;
-  return orders.map((order) =>
-    paid.has(order.id) ? { ...order, paidAmount: paid.get(order.id) } : order,
-  );
+  return orders.map((order) => ({
+    ...order,
+    paidAmount: paid.get(order.id) ?? 0,
+  }));
 }
 
 export function isApiSupplier(supplier: Pick<Supplier, "source" | "adapter">) {

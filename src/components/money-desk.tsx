@@ -26,6 +26,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
+import { useAuth } from "@/hooks/use-auth";
 import { formatDate, formatMoney, fromDateInput, toDateInput } from "@/lib/format";
 import {
   BILL_PAY_STATUS_LABELS,
@@ -64,7 +65,10 @@ function parseTab(value: string | null): MoneyTab {
 export function MoneyDesk() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const tab = parseTab(searchParams.get("tab"));
+  const { user } = useAuth();
+  const admin = user?.role === "admin";
+  const requested = parseTab(searchParams.get("tab"));
+  const tab = !admin && requested === "bills" ? "income" : requested;
   const {
     ready,
     error,
@@ -252,14 +256,18 @@ export function MoneyDesk() {
         <Stat title="Приход" value={formatMoney(summary.income)} hint="все поступления" />
         <Stat title="Расход" value={formatMoney(summary.expense)} hint="выплаты и закуп" />
         <Stat title="Касса" value={formatMoney(summary.balance)} hint="приход минус расход" />
-        <Stat title="Долг поставщикам" value={formatMoney(debt)} hint="остаток по счетам" />
+        {admin ? (
+          <Stat title="Долг поставщикам" value={formatMoney(debt)} hint="остаток по счетам" />
+        ) : (
+          <Stat title="Оплачено заказов" value={String(orders.filter((item) => (item.paidAmount ?? 0) > 0).length)} hint="с приходом в кассе" />
+        )}
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList variant="line" className="w-full max-w-full flex-wrap justify-start">
           <TabsTrigger value="income">Приход</TabsTrigger>
           <TabsTrigger value="expense">Расход</TabsTrigger>
-          <TabsTrigger value="bills">Счета поставщиков</TabsTrigger>
+          {admin ? <TabsTrigger value="bills">Счета поставщиков</TabsTrigger> : null}
         </TabsList>
 
         <TabsContent value="income" className="mt-4">
@@ -296,6 +304,7 @@ export function MoneyDesk() {
           />
         </TabsContent>
 
+        {admin ? (
         <TabsContent value="bills" className="mt-4">
           <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-muted-foreground">
@@ -389,6 +398,7 @@ export function MoneyDesk() {
             </div>
           )}
         </TabsContent>
+        ) : null}
       </Tabs>
 
       <MovementDialog

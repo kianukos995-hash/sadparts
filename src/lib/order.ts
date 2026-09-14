@@ -23,6 +23,7 @@ export function offerToLine(offer: Offer, qty = 1): OrderLine {
     stockId: offer.stockId,
     vendorCode: offer.vendorCode,
     snapshotSell: offer.sellPrice,
+    fulfillFrom: "supplier",
   };
 }
 
@@ -35,15 +36,20 @@ export function formatOrderNumber(serial: number) {
   return `${ORDER_PREFIX}-${String(Math.max(1, serial)).padStart(4, "0")}`;
 }
 
-export function nextOrderNumber(orders: Order[]) {
-  const max = orders.reduce((acc, order) => Math.max(acc, parseOrderSerial(order.number)), 0);
+export function nextOrderNumber(orders: Order[], organizationId?: string) {
+  const scoped = organizationId
+    ? orders.filter((order) => order.organizationId === organizationId)
+    : orders.filter((order) => !order.organizationId);
+  const max = scoped.reduce((acc, order) => Math.max(acc, parseOrderSerial(order.number)), 0);
   return formatOrderNumber(max + 1);
 }
 
 export function copyClientVehicle(client?: Client | null) {
   if (!client) return {};
+  const car =
+    [client.carMake, client.carModel].filter(Boolean).join(" ").trim() || client.car || "";
   return {
-    car: client.car ?? "",
+    car,
     vin: client.vin ?? "",
     plate: client.plate ?? "",
     year: client.year ?? "",
@@ -56,13 +62,15 @@ export function emptyDraft(
   clients: Client[],
   markupPercent: number,
   clientId?: string,
+  extra?: { organizationId?: string; createdByUserId?: string },
 ): Order {
   const now = new Date().toISOString();
   const chosen = clientId ?? "";
   const client = clients.find((item) => item.id === chosen);
+  const organizationId = extra?.organizationId || client?.organizationId;
   return {
     id: crypto.randomUUID(),
-    number: nextOrderNumber(orders),
+    number: nextOrderNumber(orders, organizationId),
     status: "draft",
     clientId: chosen,
     markupPercent,
@@ -70,6 +78,8 @@ export function emptyDraft(
     createdAt: now,
     updatedAt: now,
     lines: [],
+    createdByUserId: extra?.createdByUserId,
+    organizationId,
     ...copyClientVehicle(client),
   };
 }

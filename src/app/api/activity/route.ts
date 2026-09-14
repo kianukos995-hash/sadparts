@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     ]);
     const keyed = keyedUserIdsFor(user, keys, staff.users);
     const visible = events.filter((event) => activityVisibleTo(user, event, keyed)).map((event) => {
-      if (canSeeCost(user.role)) return event;
+      if (canSeeCost(user.role, user.seeCost)) return event;
       return { ...event, buyPrice: undefined };
     });
     return Response.json({ events: visible });

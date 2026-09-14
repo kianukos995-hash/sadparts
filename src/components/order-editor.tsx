@@ -17,7 +17,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { OrderShareBar } from "@/components/order-share";
 import { PriceFormula } from "@/components/price-formula";
 import { RepriceBanner } from "@/components/reprice-banner";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
@@ -26,13 +25,13 @@ import { formatDays, formatMoney } from "@/lib/format";
 import { copyClientVehicle } from "@/lib/order";
 import { clientPriceBreakdown } from "@/lib/pricing";
 import { priceOrder } from "@/lib/order-price";
+import { ownQty } from "@/lib/warehouse";
 import { cn } from "@/lib/utils";
-import type { Order } from "@/lib/types";
+import type { FulfillFrom, Order } from "@/lib/types";
 
 export function OrderEditor({
   order,
   onClose,
-  onAssembled,
   onDeleted,
   onReturnedToCart,
   listHref,
@@ -44,7 +43,7 @@ export function OrderEditor({
   onReturnedToCart?: (order: Order) => void;
   listHref?: string;
 }) {
-  const { suppliers, clients, settings, upsertOrder, removeOrder } = useAvtoPrice();
+  const { suppliers, clients, settings, upsertOrder, removeOrder, warehouseLots } = useAvtoPrice();
   const viewer = useViewerPricing(order.clientId);
   const [markupOverride, setMarkupOverride] = useState("");
   const client = viewer.client ?? clients.find((item) => item.id === order.clientId);
@@ -176,6 +175,7 @@ export function OrderEditor({
                 <TableHead>Артикул</TableHead>
                 <TableHead className="hidden md:table-cell">OEM</TableHead>
                 <TableHead>Поставщик</TableHead>
+                <TableHead className="hidden lg:table-cell">Откуда</TableHead>
                 <TableHead className="text-right">Кол-во</TableHead>
                 {viewer.showCost ? (
                   <TableHead className="hidden text-right sm:table-cell">Закуп</TableHead>
@@ -208,6 +208,37 @@ export function OrderEditor({
                       {line.oem || "—"}
                     </TableCell>
                     <TableCell>{names.get(line.supplierId) ?? "—"}</TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      {viewer.locked ? (
+                        <p className="text-xs text-muted-foreground">
+                          {(line.fulfillFrom ?? "supplier") === "own" ? "свой склад" : "у поставщика"}
+                        </p>
+                      ) : (
+                        <select
+                          className="h-8 max-w-40 rounded-lg border bg-transparent px-2 text-xs"
+                          value={line.fulfillFrom ?? "supplier"}
+                          onChange={(event) => {
+                            const fulfillFrom = event.target.value as FulfillFrom;
+                            void persist({
+                              ...order,
+                              lines: order.lines.map((item) =>
+                                item.id === line.id ? { ...item, fulfillFrom } : item,
+                              ),
+                            });
+                          }}
+                        >
+                          <option value="supplier">у поставщика</option>
+                          <option value="own">свой склад</option>
+                        </select>
+                      )}
+                      {(line.fulfillFrom ?? "supplier") === "own" ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          свой склад {ownQty(warehouseLots, line.sku, line.brand, order.organizationId, line.warehouse)} шт.
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-muted-foreground">у поставщика</p>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
                       <Input
                         className="ml-auto h-8 w-20 text-right"
@@ -307,28 +338,15 @@ export function OrderEditor({
               Добавить из проценки
             </Link>
             {order.status === "draft" ? (
-              <>
-                <Button
-                  variant="outline"
-                  disabled={order.lines.length === 0}
-                  onClick={() => {
-                    void persist({ ...order, lines: [] }).then(() => toast.success("Корзина очищена"));
-                  }}
-                >
-                  Очистить
-                </Button>
-                <Button
-                  disabled={order.lines.length === 0}
-                  onClick={() => {
-                    void persist({ ...order, status: "assembled" }).then(() => {
-                      toast.success(`Заказ ${order.number} собран · остаток списан`);
-                      onAssembled?.({ ...order, status: "assembled" });
-                    });
-                  }}
-                >
-                  Собрать заказ
-                </Button>
-              </>
+              <Button
+                variant="outline"
+                disabled={order.lines.length === 0}
+                onClick={() => {
+                  void persist({ ...order, lines: [] }).then(() => toast.success("Корзина очищена"));
+                }}
+              >
+                Очистить
+              </Button>
             ) : (
               <>
                 <Button
@@ -364,7 +382,6 @@ export function OrderEditor({
             </Button>
           </div>
         </div>
-        <OrderShareBar order={order} />
       </CardContent>
     </Card>
   );

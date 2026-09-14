@@ -21,6 +21,17 @@ export interface PublicUser {
   clientId?: string;
   organizationId?: string;
   issuedByUserId?: string;
+  seeCost?: boolean;
+  avatarUrl?: string;
+  phone?: string;
+  fio?: string;
+  carMake?: string;
+  carModel?: string;
+  vin?: string;
+  plate?: string;
+  year?: string;
+  color?: string;
+  priceView?: PriceView;
 }
 
 export interface ActivityEvent {
@@ -205,6 +216,8 @@ export interface Client {
   plate?: string;
   year?: string;
   color?: string;
+  carMake?: string;
+  carModel?: string;
   ownerUserId?: string;
   organizationId?: string;
   issuedByUserId?: string;
@@ -230,6 +243,7 @@ export interface OrderLine {
   snapshotSell?: number;
   snapshotStock?: number;
   snapshotAt?: string;
+  fulfillFrom?: "supplier" | "own";
 }
 
 export interface Order {
@@ -253,6 +267,7 @@ export interface Order {
   paidAmount?: number;
   createdByUserId?: string;
   organizationId?: string;
+  postedAt?: string;
 }
 
 export interface PriceBand {
@@ -312,6 +327,7 @@ export interface MoneyMovement {
   orderId?: string;
   supplierId?: string;
   supplierBillId?: string;
+  organizationId?: string;
   createdAt: string;
 }
 
@@ -325,6 +341,66 @@ export interface SupplierBill {
   updatedAt: string;
 }
 
+export type PurchaseStatus = "draft" | "posted";
+export type WarehouseDocKind = "in" | "out";
+export type FulfillFrom = "supplier" | "own";
+
+export interface PurchaseLine {
+  id: string;
+  sku: string;
+  brand: string;
+  name: string;
+  qty: number;
+  warehouse: string;
+  buyPrice?: number;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  number: string;
+  status: PurchaseStatus;
+  supplierId: string;
+  organizationId?: string;
+  ownerUserId: string;
+  comment: string;
+  createdAt: string;
+  updatedAt: string;
+  postedAt?: string;
+  lines: PurchaseLine[];
+}
+
+export interface WarehouseLot {
+  id: string;
+  sku: string;
+  brand: string;
+  name: string;
+  qty: number;
+  warehouse: string;
+  organizationId?: string;
+}
+
+export interface WarehouseDocLine {
+  sku: string;
+  brand: string;
+  qty: number;
+  warehouse: string;
+}
+
+export interface WarehouseDoc {
+  id: string;
+  kind: WarehouseDocKind;
+  number: string;
+  at: string;
+  party: string;
+  supplierId?: string;
+  clientId?: string;
+  orderId?: string;
+  purchaseId?: string;
+  organizationId?: string;
+  createdByUserId: string;
+  lines: WarehouseDocLine[];
+}
+
 export interface StoreSnapshot {
   version: number;
   suppliers: Supplier[];
@@ -335,6 +411,9 @@ export interface StoreSnapshot {
   moneyMovements: MoneyMovement[];
   supplierBills: SupplierBill[];
   organizations: Organization[];
+  purchases: PurchaseOrder[];
+  warehouseLots: WarehouseLot[];
+  warehouseDocs: WarehouseDoc[];
 }
 
 export interface ParsedTable {

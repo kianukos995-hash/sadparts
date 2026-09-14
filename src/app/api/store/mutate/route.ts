@@ -1,20 +1,25 @@
 import { NextRequest } from "next/server";
 import {
+  createWarehouseReceipt,
   patchOffer,
+  postPurchase,
   readSettings,
   readStore,
   removeClient,
   removeMoneyMovement,
   removeOrder,
   removeOrganization,
+  removePurchase,
   removeSupplier,
   removeSupplierBill,
   replaceOffers,
   resetStore,
+  unpostPurchase,
   upsertClient,
   upsertMoneyMovement,
   upsertOrder,
   upsertOrganization,
+  upsertPurchase,
   upsertSupplier,
   upsertSupplierBill,
 } from "@/lib/server-store";
@@ -25,6 +30,7 @@ import type {
   Offer,
   Order,
   Organization,
+  PurchaseOrder,
   Supplier,
   SupplierBill,
   SyncLog,
@@ -35,8 +41,10 @@ import { listAccessKeys } from "@/lib/auth-store";
 import { findPriceOffer } from "@/lib/catalog-query";
 import { publicStoreFor } from "@/lib/public-store";
 import {
+  canSeeInvoices,
   canSeeMoney,
   canSeeSuppliers,
+  canSeeWarehouse,
   clientNavOnly,
   clientVisibleTo,
   isDeskRole,
@@ -81,6 +89,14 @@ export async function POST(request: NextRequest) {
     billId?: string;
     organization?: Organization;
     organizationId?: string;
+    purchase?: PurchaseOrder;
+    purchaseId?: string;
+    receipt?: {
+      supplierId?: string;
+      party?: string;
+      lines?: { sku: string; brand: string; name?: string; qty: number; warehouse: string }[];
+      number?: string;
+    };
   };
   try {
     body = (await request.json()) as typeof body;
@@ -261,7 +277,7 @@ export async function POST(request: NextRequest) {
         createdByUserId: order.createdByUserId || user.id,
         organizationId: order.organizationId || user.organizationId || client?.organizationId,
       };
-      const saved = await upsertOrder(order);
+      const saved = await upsertOrder(order, user);
       await logActivity({
         userId: user.id,
         email: user.email,
@@ -290,19 +306,93 @@ export async function POST(request: NextRequest) {
     }
     if (body.action === "upsertMoneyMovement" && body.movement) {
       if (!canSeeMoney(user.role)) return Response.json({ error: "Недостаточно прав" }, { status: 403 });
-      return respond(user, await upsertMoneyMovement(body.movement));
+      const movement =
+        user.role === "admin"
+          ? body.movement
+          : { ...body.movement, organizationId: user.organizationId };
+      return respond(user, await upsertMoneyMovement(movement));
     }
     if (body.action === "removeMoneyMovement" && body.movementId) {
-      if (!admin) return Response.json({ error: "Только администратор" }, { status: 403 });
+      if (!canSeeMoney(user.role)) return Response.json({ error: "Недостаточно прав" }, { status: 403 });
+      if (!admin) {
+        const current = (await readStore()).moneyMovements.find((item) => item.id === body.movementId);
+        if (!current || current.organizationId !== user.organizationId) {
+          return Response.json({ error: "Чужая запись" }, { status: 403 });
+        }
+      }
       return respond(user, await removeMoneyMovement(body.movementId));
     }
     if (body.action === "upsertSupplierBill" && body.bill) {
-      if (!canSeeMoney(user.role)) return Response.json({ error: "Недостаточно прав" }, { status: 403 });
+      if (!admin) return Response.json({ error: "Только администратор" }, { status: 403 });
       return respond(user, await upsertSupplierBill(body.bill));
     }
     if (body.action === "removeSupplierBill" && body.billId) {
       if (!admin) return Response.json({ error: "Только администратор" }, { status: 403 });
       return respond(user, await removeSupplierBill(body.billId));
+    }
+    if (body.action === "upsertPurchase" && body.purchase) {
+      if (!canSeeWarehouse(user.role) && !canSeeInvoices(user.role)) {
+        return Response.json({ error: "Недостаточно прав" }, { status: 403 });
+      }
+      if (!admin && user.role !== "organization" && user.role !== "manager") {
+        return Response.json({ error: "Недостаточно прав" }, { status: 403 });
+      }
+      const purchase: PurchaseOrder =
+        admin
+          ? { ...body.purchase, organizationId: undefined, ownerUserId: body.purchase.ownerUserId || user.id }
+          : {
+              ...body.purchase,
+              organizationId: user.organizationId,
+              ownerUserId: body.purchase.ownerUserId || user.id,
+            };
+      if (!admin && purchase.organizationId !== user.organizationId) {
+        return Response.json({ error: "Чужая закупка" }, { status: 403 });
+      }
+      return respond(user, await upsertPurchase(purchase));
+    }
+    if (body.action === "removePurchase" && body.purchaseId) {
+      if (!desk) return Response.json({ error: "Недостаточно прав" }, { status: 403 });
+      const current = (await readStore()).purchases?.find((item) => item.id === body.purchaseId);
+      if (!current) return Response.json({ error: "Закупка не найдена" }, { status: 404 });
+      if (!admin && current.organizationId !== user.organizationId) {
+        return Response.json({ error: "Чужая закупка" }, { status: 403 });
+      }
+      return respond(user, await removePurchase(body.purchaseId));
+    }
+    if (body.action === "postPurchase" && body.purchaseId) {
+      if (!desk) return Response.json({ error: "Недостаточно прав" }, { status: 403 });
+      const current = (await readStore()).purchases?.find((item) => item.id === body.purchaseId);
+      if (!current) return Response.json({ error: "Закупка не найдена" }, { status: 404 });
+      if (!admin && current.organizationId !== user.organizationId) {
+        return Response.json({ error: "Чужая закупка" }, { status: 403 });
+      }
+      return respond(user, await postPurchase(body.purchaseId, user));
+    }
+    if (body.action === "unpostPurchase" && body.purchaseId) {
+      if (!desk) return Response.json({ error: "Недостаточно прав" }, { status: 403 });
+      const current = (await readStore()).purchases?.find((item) => item.id === body.purchaseId);
+      if (!current) return Response.json({ error: "Закупка не найдена" }, { status: 404 });
+      if (!admin && current.organizationId !== user.organizationId) {
+        return Response.json({ error: "Чужая закупка" }, { status: 403 });
+      }
+      return respond(user, await unpostPurchase(body.purchaseId));
+    }
+    if (body.action === "createWarehouseReceipt" && body.receipt) {
+      if (!canSeeWarehouse(user.role)) {
+        return Response.json({ error: "Недостаточно прав" }, { status: 403 });
+      }
+      const lines = body.receipt.lines ?? [];
+      return respond(
+        user,
+        await createWarehouseReceipt({
+          supplierId: body.receipt.supplierId,
+          party: body.receipt.party || body.receipt.supplierId || "поставщик",
+          lines,
+          organizationId: admin ? undefined : user.organizationId,
+          createdByUserId: user.id,
+          number: body.receipt.number,
+        }),
+      );
     }
     if (body.action === "reset") {
       if (!admin) return Response.json({ error: "Только администратор" }, { status: 403 });

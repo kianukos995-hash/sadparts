@@ -11,11 +11,12 @@ import type {
 } from "@/lib/types";
 import { bandsForRole, defaultGuestBands } from "@/lib/roles";
 import { clientPriceBreakdown, clientSellPrice, type PriceBreakdown } from "@/lib/pricing";
-import { canSeeCost, canSeeOwnCost, clientNavOnly, orgAsClient } from "@/lib/scope";
+import { canSeeCost, orgAsClient } from "@/lib/scope";
 import { sanitizeBands } from "@/lib/price-bands";
 
 export type ViewerPriceContext = {
   role: PublicUser["role"];
+  seeCost: boolean;
   client?: Client | null;
   org?: Organization | null;
   adminBands: PriceBand[];
@@ -51,6 +52,7 @@ export function viewerPriceContext(
   );
   return {
     role: user?.role ?? "guest",
+    seeCost: canSeeCost(user?.role, user?.seeCost),
     client,
     org,
     adminBands: sanitizeBands(settings.priceBands),
@@ -130,30 +132,21 @@ export function publicOffer(
   selectedClient?: Client | null,
 ): Offer {
   const buy = offer.price;
-  const cost = costBasis(buy, ctx);
   const sell = sellForViewer(buy, ctx, selectedClient);
-  if (clientNavOnly(ctx.role)) {
+  if (ctx.seeCost) {
     return {
       ...offer,
-      price: sell,
-      sellPrice: sell,
-      costPrice: undefined,
-      prevPrice: undefined,
-      priceDelta: undefined,
-    };
-  }
-  if (canSeeOwnCost(ctx.role) && !canSeeCost(ctx.role)) {
-    return {
-      ...offer,
-      price: cost,
-      costPrice: cost,
+      costPrice: buy,
       sellPrice: sell,
     };
   }
   return {
     ...offer,
-    costPrice: buy,
+    price: sell,
     sellPrice: sell,
+    costPrice: undefined,
+    prevPrice: undefined,
+    priceDelta: undefined,
   };
 }
 

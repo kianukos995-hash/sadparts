@@ -74,7 +74,7 @@ function main() {
     movements,
   );
   assert(orders[0]?.paidAmount === 500, "order paid");
-  assert(orders[1]?.paidAmount === 15, "untouched order");
+  assert(orders[1]?.paidAmount === 0, "untouched order");
 
   const rossko = { source: "api", adapter: "rossko", catalogCount: 190000 } as Supplier;
   const fileOnly = { source: "file", adapter: "generic", catalogCount: 12 } as Supplier;

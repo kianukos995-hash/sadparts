@@ -3,10 +3,12 @@ import { EXAMPLE_ORG_ID } from "@/lib/constants";
 
 export const DESK_ROLES: UserRole[] = ["admin", "organization", "manager"];
 export const STAFF_ROLES: UserRole[] = ["admin", "organization", "manager"];
-export const MONEY_ROLES: UserRole[] = ["admin", "organization"];
+export const MONEY_ROLES: UserRole[] = ["admin", "organization", "manager"];
 export const SUPPLIER_ROLES: UserRole[] = ["admin", "organization"];
-export const SETTINGS_ROLES: UserRole[] = ["admin", "organization"];
+export const SETTINGS_ROLES: UserRole[] = ["admin", "organization", "manager", "client", "guest"];
 export const CLIENT_LIST_ROLES: UserRole[] = ["admin", "organization", "manager", "client"];
+export const WAREHOUSE_ROLES: UserRole[] = ["admin", "organization", "manager"];
+export const INVOICE_ROLES: UserRole[] = ["admin", "organization", "manager"];
 
 export function isDeskRole(role?: UserRole) {
   return role === "admin" || role === "organization" || role === "manager";
@@ -20,16 +22,16 @@ export function clientNavOnly(role?: UserRole) {
   return role === "client" || role === "guest";
 }
 
-export function canSeeCost(role?: UserRole) {
-  return role === "admin";
+export function canSeeCost(role?: UserRole, seeCost?: boolean) {
+  return role === "admin" || Boolean(seeCost);
 }
 
-export function canSeeOwnCost(role?: UserRole) {
-  return role === "organization" || role === "manager";
+export function canSeeOwnCost(role?: UserRole, seeCost?: boolean) {
+  return canSeeCost(role, seeCost);
 }
 
-export function canSeeAnyCost(role?: UserRole) {
-  return canSeeCost(role) || canSeeOwnCost(role);
+export function canSeeAnyCost(role?: UserRole, seeCost?: boolean) {
+  return canSeeCost(role, seeCost);
 }
 
 export function canManageStaff(role?: UserRole) {
@@ -41,7 +43,15 @@ export function canSeeDesk(role?: UserRole) {
 }
 
 export function canSeeMoney(role?: UserRole) {
-  return role === "admin" || role === "organization";
+  return role === "admin" || role === "organization" || role === "manager";
+}
+
+export function canSeeWarehouse(role?: UserRole) {
+  return isDeskRole(role);
+}
+
+export function canSeeInvoices(role?: UserRole) {
+  return isDeskRole(role);
 }
 
 export function canSeeSuppliers(role?: UserRole) {
@@ -49,7 +59,7 @@ export function canSeeSuppliers(role?: UserRole) {
 }
 
 export function canSeeSettings(role?: UserRole) {
-  return role === "admin" || role === "organization";
+  return Boolean(role);
 }
 
 export function canSeeHistory(role?: UserRole) {
@@ -88,6 +98,9 @@ export function orgAsClient(org: Organization): Client {
     accountStatus: org.accountStatus,
     priceView: org.priceView,
     ownerUserId: org.createdByUserId,
+    maxMarkup: org.maxMarkup,
+    carMake: undefined,
+    carModel: undefined,
   };
 }
 
@@ -221,4 +234,21 @@ export function keyedUserIdsFor(
 
 export function exampleOrgId() {
   return EXAMPLE_ORG_ID;
+}
+
+export function scopedByOrganization<T extends { organizationId?: string }>(
+  actor: PublicUser,
+  items: T[],
+): T[] {
+  if (actor.role === "admin") {
+    return items.filter((item) => !item.organizationId);
+  }
+  if (!actor.organizationId) return [];
+  return items.filter((item) => item.organizationId === actor.organizationId);
+}
+
+export function scopedMoney<T extends { organizationId?: string }>(actor: PublicUser, items: T[]): T[] {
+  if (actor.role === "admin") return items;
+  if (!canSeeMoney(actor.role) || !actor.organizationId) return [];
+  return items.filter((item) => item.organizationId === actor.organizationId);
 }

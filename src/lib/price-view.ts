@@ -1,8 +1,8 @@
-import type { Client, PriceView, UserRole } from "@/lib/types";
-import { canSeeAnyCost } from "@/lib/scope";
+import type { Client, PriceView, PublicUser } from "@/lib/types";
+import { canSeeCost } from "@/lib/scope";
 
-export function priceViewFor(role: UserRole | undefined, client?: Client | null): PriceView {
-  if (canSeeAnyCost(role)) return "cost";
-  if (role === "guest") return "clean";
-  return client?.priceView === "retail" ? "retail" : "clean";
+export function priceViewFor(user?: PublicUser | null, client?: Client | null): PriceView {
+  if (canSeeCost(user?.role, user?.seeCost)) return "cost";
+  const view = user?.priceView ?? client?.priceView;
+  return view === "retail" ? "retail" : "clean";
 }
