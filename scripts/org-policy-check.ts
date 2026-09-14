@@ -58,7 +58,7 @@ function main() {
   });
   const cappedOrg = applyOrgCapsToOrg(cabinet);
   assert(cappedOrg.markupPercent === 18, "наценка организации режется потолком");
-  assert(cappedOrg.discountPercent === 8, "скидка организации режется потолком скидки");
+  assert(cappedOrg.discountPercent === 12, "скидка организации задаётся админом и не режется потолком клиентов");
   assert(cappedOrg.priceBands?.[0].markupPercent === 18, "коридоры организации режутся потолком");
 
   const sto = client({

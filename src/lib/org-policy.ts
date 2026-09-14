@@ -20,7 +20,6 @@ export function clampDiscount(value: number, max?: number | null) {
 
 export function applyOrgCapsToOrg(org: Organization): Organization {
   const markup = clampPercent(org.markupPercent, org.maxMarkup);
-  const discount = clampDiscount(org.discountPercent, org.maxDiscountPercent);
   const priceBands = org.priceBands?.map((band) => ({
     ...band,
     markupPercent: clampPercent(band.markupPercent, org.maxMarkup) ?? band.markupPercent,
@@ -36,7 +35,6 @@ export function applyOrgCapsToOrg(org: Organization): Organization {
   return {
     ...org,
     markupPercent: markup,
-    discountPercent: discount,
     priceBands,
     bandMarkups,
   };
