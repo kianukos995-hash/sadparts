@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
@@ -25,18 +25,26 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { SearchPick } from "@/components/search-pick";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { useAuth } from "@/hooks/use-auth";
 import { formatDate, formatMoney, fromDateInput, toDateInput } from "@/lib/format";
 import {
   BILL_PAY_STATUS_LABELS,
+  MONEY_PURPOSE_LABELS,
   PAYMENT_METHOD_LABELS,
   PAYMENT_METHODS,
   billPayStatus,
+  buildCounterpartyOptions,
   emptyBill,
   emptyMovement,
+  inferMoneyPurpose,
   paidForBill,
+  parseCounterpartyOption,
+  purposeComment,
+  purposesFor,
   remainingForBill,
+  selectedCounterpartyId,
   sortBills,
   sortMovements,
   summarizeMoney,
@@ -48,9 +56,11 @@ import type {
   Client,
   MoneyDirection,
   MoneyMovement,
+  MoneyPurpose,
   Order,
   PaymentMethod,
   PublicSettings,
+  PublicUser,
   Supplier,
   SupplierBill,
 } from "@/lib/types";
@@ -76,6 +86,7 @@ export function MoneyDesk() {
     clients,
     orders,
     suppliers,
+    organizations,
     settings,
     moneyMovements,
     supplierBills,
@@ -92,6 +103,7 @@ export function MoneyDesk() {
   const [billOpen, setBillOpen] = useState(false);
   const [billDraft, setBillDraft] = useState<SupplierBill | null>(null);
   const [savingBill, setSavingBill] = useState(false);
+  const [staff, setStaff] = useState<PublicUser[]>([]);
 
   const summary = useMemo(() => summarizeMoney(moneyMovements), [moneyMovements]);
   const debt = useMemo(
@@ -107,6 +119,31 @@ export function MoneyDesk() {
     [moneyMovements],
   );
   const bills = useMemo(() => sortBills(supplierBills), [supplierBills]);
+  const employees = useMemo(
+    () => staff.filter((item) => item.role === "manager" || item.role === "organization"),
+    [staff],
+  );
+  const counterparties = useMemo(
+    () =>
+      buildCounterpartyOptions({
+        clients,
+        suppliers,
+        employees: employees.map((item) => ({ id: item.id, name: item.name, email: item.email })),
+        organizations,
+        movements: moneyMovements,
+      }),
+    [clients, suppliers, employees, organizations, moneyMovements],
+  );
+
+  useEffect(() => {
+    void fetch("/api/auth/users")
+      .then(async (response) => {
+        if (!response.ok) return;
+        const data = (await response.json()) as { users?: PublicUser[] };
+        setStaff(data.users ?? []);
+      })
+      .catch(() => undefined);
+  }, []);
 
   function setTab(next: string | null) {
     if (!next) return;
@@ -134,25 +171,20 @@ export function MoneyDesk() {
       toast.error("Укажите сумму больше нуля");
       return;
     }
-    if (
-      !movementDraft.counterparty.trim() &&
-      !movementDraft.clientId &&
-      !movementDraft.supplierId
-    ) {
-      toast.error("Укажите, от кого пришли или кому ушли деньги");
-      return;
-    }
+    const purpose = inferMoneyPurpose(movementDraft);
     setSavingMovement(true);
     try {
       await upsertMoneyMovement({
         ...movementDraft,
         amount,
+        purpose,
         counterparty: movementDraft.counterparty.trim(),
         comment: movementDraft.comment.trim(),
-        clientId: movementDraft.clientId || undefined,
-        orderId: movementDraft.orderId || undefined,
-        supplierId: movementDraft.supplierId || undefined,
-        supplierBillId: movementDraft.supplierBillId || undefined,
+        clientId: purpose === "sale" ? movementDraft.clientId || undefined : undefined,
+        orderId: purpose === "sale" ? movementDraft.orderId || undefined : undefined,
+        supplierId: purpose === "purchase" ? movementDraft.supplierId || undefined : undefined,
+        supplierBillId: purpose === "purchase" ? movementDraft.supplierBillId || undefined : undefined,
+        employeeUserId: purpose === "salary" ? movementDraft.employeeUserId || undefined : undefined,
       });
       toast.success(movementDraft.direction === "income" ? "Приход записан" : "Расход записан");
       setMovementOpen(false);
@@ -225,8 +257,9 @@ export function MoneyDesk() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Деньги</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Приход — от клиентов и заказов. Расход — поставщикам и прочие выплаты. Способ: наличные,
-            карта или безнал. Счета поставщиков показывают, кто уже оплачен.
+            Контрагента можно выбрать из списка с поиском или не указывать. Свободный приход и расход
+            компании, инвентаризация кассы и зарплата сотруднику пишутся отдельно от оплат клиентов и
+            поставщиков.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -248,6 +281,42 @@ export function MoneyDesk() {
           >
             <Plus />
             Расход
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setTab("expense");
+              openMovement("expense", {
+                purpose: "salary",
+                comment: purposeComment("salary", "expense"),
+              });
+            }}
+          >
+            Зарплата
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setTab("expense");
+              openMovement("expense", {
+                purpose: "inventory",
+                comment: purposeComment("inventory", "expense"),
+              });
+            }}
+          >
+            Инвентаризация
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setTab("expense");
+              openMovement("expense", {
+                purpose: "company",
+                comment: purposeComment("company", "expense"),
+              });
+            }}
+          >
+            Без контрагента
           </Button>
         </div>
       </div>
@@ -273,11 +342,12 @@ export function MoneyDesk() {
         <TabsContent value="income" className="mt-4">
           <MovementTable
             items={income}
-            empty="Прихода ещё нет. Запишите оплату от клиента или прочее поступление."
+            empty="Прихода ещё нет. Можно записать оплату клиента или свободный приход без контрагента."
             clients={clients}
             orders={orders}
             suppliers={suppliers}
             bills={supplierBills}
+            employees={employees}
             onEdit={(item) => openMovement("income", item)}
             onDelete={(item) => {
               if (confirm("Удалить это поступление?")) {
@@ -290,11 +360,12 @@ export function MoneyDesk() {
         <TabsContent value="expense" className="mt-4">
           <MovementTable
             items={expense}
-            empty="Расхода ещё нет. Запишите оплату поставщику или прочий расход."
+            empty="Расхода ещё нет. Можно оплатить поставщика, выдать зарплату, списать в инвентаризацию или записать расход без контрагента."
             clients={clients}
             orders={orders}
             suppliers={suppliers}
             bills={supplierBills}
+            employees={employees}
             onEdit={(item) => openMovement("expense", item)}
             onDelete={(item) => {
               if (confirm("Удалить этот расход?")) {
@@ -414,6 +485,9 @@ export function MoneyDesk() {
         bills={supplierBills}
         movements={moneyMovements}
         settings={settings}
+        counterparties={counterparties}
+        employees={employees}
+        organizations={organizations}
       />
 
       <BillDialog
@@ -453,6 +527,7 @@ function MovementTable({
   orders,
   suppliers,
   bills,
+  employees,
   onEdit,
   onDelete,
 }: {
@@ -462,6 +537,7 @@ function MovementTable({
   orders: { id: string; number: string }[];
   suppliers: { id: string; name: string }[];
   bills: { id: string; number: string }[];
+  employees: { id: string; name: string }[];
   onEdit: (item: MoneyMovement) => void;
   onDelete: (item: MoneyMovement) => void;
 }) {
@@ -480,6 +556,7 @@ function MovementTable({
           <tr>
             <th className="px-3 py-2 font-medium">Дата</th>
             <th className="px-3 py-2 font-medium">Контрагент</th>
+            <th className="hidden px-3 py-2 font-medium sm:table-cell">Назначение</th>
             <th className="hidden px-3 py-2 font-medium md:table-cell">Связь</th>
             <th className="px-3 py-2 font-medium">Способ</th>
             <th className="px-3 py-2 text-right font-medium">Сумма</th>
@@ -492,8 +569,16 @@ function MovementTable({
             const order = orders.find((entry) => entry.id === item.orderId);
             const supplier = suppliers.find((entry) => entry.id === item.supplierId);
             const bill = bills.find((entry) => entry.id === item.supplierBillId);
+            const employee = employees.find((entry) => entry.id === item.employeeUserId);
+            const purpose = inferMoneyPurpose(item);
             const link =
-              [order ? `заказ ${order.number}` : "", bill ? `счёт ${bill.number}` : "", !order && !bill && supplier ? supplier.name : "", !order && !bill && client && !item.counterparty ? client.name : ""]
+              [
+                order ? `заказ ${order.number}` : "",
+                bill ? `счёт ${bill.number}` : "",
+                purpose === "salary" && employee ? employee.name : "",
+                purpose === "inventory" ? "касса компании" : "",
+                purpose === "company" ? "без контрагента" : "",
+              ]
                 .filter(Boolean)
                 .join(" · ") || "—";
             return (
@@ -501,11 +586,18 @@ function MovementTable({
                 <td className="px-3 py-2 whitespace-nowrap">{formatDate(item.at)}</td>
                 <td className="px-3 py-2">
                   <button type="button" className="text-left font-medium hover:underline" onClick={() => onEdit(item)}>
-                    {item.counterparty || client?.name || supplier?.name || "без имени"}
+                    {item.counterparty ||
+                      client?.name ||
+                      supplier?.name ||
+                      employee?.name ||
+                      "без контрагента"}
                   </button>
                   {item.comment ? (
                     <p className="line-clamp-1 text-xs text-muted-foreground">{item.comment}</p>
                   ) : null}
+                </td>
+                <td className="hidden px-3 py-2 text-xs text-muted-foreground sm:table-cell">
+                  {MONEY_PURPOSE_LABELS[purpose]}
                 </td>
                 <td className="hidden px-3 py-2 text-xs text-muted-foreground md:table-cell">{link}</td>
                 <td className="px-3 py-2">
@@ -539,6 +631,9 @@ function MovementDialog({
   bills,
   movements,
   settings,
+  counterparties,
+  employees,
+  organizations,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -552,13 +647,117 @@ function MovementDialog({
   bills: SupplierBill[];
   movements: MoneyMovement[];
   settings: PublicSettings;
+  counterparties: { id: string; label: string }[];
+  employees: PublicUser[];
+  organizations: { id: string; name: string }[];
 }) {
   const income = draft.direction === "income";
+  const purpose = inferMoneyPurpose(draft);
   const customerOrders = orders.filter((order) => order.status !== "draft");
   const visibleBills = bills.filter((bill) => !draft.supplierId || bill.supplierId === draft.supplierId);
 
   function update<K extends keyof MoneyMovement>(key: K, value: MoneyMovement[K]) {
     setDraft({ ...draft, [key]: value });
+  }
+
+  function applyPurpose(next: MoneyPurpose) {
+    const comment =
+      draft.comment.trim() &&
+      draft.comment.trim() !== purposeComment(purpose, draft.direction)
+        ? draft.comment
+        : purposeComment(next, draft.direction);
+    setDraft({
+      ...draft,
+      purpose: next,
+      comment,
+      clientId: next === "sale" ? draft.clientId : undefined,
+      orderId: next === "sale" ? draft.orderId : undefined,
+      supplierId: next === "purchase" ? draft.supplierId : undefined,
+      supplierBillId: next === "purchase" ? draft.supplierBillId : undefined,
+      employeeUserId: next === "salary" ? draft.employeeUserId : undefined,
+      counterparty: next === "company" || next === "inventory" ? "" : draft.counterparty,
+    });
+  }
+
+  function applyCounterparty(id: string, customName?: string) {
+    const parsed = parseCounterpartyOption(id);
+    if (parsed.kind === "none") {
+      setDraft({
+        ...draft,
+        clientId: undefined,
+        orderId: undefined,
+        supplierId: undefined,
+        supplierBillId: undefined,
+        employeeUserId: undefined,
+        counterparty: "",
+        purpose: purpose === "sale" || purpose === "purchase" || purpose === "salary" ? "company" : purpose,
+      });
+      return;
+    }
+    if (parsed.kind === "client") {
+      const client = clients.find((item) => item.id === parsed.value);
+      setDraft({
+        ...draft,
+        purpose: "sale",
+        clientId: parsed.value,
+        supplierId: undefined,
+        supplierBillId: undefined,
+        employeeUserId: undefined,
+        counterparty: client?.name || draft.counterparty,
+      });
+      return;
+    }
+    if (parsed.kind === "supplier") {
+      const supplier = suppliers.find((item) => item.id === parsed.value);
+      setDraft({
+        ...draft,
+        purpose: income ? purpose : "purchase",
+        supplierId: parsed.value,
+        clientId: undefined,
+        orderId: undefined,
+        employeeUserId: undefined,
+        counterparty: supplier?.name || draft.counterparty,
+      });
+      return;
+    }
+    if (parsed.kind === "employee") {
+      const person = employees.find((item) => item.id === parsed.value);
+      setDraft({
+        ...draft,
+        purpose: "salary",
+        employeeUserId: parsed.value,
+        clientId: undefined,
+        orderId: undefined,
+        supplierId: undefined,
+        supplierBillId: undefined,
+        counterparty: person?.name || draft.counterparty,
+        comment: draft.comment.trim() || purposeComment("salary", draft.direction),
+      });
+      return;
+    }
+    if (parsed.kind === "organization") {
+      const org = organizations.find((item) => item.id === parsed.value);
+      setDraft({
+        ...draft,
+        clientId: undefined,
+        orderId: undefined,
+        supplierId: undefined,
+        supplierBillId: undefined,
+        employeeUserId: undefined,
+        counterparty: org?.name || parsed.value,
+        purpose: purpose === "sale" || purpose === "purchase" ? "other" : purpose,
+      });
+      return;
+    }
+    setDraft({
+      ...draft,
+      clientId: undefined,
+      orderId: undefined,
+      supplierId: undefined,
+      supplierBillId: undefined,
+      employeeUserId: undefined,
+      counterparty: customName || parsed.value,
+    });
   }
 
   const clientLabel = clients.find((item) => item.id === draft.clientId)?.name ?? "без клиента";
@@ -573,8 +772,8 @@ function MovementDialog({
           <DialogTitle>{income ? "Приход" : "Расход"}</DialogTitle>
           <DialogDescription>
             {income
-              ? "Оплата от клиента, заказа или прочее поступление."
-              : "Выплата поставщику, оплата счёта или прочий расход."}
+              ? "Оплата от клиента, оприходование кассы или свободный приход без контрагента."
+              : "Оплата поставщику, зарплата, инвентаризация или свободный расход компании."}
           </DialogDescription>
         </DialogHeader>
 
@@ -619,15 +818,43 @@ function MovementDialog({
             </Select>
           </Field>
 
-          <Field label="Контрагент">
-            <Input
-              value={draft.counterparty}
-              onChange={(event) => update("counterparty", event.target.value)}
-              placeholder={income ? "Клиент, касса, прочее" : "Поставщик, аренда, прочее"}
-            />
+          <Field label="Назначение">
+            <Select
+              value={purpose}
+              onValueChange={(value) => {
+                if (value) applyPurpose(value as MoneyPurpose);
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <span className="flex flex-1 truncate text-left">{MONEY_PURPOSE_LABELS[purpose]}</span>
+              </SelectTrigger>
+              <SelectContent>
+                {purposesFor(draft.direction).map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {MONEY_PURPOSE_LABELS[item]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
 
-          {income ? (
+          <div className="grid gap-1.5">
+            <Label>Контрагент</Label>
+            <SearchPick
+              value={selectedCounterpartyId(draft)}
+              onChange={(id) => applyCounterparty(id)}
+              options={counterparties}
+              placeholder="Поиск клиента, поставщика, сотрудника"
+              onCreate={(name) => applyCounterparty(`custom:${name}`, name)}
+              createLabel={(name) => `Свободное имя «${name}»`}
+            />
+            <p className="text-xs text-muted-foreground">
+              Можно не выбирать никого: свободный приход, расход, инвентаризация или списание кассы
+              компании. Список ищется по названию.
+            </p>
+          </div>
+
+          {purpose === "sale" ? (
             <>
               <Field label="Клиент">
                 <Select
@@ -720,7 +947,7 @@ function MovementDialog({
                 </Select>
               </Field>
             </>
-          ) : (
+          ) : purpose === "purchase" ? (
             <>
               <Field label="Поставщик">
                 <Select
@@ -812,6 +1039,19 @@ function MovementDialog({
                 </p>
               ) : null}
             </>
+          ) : purpose === "salary" ? (
+            <p className="text-xs text-muted-foreground">
+              Выберите сотрудника в списке контрагентов или впишите ФИО свободно. Это расход в счёт
+              зарплаты, не оплата поставщику.
+            </p>
+          ) : purpose === "inventory" ? (
+            <p className="text-xs text-muted-foreground">
+              Списание или оприходование кассы компании при инвентаризации. Контрагент не обязателен.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Свободная запись в кассу компании: можно без контрагента.
+            </p>
           )}
 
           <Field label="Комментарий">
@@ -819,7 +1059,13 @@ function MovementDialog({
               value={draft.comment}
               onChange={(event) => update("comment", event.target.value)}
               rows={3}
-              placeholder="Назначение платежа"
+              placeholder={
+                purpose === "salary"
+                  ? "Сотрудник, период"
+                  : purpose === "inventory"
+                    ? "Инвентаризация: что списали или оприходовали"
+                    : "Назначение платежа"
+              }
             />
           </Field>
         </div>

@@ -2,6 +2,7 @@ import type {
   BillPayStatus,
   MoneyDirection,
   MoneyMovement,
+  MoneyPurpose,
   Order,
   PaymentMethod,
   Supplier,
@@ -26,6 +27,151 @@ export const BILL_PAY_STATUS_LABELS: Record<BillPayStatus, string> = {
   partial: "частично",
   paid: "оплачен",
 };
+
+export const MONEY_PURPOSES: MoneyPurpose[] = [
+  "sale",
+  "purchase",
+  "salary",
+  "inventory",
+  "company",
+  "other",
+];
+
+export const MONEY_PURPOSE_LABELS: Record<MoneyPurpose, string> = {
+  sale: "Оплата клиента / заказа",
+  purchase: "Оплата поставщику",
+  salary: "Зарплата сотруднику",
+  inventory: "Инвентаризация кассы",
+  company: "Свободно, без контрагента",
+  other: "Прочее",
+};
+
+export function purposesFor(direction: MoneyDirection): MoneyPurpose[] {
+  if (direction === "income") {
+    return ["sale", "inventory", "company", "other"];
+  }
+  return ["purchase", "salary", "inventory", "company", "other"];
+}
+
+export function purposeNeedsParty(purpose?: MoneyPurpose) {
+  return purpose === "sale" || purpose === "purchase" || purpose === "salary";
+}
+
+export function inferMoneyPurpose(item: Pick<MoneyMovement, "purpose" | "clientId" | "orderId" | "supplierId" | "supplierBillId" | "employeeUserId" | "counterparty">): MoneyPurpose {
+  if (item.purpose && MONEY_PURPOSES.includes(item.purpose)) return item.purpose;
+  if (item.employeeUserId) return "salary";
+  if (item.supplierId || item.supplierBillId) return "purchase";
+  if (item.clientId || item.orderId) return "sale";
+  if (!item.counterparty?.trim()) return "company";
+  return "other";
+}
+
+export function purposeComment(purpose: MoneyPurpose, direction: MoneyDirection) {
+  if (purpose === "salary") return "Выдача зарплаты";
+  if (purpose === "inventory") {
+    return direction === "income" ? "Инвентаризация: оприходование" : "Инвентаризация: списание";
+  }
+  if (purpose === "company") {
+    return direction === "income" ? "Свободный приход компании" : "Свободный расход компании";
+  }
+  return "";
+}
+
+export type CounterpartyOption = {
+  id: string;
+  label: string;
+  kind: "none" | "client" | "supplier" | "employee" | "organization" | "custom";
+};
+
+export function counterpartyOptionId(kind: CounterpartyOption["kind"], value = "") {
+  if (kind === "none") return "none";
+  return `${kind}:${value}`;
+}
+
+export function parseCounterpartyOption(id: string): {
+  kind: CounterpartyOption["kind"];
+  value: string;
+} {
+  if (!id || id === "none") return { kind: "none", value: "" };
+  const split = id.indexOf(":");
+  if (split <= 0) return { kind: "custom", value: id };
+  const kind = id.slice(0, split) as CounterpartyOption["kind"];
+  const value = id.slice(split + 1);
+  if (
+    kind === "client" ||
+    kind === "supplier" ||
+    kind === "employee" ||
+    kind === "organization" ||
+    kind === "custom"
+  ) {
+    return { kind, value };
+  }
+  return { kind: "custom", value: id };
+}
+
+export function buildCounterpartyOptions(input: {
+  clients: { id: string; name: string; phone?: string; inn?: string }[];
+  suppliers: { id: string; name: string }[];
+  employees?: { id: string; name: string; email?: string }[];
+  organizations?: { id: string; name: string }[];
+  movements?: { counterparty?: string }[];
+}): CounterpartyOption[] {
+  const options: CounterpartyOption[] = [{ id: "none", label: "без контрагента", kind: "none" }];
+  const seen = new Set<string>(["без контрагента"]);
+  function push(option: CounterpartyOption) {
+    const key = option.label.trim().toLowerCase();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    options.push(option);
+  }
+  for (const client of input.clients) {
+    const extra = [client.phone, client.inn].filter((item) => item?.trim()).join(" · ");
+    push({
+      id: counterpartyOptionId("client", client.id),
+      label: extra ? `${client.name} · ${extra}` : client.name,
+      kind: "client",
+    });
+  }
+  for (const supplier of input.suppliers) {
+    push({
+      id: counterpartyOptionId("supplier", supplier.id),
+      label: supplier.name,
+      kind: "supplier",
+    });
+  }
+  for (const person of input.employees ?? []) {
+    push({
+      id: counterpartyOptionId("employee", person.id),
+      label: person.email ? `${person.name} · ${person.email}` : person.name,
+      kind: "employee",
+    });
+  }
+  for (const org of input.organizations ?? []) {
+    push({
+      id: counterpartyOptionId("organization", org.id),
+      label: org.name,
+      kind: "organization",
+    });
+  }
+  for (const movement of input.movements ?? []) {
+    const name = movement.counterparty?.trim();
+    if (!name) continue;
+    push({
+      id: counterpartyOptionId("custom", name),
+      label: name,
+      kind: "custom",
+    });
+  }
+  return options;
+}
+
+export function selectedCounterpartyId(item: MoneyMovement): string {
+  if (item.employeeUserId) return counterpartyOptionId("employee", item.employeeUserId);
+  if (item.clientId) return counterpartyOptionId("client", item.clientId);
+  if (item.supplierId) return counterpartyOptionId("supplier", item.supplierId);
+  if (item.counterparty.trim()) return counterpartyOptionId("custom", item.counterparty.trim());
+  return "none";
+}
 
 export const BILL_PREFIX = "ПС";
 
@@ -111,6 +257,7 @@ export function emptyMovement(direction: MoneyDirection): MoneyMovement {
     amount: 0,
     method: "cash",
     direction,
+    purpose: direction === "income" ? "sale" : "purchase",
     counterparty: "",
     comment: "",
     createdAt: now,

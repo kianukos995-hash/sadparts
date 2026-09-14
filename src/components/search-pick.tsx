@@ -11,6 +11,8 @@ export function SearchPick({
   placeholder,
   emptyLabel,
   className,
+  onCreate,
+  createLabel,
 }: {
   value: string;
   onChange: (id: string) => void;
@@ -18,6 +20,8 @@ export function SearchPick({
   placeholder: string;
   emptyLabel?: string;
   className?: string;
+  onCreate?: (label: string) => void;
+  createLabel?: (query: string) => string;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -80,7 +84,22 @@ export function SearchPick({
               </button>
             </li>
           ))}
-          {shown.length === 0 ? (
+          {onCreate && q.trim() && !options.some((item) => item.label.toLowerCase() === q.trim().toLowerCase()) ? (
+            <li>
+              <button
+                type="button"
+                className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  onCreate(q.trim());
+                  setOpen(false);
+                }}
+              >
+                {createLabel ? createLabel(q.trim()) : `Добавить «${q.trim()}»`}
+              </button>
+            </li>
+          ) : null}
+          {shown.length === 0 && !(onCreate && q.trim()) ? (
             <li className="px-3 py-2 text-xs text-muted-foreground">Нет совпадений</li>
           ) : null}
         </ul>

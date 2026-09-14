@@ -279,6 +279,8 @@ function normalizeMovement(item: MoneyMovement): MoneyMovement {
     supplierId: item.supplierId || undefined,
     supplierBillId: item.supplierBillId || undefined,
     organizationId: item.organizationId || undefined,
+    purpose: item.purpose,
+    employeeUserId: item.employeeUserId || undefined,
     createdAt: item.createdAt || item.at || new Date().toISOString(),
   };
 }

@@ -6,6 +6,7 @@ export type SyncStatus = "ok" | "error";
 export type OrderStatus = "draft" | "assembled" | "sent";
 export type PaymentMethod = "cash" | "card" | "cashless";
 export type MoneyDirection = "income" | "expense";
+export type MoneyPurpose = "sale" | "purchase" | "salary" | "inventory" | "company" | "other";
 export type BillPayStatus = "unpaid" | "partial" | "paid";
 export type UserRole = "admin" | "organization" | "manager" | "client" | "guest";
 export type AccountStatus = "pending_email" | "pending_key" | "active" | "blocked";
@@ -380,10 +381,12 @@ export interface MoneyMovement {
   direction: MoneyDirection;
   counterparty: string;
   comment: string;
+  purpose?: MoneyPurpose;
   clientId?: string;
   orderId?: string;
   supplierId?: string;
   supplierBillId?: string;
+  employeeUserId?: string;
   organizationId?: string;
   createdAt: string;
 }

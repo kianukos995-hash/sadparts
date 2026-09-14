@@ -1,9 +1,12 @@
 import {
   billPayStatus,
+  buildCounterpartyOptions,
+  inferMoneyPurpose,
   isApiSupplier,
   isFileSupplier,
   nextBillNumber,
   paidForBill,
+  parseCounterpartyOption,
   remainingForBill,
   roundCash,
   summarizeMoney,
@@ -68,6 +71,22 @@ function main() {
   assert(summary.expense === 250, `expense ${summary.expense}`);
   assert(summary.balance === 250, `balance ${summary.balance}`);
   assert(roundCash(250.1) === 250.1, "round");
+
+  assert(inferMoneyPurpose({ counterparty: "" }) === "company", "free cash");
+  assert(inferMoneyPurpose({ counterparty: "СТО", clientId: "c1" }) === "sale", "client sale");
+  assert(inferMoneyPurpose({ counterparty: "", purpose: "inventory" }) === "inventory", "inventory");
+  assert(inferMoneyPurpose({ counterparty: "Иванов", employeeUserId: "u1" }) === "salary", "salary");
+  assert(parseCounterpartyOption("none").kind === "none", "none party");
+  assert(parseCounterpartyOption("client:abc").value === "abc", "client id");
+  const parties = buildCounterpartyOptions({
+    clients: [{ id: "c1", name: "СТО Север" }],
+    suppliers: [{ id: "s1", name: "Росско" }],
+    employees: [{ id: "u1", name: "Менеджер" }],
+    movements: [{ counterparty: "Аренда" }],
+  });
+  assert(parties[0]?.kind === "none", "first is none");
+  assert(parties.some((item) => item.label.includes("СТО Север")), "client in list");
+  assert(parties.some((item) => item.label === "Аренда"), "history name");
 
   const orders = syncOrderPaidAmounts(
     [{ id: "ord-1", paidAmount: 0 } as Order, { id: "ord-2", paidAmount: 15 } as Order],
