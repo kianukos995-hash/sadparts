@@ -1,11 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { RoleGate } from "@/components/role-gate";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import type { ActivityEvent } from "@/lib/types";
 
 export default function HistoryPage() {
+  return (
+    <RoleGate allow={["admin", "organization", "manager"]}>
+      <HistoryInner />
+    </RoleGate>
+  );
+}
+
+function HistoryInner() {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [error, setError] = useState("");
 

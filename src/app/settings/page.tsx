@@ -9,16 +9,28 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { RoleGate } from "@/components/role-gate";
 import { SupplierFormDialog } from "@/components/supplier-form";
 import { PriceBandsEditor } from "@/components/price-bands-editor";
 import { PriceFormula } from "@/components/price-formula";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
+import { useAuth } from "@/hooks/use-auth";
 import { formatDays, maskKey } from "@/lib/format";
 import { DEFAULT_PRICE_BANDS, markupForPrice, sanitizeBands } from "@/lib/price-bands";
 import { priceBreakdown } from "@/lib/pricing";
 import type { PriceBand, Supplier } from "@/lib/types";
 
 export default function SettingsPage() {
+  return (
+    <RoleGate allow={["admin", "organization"]}>
+      <SettingsInner />
+    </RoleGate>
+  );
+}
+
+function SettingsInner() {
+  const { user } = useAuth();
+  const admin = user?.role === "admin";
   const {
     ready,
     suppliers,
@@ -26,6 +38,8 @@ export default function SettingsPage() {
     upsertSupplier,
     removeSupplier,
     saveTradeSettings,
+    organizations,
+    upsertOrganization,
   } = useAvtoPrice();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | undefined>();
@@ -69,18 +83,22 @@ export default function SettingsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Настройки</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Наценка склада, срок до Москвы и ключи API поставщиков.
+            {admin
+              ? "Наценка склада, срок до Москвы и ключи API поставщиков."
+              : "Свои коридоры наценки. Цены и ключи администратора скрыты. Потолок задаёт админ."}
           </p>
         </div>
-        <Button
-          onClick={() => {
-            setEditing(undefined);
-            setOpen(true);
-          }}
-        >
-          <KeyRound />
-          Добавить ключ API
-        </Button>
+        {admin ? (
+          <Button
+            onClick={() => {
+              setEditing(undefined);
+              setOpen(true);
+            }}
+          >
+            <KeyRound />
+            Добавить ключ API
+          </Button>
+        ) : null}
       </div>
 
       <Card>
@@ -122,22 +140,50 @@ export default function SettingsPage() {
               <PriceFormula breakdown={sampleBreakdown} className="mt-1" view="cost" />
             </div>
           </div>
-          <div className="sm:col-span-2">
-            <Label className="mb-2 block">Категории наценки для гостя (скидки нет)</Label>
-            <p className="mb-2 text-xs text-muted-foreground">
-              Гость собирает заказ по рыночной наценке этих коридоров. Чистая цена, без подсказок закупа.
-            </p>
-            <PriceBandsEditor bands={guestBandsValue} onChange={setGuestBands} />
-          </div>
-          <div className="sm:col-span-2">
-            <Label className="mb-2 block">Категории наценки для менеджера</Label>
-            <PriceBandsEditor bands={managerBandsValue} onChange={setManagerBands} />
-          </div>
+          {admin ? (
+            <>
+              <div className="sm:col-span-2">
+                <Label className="mb-2 block">Категории наценки для гостя (скидки нет)</Label>
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Гость собирает заказ по рыночной наценке этих коридоров. Чистая цена, без подсказок закупа.
+                </p>
+                <PriceBandsEditor bands={guestBandsValue} onChange={setGuestBands} />
+              </div>
+              <div className="sm:col-span-2">
+                <Label className="mb-2 block">Категории наценки для менеджера</Label>
+                <PriceBandsEditor bands={managerBandsValue} onChange={setManagerBands} />
+              </div>
+            </>
+          ) : null}
           <div>
             <Button
               disabled={busy}
               onClick={() => {
                 setBusy(true);
+                if (!admin) {
+                  const org = organizations.find((item) => item.id === user?.organizationId);
+                  if (!org) {
+                    setBusy(false);
+                    toast.error("Организация не найдена");
+                    return;
+                  }
+                  const cap = org.maxMarkup;
+                  void upsertOrganization({
+                    ...org,
+                    markupPercent: Number.parseFloat(markupValue.replace(",", ".")) || 0,
+                    priceBands: bandsValue.map((band) => ({
+                      ...band,
+                      markupPercent:
+                        cap == null ? band.markupPercent : Math.min(band.markupPercent, cap),
+                    })),
+                  })
+                    .then(() => toast.success("Наценки организации сохранены"))
+                    .catch((error: unknown) =>
+                      toast.error(error instanceof Error ? error.message : "Ошибка"),
+                    )
+                    .finally(() => setBusy(false));
+                  return;
+                }
                 void saveTradeSettings({
                   markupPercent: Number.parseFloat(markupValue.replace(",", ".")) || 0,
                   moscowHubNote: noteValue,
@@ -206,6 +252,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      {admin ? (
       <Card>
         <CardHeader>
           <CardTitle>Поставщики и API</CardTitle>
@@ -272,7 +319,9 @@ export default function SettingsPage() {
           </Button>
         </CardContent>
       </Card>
+      ) : null}
 
+      {admin ? (
       <SupplierFormDialog
         open={open}
         onOpenChange={setOpen}
@@ -281,6 +330,7 @@ export default function SettingsPage() {
           upsertSupplier(supplier).then(() => toast.success("Поставщик сохранён"));
         }}
       />
+      ) : null}
     </div>
   );
 }

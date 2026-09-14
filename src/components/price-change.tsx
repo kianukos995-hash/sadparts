@@ -2,8 +2,8 @@ import { formatDateTime, formatSignedMoney, formatStock } from "@/lib/format";
 import type { Offer } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-export function PriceChange({ offer }: { offer: Offer }) {
-  const priceChanged = Boolean(offer.priceDelta);
+export function PriceChange({ offer, showBuy }: { offer: Offer; showBuy?: boolean }) {
+  const priceChanged = Boolean(offer.priceDelta) && showBuy !== false;
   const stockChanged = Boolean(offer.stockDelta);
   if (!priceChanged && !stockChanged) return null;
   return (

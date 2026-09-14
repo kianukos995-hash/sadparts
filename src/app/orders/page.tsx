@@ -7,6 +7,8 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
+import { useViewerPricing } from "@/hooks/use-viewer-pricing";
+import { useAuth } from "@/hooks/use-auth";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { emptyDraft } from "@/lib/order";
 import { priceOrder } from "@/lib/order-price";
@@ -21,6 +23,8 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
 export default function OrdersPage() {
   const router = useRouter();
   const { ready, clients, orders, settings, upsertOrder, removeOrder } = useAvtoPrice();
+  const { user } = useAuth();
+  const viewer = useViewerPricing();
   const list = orders.filter((order) => order.status !== "draft");
 
   if (!ready) return <p className="text-sm text-muted-foreground">Загружаю заказы…</p>;
@@ -37,7 +41,12 @@ export default function OrdersPage() {
         </div>
         <Button
           onClick={() => {
-            const created = emptyDraft(orders, clients, settings.markupPercent);
+            const created = emptyDraft(
+              orders,
+              clients,
+              settings.markupPercent,
+              user?.clientId,
+            );
             void upsertOrder({ ...created, status: "assembled" }).then(() => {
               toast.success(created.number);
               router.push(`/orders/${created.id}`);
@@ -72,7 +81,7 @@ export default function OrdersPage() {
                 const priced = priceOrder(
                   order,
                   client,
-                  settings.priceBands,
+                  viewer.bands.length ? viewer.bands : settings.priceBands,
                   order.markupPercent || settings.markupPercent,
                 );
                 return (

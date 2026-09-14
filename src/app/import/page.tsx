@@ -1,10 +1,19 @@
 "use client";
 
+import { RoleGate } from "@/components/role-gate";
 import { ImportWizard } from "@/components/import-wizard";
 import { ImportHistoryCard } from "@/components/import-history";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 
 export default function ImportPage() {
+  return (
+    <RoleGate allow={["admin", "organization"]}>
+      <ImportInner />
+    </RoleGate>
+  );
+}
+
+function ImportInner() {
   const { ready, suppliers } = useAvtoPrice();
 
   if (!ready) return <p className="text-sm text-muted-foreground">Готовлю загрузку…</p>;

@@ -33,6 +33,11 @@ export function findBand(buy: number, bands: PriceBand[]) {
   );
 }
 
+export function capMarkup(value: number, maxMarkup?: number | null) {
+  if (typeof maxMarkup !== "number" || !Number.isFinite(maxMarkup)) return value;
+  return Math.min(value, maxMarkup);
+}
+
 export function markupForPrice(
   buy: number,
   bands: PriceBand[],
@@ -41,10 +46,16 @@ export function markupForPrice(
 ) {
   const band = findBand(buy, bands);
   const keyMarkup = client?.markupPercent;
-  if (typeof keyMarkup === "number" && Number.isFinite(keyMarkup)) return keyMarkup;
-  const override = client?.bandMarkups?.[band.id];
-  if (typeof override === "number" && Number.isFinite(override)) return override;
-  return Number.isFinite(band.markupPercent) ? band.markupPercent : fallback;
+  const result =
+    typeof keyMarkup === "number" && Number.isFinite(keyMarkup)
+      ? keyMarkup
+      : typeof client?.bandMarkups?.[band.id] === "number" &&
+          Number.isFinite(client.bandMarkups[band.id])
+        ? client.bandMarkups[band.id]
+        : Number.isFinite(band.markupPercent)
+          ? band.markupPercent
+          : fallback;
+  return capMarkup(result, client?.maxMarkup);
 }
 
 export function formatBandLabel(band: PriceBand) {

@@ -1,4 +1,7 @@
-export const STORE_VERSION = 7;
+export const STORE_VERSION = 8;
+
+export const EXAMPLE_ORG_ID = "org-example";
+export const EXAMPLE_ORG_USER_ID = "usr-org";
 
 export const DEMO_KEYS = {
   rossko: "rk_live_demo_rossko_91f2",

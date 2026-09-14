@@ -11,6 +11,8 @@ export async function POST(request: Request) {
       email: result.user.email,
       role: result.user.role,
       clientId: result.user.clientId,
+      organizationId: result.user.organizationId,
+      issuedByUserId: result.user.issuedByUserId,
       action: "login",
       detail: `Вход ${result.user.email}`,
       path: "/login",

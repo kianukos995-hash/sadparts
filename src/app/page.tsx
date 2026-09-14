@@ -7,11 +7,23 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
+import { useAuth } from "@/hooks/use-auth";
+import { RoleGate } from "@/components/role-gate";
 import { daysSince, formatDateTime, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export default function HomePage() {
+  return (
+    <RoleGate allow={["admin", "organization", "manager"]}>
+      <HomeInner />
+    </RoleGate>
+  );
+}
+
+function HomeInner() {
   const { ready, suppliers, offers, logs, resetDemo } = useAvtoPrice();
+  const { user } = useAuth();
+  const admin = user?.role === "admin";
 
   const stats = useMemo(() => {
     const fileRows = suppliers.reduce((sum, item) => sum + (item.catalogCount ?? 0), 0);
@@ -37,8 +49,9 @@ export default function HomePage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Обзор склада прайсов</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Ключи API поставщиков, загрузка прайсов файлом, ссылкой или вставкой, заказы с наценкой и
-            скидкой клиента, Telegram-бот по каталогу.
+            {admin
+              ? "Ключи API поставщиков, загрузка прайсов, заказы с наценкой и скидкой клиента."
+              : "Рабочий стол организации: проценка, клиенты, заказы. Цены администратора и его ключи скрыты."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -54,20 +67,30 @@ export default function HomePage() {
             <ClipboardList />
             Заказы
           </Link>
-          <Link href="/money" className={cn(buttonVariants({ variant: "outline" }))}>
-            <Wallet />
-            Деньги
-          </Link>
+          {admin || user?.role === "organization" ? (
+            <Link href="/money" className={cn(buttonVariants({ variant: "outline" }))}>
+              <Wallet />
+              Деньги
+            </Link>
+          ) : null}
           <Link href="/catalog" className={cn(buttonVariants({ variant: "outline" }))}>
             Каталог
           </Link>
-          <Link href="/settings" className={cn(buttonVariants({ variant: "outline" }))}>
-            Настройки и ключи API
-          </Link>
+          {admin ? (
+            <Link href="/settings" className={cn(buttonVariants({ variant: "outline" }))}>
+              Настройки и ключи API
+            </Link>
+          ) : user?.role === "organization" ? (
+            <Link href="/settings" className={cn(buttonVariants({ variant: "outline" }))}>
+              Настройки
+            </Link>
+          ) : null}
+          {admin || user?.role === "organization" ? (
           <Link href="/import" className={cn(buttonVariants({ variant: "outline" }))}>
             <Upload />
             Добавить прайс
           </Link>
+          ) : null}
         </div>
       </div>
 
@@ -107,11 +130,14 @@ export default function HomePage() {
         </Card>
       ) : null}
 
+      {admin || user?.role === "organization" ? (
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Поставщики</CardTitle>
-            <CardDescription>Ключи и способ получения прайса</CardDescription>
+            <CardDescription>
+              {admin ? "Ключи и способ получения прайса" : "Источники прайса. Ключи API скрыты."}
+            </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
             {suppliers.length === 0 ? (
@@ -174,15 +200,21 @@ export default function HomePage() {
           </CardContent>
         </Card>
       </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3">
         <p className="text-xs text-muted-foreground">
-          Демо-поставщики Росско, Автопитер и Exist уже подключены. Их ключи можно заменить на
-          боевые. Telegram-бот читает этот же каталог.
+          {admin
+            ? "Демо-поставщики Росско, Автопитер и Exist уже подключены. Их ключи можно заменить на боевые."
+            : user?.role === "organization"
+              ? "Рабочий стол организации. Цены и ключи администратора скрыты."
+              : "Проценка и заказы клиентов, которым выдан ключ. Админские цены скрыты."}
         </p>
-        <Button variant="ghost" onClick={resetDemo}>
-          Сбросить демо
-        </Button>
+        {admin ? (
+          <Button variant="ghost" onClick={resetDemo}>
+            Сбросить демо
+          </Button>
+        ) : null}
       </div>
     </div>
   );

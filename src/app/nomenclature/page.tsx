@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { RoleGate } from "@/components/role-gate";
 import { Pencil, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +14,7 @@ import { NomenclatureEdit } from "@/components/nomenclature-edit";
 import { AddToOrderButtons } from "@/components/add-to-order";
 import { SearchPick } from "@/components/search-pick";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
+import { useViewerPricing } from "@/hooks/use-viewer-pricing";
 import { formatMoney } from "@/lib/format";
 import { PriceFormula } from "@/components/price-formula";
 import { clientPriceBreakdown } from "@/lib/pricing";
@@ -24,7 +26,16 @@ type Scope = "all" | "stock" | "photo";
 type SearchField = "any" | "sku" | "oem" | "name" | "brand";
 
 export default function NomenclaturePage() {
+  return (
+    <RoleGate allow={["admin", "organization", "manager"]}>
+      <NomenclatureInner />
+    </RoleGate>
+  );
+}
+
+function NomenclatureInner() {
   const { ready, suppliers, orders, settings } = useAvtoPrice();
+  const viewer = useViewerPricing();
   const [query, setQuery] = useState("");
   const [brand, setBrand] = useState("");
   const [supplierId, setSupplierId] = useState("");
@@ -225,9 +236,10 @@ export default function NomenclaturePage() {
           {unique.map((offer) => {
             const breakdown = clientPriceBreakdown(
               offer.price,
-              settings.priceBands,
+              viewer.bands,
               settings.markupPercent,
             );
+            const sell = offer.sellPrice ?? breakdown.sell;
             const reserved = reservedQty(orders, offer.id);
             const free = availableStock(offer, orders);
             return (
@@ -251,11 +263,15 @@ export default function NomenclaturePage() {
                       </div>
                       <div className="flex flex-col items-end gap-2">
                         <div className="text-right">
-                          <Badge variant="secondary">{formatMoney(breakdown.sell)}</Badge>
-                          <p className="mt-1 text-[11px] text-muted-foreground">
-                            закуп {formatMoney(offer.price)}
-                          </p>
-                          <PriceFormula breakdown={breakdown} compact />
+                          <Badge variant="secondary">{formatMoney(sell)}</Badge>
+                          {viewer.showCost ? (
+                            <p className="mt-1 text-[11px] text-muted-foreground">
+                              {viewer.costLabel.toLowerCase()} {formatMoney(offer.costPrice ?? offer.price)}
+                            </p>
+                          ) : null}
+                          {viewer.view !== "clean" ? (
+                            <PriceFormula breakdown={breakdown} compact view={viewer.view} />
+                          ) : null}
                         </div>
                         <Button size="sm" variant="outline" onClick={() => setEditing(offer)}>
                           <Pencil />

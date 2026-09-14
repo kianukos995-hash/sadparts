@@ -1,38 +1,33 @@
 import { NextRequest } from "next/server";
 import { randomBytes } from "node:crypto";
-import { maskToken, readSettings, writeSettings } from "@/lib/server-store";
+import { readSettings, writeSettings } from "@/lib/server-store";
 import { getBotProfile } from "@/lib/telegram";
 import { sanitizeBands } from "@/lib/price-bands";
-import { defaultGuestBands } from "@/lib/roles";
-import type { PublicSettings } from "@/lib/types";
 import { fail, requireUser } from "@/lib/session";
+import { readStore } from "@/lib/server-store";
+import { organizationOf, publicSettingsFor } from "@/lib/viewer-price";
+import { canSeeSettings } from "@/lib/scope";
 
-function toPublic(settings: Awaited<ReturnType<typeof readSettings>>): PublicSettings {
-  return {
-    telegramConfigured: Boolean(settings.telegramToken.trim()),
-    telegramUsername: settings.telegramUsername,
-    telegramPolling: settings.telegramPolling,
-    telegramTokenMasked: maskToken(settings.telegramToken),
-    markupPercent: settings.markupPercent,
-    moscowHubNote: settings.moscowHubNote,
-    priceBands: settings.priceBands,
-    guestPriceBands: settings.guestPriceBands?.length ? settings.guestPriceBands : defaultGuestBands(),
-    managerPriceBands: settings.managerPriceBands?.length ? settings.managerPriceBands : settings.priceBands,
-    sellerTitle: settings.sellerTitle,
-    sellerAddress: settings.sellerAddress,
-    vatPercent: settings.vatPercent,
-    telegramNotifyChatId: settings.telegramNotifyChatId,
-    telegramChats: settings.telegramChats ?? [],
-  };
-}
-
-export async function GET() {
-  return Response.json(toPublic(await readSettings()));
+export async function GET(request: Request) {
+  try {
+    const user = await requireUser(request);
+    const [settings, store] = await Promise.all([readSettings(), readStore()]);
+    const org = organizationOf(user, store);
+    return Response.json(publicSettingsFor(user, settings, org));
+  } catch (error) {
+    return fail(error);
+  }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    await requireUser(request, ["admin"]);
+    const user = await requireUser(request);
+    if (!canSeeSettings(user.role)) {
+      return fail(Object.assign(new Error("Недостаточно прав"), { status: 403 }));
+    }
+    if (user.role !== "admin") {
+      return fail(Object.assign(new Error("Глобальные настройки только у администратора"), { status: 403 }));
+    }
   } catch (error) {
     return fail(error);
   }
@@ -62,7 +57,8 @@ export async function POST(request: NextRequest) {
       telegramUsername: "",
       telegramOffset: 0,
     });
-    return Response.json(toPublic(next));
+    const store = await readStore();
+    return Response.json(publicSettingsFor({ id: "usr-admin", email: "", name: "", role: "admin", status: "active" }, next, organizationOf(null, store)));
   }
 
   const current = await readSettings();
@@ -95,6 +91,10 @@ export async function POST(request: NextRequest) {
     tradePatch.managerPriceBands = sanitizeBands(body.managerPriceBands);
   }
 
+  const user = await requireUser(request);
+  const store = await readStore();
+  const org = organizationOf(user, store);
+
   let token = current.telegramToken;
   if (typeof body.token === "string" && body.token.trim() && !body.token.includes("…")) {
     token = body.token.trim();
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
         telegramPolling: body.polling ?? current.telegramPolling,
         telegramOffset: 0,
       });
-      return Response.json(toPublic(next));
+      return Response.json(publicSettingsFor(user, next, org));
     } catch (error) {
       return Response.json(
         { error: error instanceof Error ? error.message : "Не удалось проверить бота" },
@@ -121,5 +121,5 @@ export async function POST(request: NextRequest) {
     ...tradePatch,
     telegramPolling: body.polling ?? current.telegramPolling,
   });
-  return Response.json(toPublic(next));
+  return Response.json(publicSettingsFor(user, next, org));
 }

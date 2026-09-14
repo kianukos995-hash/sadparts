@@ -1,12 +1,12 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { DEMO_KEYS, ROSSKO_API_BASE, STORE_VERSION } from "@/lib/constants";
+import { DEMO_KEYS, EXAMPLE_ORG_ID, ROSSKO_API_BASE, STORE_VERSION } from "@/lib/constants";
 import { mergeCrosses } from "@/lib/cross-catalog";
 import type { OfferPatch } from "@/lib/offer-patches";
 import { normalizeSku } from "@/lib/format";
 import { removeCatalog } from "@/lib/file-catalog";
 import { CORE_PARTS } from "@/lib/mock-parts";
-import { createInitialStore, DEFAULT_CLIENTS } from "@/lib/seed";
+import { createInitialStore, DEFAULT_CLIENTS, DEFAULT_ORGANIZATIONS } from "@/lib/seed";
 import { DEFAULT_PRICE_BANDS, sanitizeBands } from "@/lib/price-bands";
 import { defaultGuestBands } from "@/lib/roles";
 import {
@@ -21,6 +21,7 @@ import type {
   MoneyMovement,
   Offer,
   Order,
+  Organization,
   PaymentMethod,
   StoreSnapshot,
   Supplier,
@@ -146,16 +147,35 @@ function migrateStore(store: StoreSnapshot): StoreSnapshot {
         markupPercent: client.markupPercent ?? 16,
         accountStatus: "active",
         priceView: client.priceView ?? "clean",
+        ownerUserId: client.ownerUserId || "usr-sto",
+        issuedByUserId: client.issuedByUserId || "usr-admin",
+        fio: client.fio || client.name,
       };
     }
-    return client;
+    if (client.id === "cli-cash" || client.id === "cli-opt" || client.id === "cli-guest") {
+      return {
+        ...client,
+        ownerUserId: client.ownerUserId || "usr-admin",
+        issuedByUserId: client.issuedByUserId || "usr-admin",
+      };
+    }
+    return {
+      ...client,
+      ownerUserId: client.ownerUserId,
+      issuedByUserId: client.issuedByUserId,
+    };
   });
+  let organizations = Array.isArray(store.organizations) ? store.organizations : [];
+  if ((store.version ?? 0) < 8 && !organizations.some((item) => item.id === EXAMPLE_ORG_ID)) {
+    organizations = [...DEFAULT_ORGANIZATIONS, ...organizations];
+  }
   return {
     ...store,
     version: STORE_VERSION,
     suppliers,
     offers,
     clients,
+    organizations,
     orders: syncOrderPaidAmounts(orders, moneyMovements),
     moneyMovements,
     supplierBills,
@@ -257,7 +277,8 @@ async function readStoreFile(): Promise<StoreSnapshot> {
         parsed.version !== migrated.version ||
         !Array.isArray(parsed.clients) ||
         !Array.isArray(parsed.moneyMovements) ||
-        !Array.isArray(parsed.supplierBills)
+        !Array.isArray(parsed.supplierBills) ||
+        !Array.isArray(parsed.organizations)
       ) {
         await persistStore(migrated);
       }
@@ -426,6 +447,65 @@ export function patchOffer(offerId: string, patch: OfferPatch) {
         };
       }),
     };
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function upsertOrganization(org: Organization) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const exists = store.organizations.some((item) => item.id === org.id);
+    const next: StoreSnapshot = {
+      ...store,
+      organizations: exists
+        ? store.organizations.map((item) => (item.id === org.id ? org : item))
+        : [org, ...store.organizations],
+    };
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function removeOrganization(id: string) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const next: StoreSnapshot = {
+      ...store,
+      organizations: store.organizations.filter((item) => item.id !== id),
+      clients: store.clients.map((client) =>
+        client.organizationId === id ? { ...client, organizationId: undefined } : client,
+      ),
+    };
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function ensureGuestClient(input: {
+  clientId: string;
+  userId: string;
+  email?: string;
+}) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const existing = store.clients.find((item) => item.id === input.clientId);
+    if (existing) return store;
+    const client: Client = {
+      id: input.clientId,
+      name: "Гость",
+      phone: "",
+      inn: "",
+      email: input.email,
+      discountPercent: 0,
+      priceView: "clean",
+      accountStatus: "active",
+      notes: "Гостевой вход: рыночная наценка без скидки. Корзина привязана к этому устройству.",
+      createdAt: new Date().toISOString(),
+      ownerUserId: input.userId,
+      issuedByUserId: input.userId,
+    };
+    const next: StoreSnapshot = { ...store, clients: [client, ...store.clients] };
     await persistStore(next);
     return next;
   });

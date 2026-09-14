@@ -369,7 +369,7 @@ export function catalogRowToOffer(supplier: Supplier, row: CatalogRow, now = new
     row.specs?.Применимость ||
     "";
   return applyPairFields({
-    id: offerKey(supplier.id, row.guid || row.sku),
+    id: offerKey(supplier.id, row.guid || row.sku, row.stockId || (!row.guid && row.warehouse ? row.warehouse : "")),
     supplierId: supplier.id,
     sku: row.sku,
     brand: row.brand,

@@ -24,7 +24,7 @@ import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { useViewerPricing } from "@/hooks/use-viewer-pricing";
 import { formatDays, formatMoney } from "@/lib/format";
 import { copyClientVehicle } from "@/lib/order";
-import { clientLineTotal, clientPriceBreakdown } from "@/lib/pricing";
+import { clientPriceBreakdown } from "@/lib/pricing";
 import { priceOrder } from "@/lib/order-price";
 import { cn } from "@/lib/utils";
 import type { Order } from "@/lib/types";
@@ -86,6 +86,12 @@ export function OrderEditor({
       <CardContent className="grid gap-4">
         {order.status !== "draft" ? <RepriceBanner orderId={order.id} clientId={order.clientId} /> : null}
         <div className="grid gap-3 md:grid-cols-3">
+          {viewer.locked ? (
+            <div className="grid gap-1 text-sm">
+              <p className="text-muted-foreground">Клиент</p>
+              <p className="text-lg font-semibold">{client?.name || "Гость"}</p>
+            </div>
+          ) : (
           <label className="grid gap-1.5">
             <Label>Клиент</Label>
             <select
@@ -109,6 +115,8 @@ export function OrderEditor({
               ))}
             </select>
           </label>
+          )}
+          {viewer.locked ? null : (
           <label className="grid gap-1.5">
             <Label>Наценка, %</Label>
             <Input
@@ -122,6 +130,7 @@ export function OrderEditor({
               }}
             />
           </label>
+          )}
           <div className="grid gap-1 text-sm">
             <p className="text-muted-foreground">Скидка клиента</p>
             <p className="text-lg font-semibold">{client?.discountPercent ?? 0}%</p>
@@ -178,13 +187,15 @@ export function OrderEditor({
             </TableHeader>
             <TableBody>
               {order.lines.map((line) => {
-                const breakdown = clientPriceBreakdown(
+                const pricedLine = priced.lines.find((item) => item.id === line.id);
+                const breakdown = pricedLine?.breakdown ?? clientPriceBreakdown(
                   line.buyPrice,
                   viewer.bands,
                   settings.markupPercent,
                   client,
                   markup,
                 );
+                const sell = pricedLine?.sell ?? breakdown.sell;
                 return (
                   <TableRow key={line.id}>
                     <TableCell>
@@ -220,24 +231,19 @@ export function OrderEditor({
                       </TableCell>
                     ) : null}
                     <TableCell className="text-right font-medium">
-                      {formatMoney(breakdown.sell, line.currency)}
+                      {formatMoney(sell, line.currency)}
+                      {viewer.locked ? null : (
                       <PriceFormula
                         breakdown={breakdown}
                         currency={line.currency}
                         compact
                         view={viewer.view}
                       />
+                      )}
                       <p className="text-[11px] font-normal text-muted-foreground">
                         × {line.qty} ={" "}
                         {formatMoney(
-                          clientLineTotal(
-                            line.buyPrice,
-                            line.qty,
-                            viewer.bands,
-                            settings.markupPercent,
-                            client,
-                            markup,
-                          ),
+                          (pricedLine?.sum ?? breakdown.sell * line.qty),
                           line.currency,
                         )}
                       </p>

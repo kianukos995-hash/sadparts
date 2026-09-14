@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 import { queryPriceOffers, priceMeta } from "@/lib/catalog-query";
-import { readStore } from "@/lib/server-store";
+import { readSettings, readStore } from "@/lib/server-store";
 import type { CatalogBrowseFilter } from "@/lib/file-catalog";
+import { fail, requireUser } from "@/lib/session";
+import { publicOffer, viewerPriceContext } from "@/lib/viewer-price";
+import { clientNavOnly } from "@/lib/scope";
 
 export const runtime = "nodejs";
 
@@ -12,12 +15,20 @@ function num(value: string | null) {
 }
 
 export async function GET(request: NextRequest) {
+  let user;
+  try {
+    user = await requireUser(request);
+  } catch (error) {
+    return fail(error);
+  }
   const url = request.nextUrl;
   const meta = url.searchParams.get("meta");
   const store = await readStore();
   if (meta === "1") {
     return Response.json(await priceMeta(store.suppliers));
   }
+  const settings = await readSettings();
+  const live = url.searchParams.get("live") === "1" && user.role === "admin";
   const result = await queryPriceOffers(store.suppliers, store.offers, {
     q: url.searchParams.get("q") ?? "",
     qField: (["sku", "oem", "name", "brand"].includes(url.searchParams.get("field") ?? "")
@@ -29,26 +40,30 @@ export async function GET(request: NextRequest) {
     maxPrice: num(url.searchParams.get("maxPrice")),
     maxDays: num(url.searchParams.get("maxDays")),
     inStock: url.searchParams.get("inStock") === "1",
-    changedOnly: url.searchParams.get("changed") === "1",
-    live: url.searchParams.get("live") === "1",
+    changedOnly: url.searchParams.get("changed") === "1" && !clientNavOnly(user.role),
+    live,
     page: Number.parseInt(url.searchParams.get("page") ?? "0", 10) || 0,
     pageSize: Number.parseInt(url.searchParams.get("pageSize") ?? "40", 10) || 40,
   });
+  const selectedClientId = url.searchParams.get("clientId") || user.clientId;
+  const selected = store.clients.find((item) => item.id === selectedClientId);
+  const ctx = viewerPriceContext(user, store, settings);
+  const offers = result.offers.map((offer) => publicOffer(offer, ctx, selected));
   const q = url.searchParams.get("q") ?? "";
   if (q.trim()) {
-    const { currentUser } = await import("@/lib/session");
     const { logActivity } = await import("@/lib/activity");
-    const user = await currentUser(request);
     void logActivity({
-      userId: user?.id,
-      email: user?.email,
-      role: user?.role,
-      clientId: user?.clientId,
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      clientId: user.clientId,
+      organizationId: user.organizationId,
+      issuedByUserId: user.issuedByUserId,
       action: "search",
       detail: `Поиск «${q.trim()}», найдено ${result.total}`,
       path: "/quote",
       sku: q.trim(),
     });
   }
-  return Response.json(result);
+  return Response.json({ ...result, offers });
 }

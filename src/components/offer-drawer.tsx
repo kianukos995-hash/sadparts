@@ -40,6 +40,7 @@ export function OfferDrawer({
   orderId,
   markupPercent,
   priceBands,
+  compact,
   onOpenChange,
 }: {
   offer: Offer | null;
@@ -50,6 +51,7 @@ export function OfferDrawer({
   orderId?: string;
   markupPercent: number;
   priceBands?: PriceBand[];
+  compact?: boolean;
   onAdd?: (offer: Offer) => void;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -67,6 +69,7 @@ export function OfferDrawer({
             orderId={orderId}
             markupPercent={markupPercent}
             priceBands={priceBands ?? []}
+            compact={Boolean(compact)}
             onOpenChange={onOpenChange}
           />
         ) : null}
@@ -84,6 +87,7 @@ function DrawerBody({
   orderId,
   markupPercent,
   priceBands,
+  compact,
   onOpenChange,
 }: {
   offer: Offer;
@@ -94,12 +98,15 @@ function DrawerBody({
   orderId?: string;
   markupPercent: number;
   priceBands: PriceBand[];
+  compact?: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const { patchOffer } = useAvtoPrice();
   const viewer = useViewerPricing(initialClientId);
-  const related = relatedOffers(offers, offer).sort((a, b) => a.price - b.price);
-  const minPrice = related[0]?.price;
+  const related = relatedOffers(offers, offer).sort(
+    (a, b) => (a.sellPrice ?? a.price) - (b.sellPrice ?? b.price),
+  );
+  const minPrice = related[0]?.sellPrice ?? related[0]?.price;
   const names = new Map(suppliers.map((supplier) => [supplier.id, supplier.name]));
   const [name, setName] = useState(offer.displayName ?? "");
   const [cross, setCross] = useState((offer.crossOems ?? []).join(", "));
@@ -109,11 +116,11 @@ function DrawerBody({
   const [brandOpen, setBrandOpen] = useState(false);
   const [pairHits, setPairHits] = useState<Offer[]>([]);
   const client = viewer.locked ? viewer.client : clients.find((item) => item.id === clientId);
-  const bands = viewer.bands;
+  const bands = viewer.bands.length ? viewer.bands : priceBands;
   const band = findBand(offer.price, bands);
   const breakdown = clientPriceBreakdown(offer.price, bands, markupPercent, client);
-  const sell = breakdown.sell;
-  const warn = sellWarning(offer.price, bands, markupPercent, client);
+  const sell = offer.sellPrice ?? (viewer.locked ? offer.price : breakdown.sell);
+  const warn = viewer.showCost ? sellWarning(offer.costPrice ?? offer.price, bands, markupPercent, client) : "";
   const oems = offerOems(offer);
   const markup = markupForPrice(offer.price, bands, markupPercent, client);
   const pair = pairQuery(offer.sku, offer.name);
@@ -157,6 +164,7 @@ function DrawerBody({
                 ? "Розница минус ваша скидка"
                 : "Цена с рыночной наценкой"}
           </p>
+          {viewer.view !== "clean" && !viewer.locked ? (
           <PriceFormula
             breakdown={breakdown}
             currency={offer.currency}
@@ -164,8 +172,9 @@ function DrawerBody({
             className="mt-1"
             view={viewer.view}
           />
+          ) : null}
           {warn && viewer.showCost ? <p className="mt-1 text-xs text-amber-800">{warn}</p> : null}
-          <PriceChange offer={offer} />
+          {viewer.showCost ? <PriceChange offer={offer} /> : null}
         </div>
         <OfferMedia images={offer.images} sku={offer.sku} size="lg" />
         <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -195,7 +204,7 @@ function DrawerBody({
           </label>
         ) : null}
 
-        {viewer.showCost ? (
+        {viewer.showAdminCost && !compact && !viewer.locked ? (
         <div className="grid gap-3 rounded-lg border p-3">
           <p className="text-sm font-medium">Карточка как в Автодилере</p>
           <label className="grid gap-1.5">
@@ -253,16 +262,19 @@ function DrawerBody({
                 key={item.id}
                 className={cn(
                   "flex items-center justify-between rounded-lg border px-3 py-2",
-                  item.price === minPrice && "border-emerald-300 bg-emerald-50",
+                  (item.sellPrice ?? item.price) === minPrice && "border-emerald-300 bg-emerald-50",
                 )}
               >
                 <div>
                   <p className="text-sm font-medium">{names.get(item.supplierId)}</p>
                   <p className="text-xs text-muted-foreground">
-                    {item.brand} {item.sku} · {formatStock(item.stock)} · {formatDays(item.deliveryDays)}
+                    {item.brand} {item.sku} · склад {item.warehouse || "не указан"} ·{" "}
+                    {formatStock(item.stock)} · {formatDays(item.deliveryDays)} с этого склада
                   </p>
                 </div>
-                <p className="text-sm font-semibold">{formatMoney(item.price, item.currency)}</p>
+                <p className="text-sm font-semibold">
+                  {formatMoney(item.sellPrice ?? item.price, item.currency)}
+                </p>
               </div>
             ))}
           </div>
@@ -281,7 +293,7 @@ function DrawerBody({
                     </p>
                     <p className="text-xs text-muted-foreground">{item.name}</p>
                   </div>
-                  <p className="text-sm">{formatMoney(item.price, item.currency)}</p>
+                  <p className="text-sm">{formatMoney(item.sellPrice ?? item.price, item.currency)}</p>
                 </div>
               ))}
             </div>

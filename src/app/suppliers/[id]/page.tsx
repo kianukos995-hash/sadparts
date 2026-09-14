@@ -8,6 +8,7 @@ import { ArrowLeft, RefreshCw } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { RoleGate } from "@/components/role-gate";
 import { KeyField } from "@/components/key-field";
 import { PartsTable } from "@/components/parts-table";
 import { PriceListUpload } from "@/components/price-list-upload";
@@ -21,6 +22,14 @@ import { cn } from "@/lib/utils";
 import type { Offer } from "@/lib/types";
 
 export default function SupplierDetailPage() {
+  return (
+    <RoleGate allow={["admin", "organization"]}>
+      <SupplierDetailInner />
+    </RoleGate>
+  );
+}
+
+function SupplierDetailInner() {
   const params = useParams<{ id: string }>();
   const { ready, suppliers, offers, logs, upsertSupplier, replaceOffers } = useAvtoPrice();
   const [editing, setEditing] = useState(false);

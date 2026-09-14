@@ -1,13 +1,16 @@
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { AccountStatus, PublicUser, UserRole } from "@/lib/types";
-import { GUEST_CLIENT_ID } from "@/lib/roles";
+import type { AccessKeyRecord, AccountStatus, PublicUser, UserRole } from "@/lib/types";
+import { EXAMPLE_ORG_ID, EXAMPLE_ORG_USER_ID } from "@/lib/constants";
+import { keyedUserIdsFor } from "@/lib/scope";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const AUTH_FILE = path.join(DATA_DIR, "auth.json");
 export const SESSION_COOKIE = "sadparts_sid";
+export const GUEST_COOKIE = "sadparts_gid";
 const SESSION_DAYS = 30;
+const GUEST_DAYS = 400;
 
 export interface AuthUser {
   id: string;
@@ -17,6 +20,10 @@ export interface AuthUser {
   status: AccountStatus;
   passwordHash: string;
   clientId?: string;
+  organizationId?: string;
+  issuedByUserId?: string;
+  guestCookieId?: string;
+  guestFingerprint?: string;
   emailCode?: string;
   emailCodeExpires?: string;
   lastLoginAt?: string;
@@ -33,10 +40,11 @@ export interface AuthSession {
 export interface StaffNotice {
   id: string;
   at: string;
-  kind: "register" | "verify" | "key" | "login";
+  kind: "register" | "verify" | "key" | "login" | "org";
   title: string;
   detail: string;
   userId?: string;
+  organizationId?: string;
   read: boolean;
 }
 
@@ -48,11 +56,24 @@ export interface MailItem {
   body: string;
 }
 
+export interface GuestDevice {
+  id: string;
+  userId: string;
+  clientId: string;
+  fingerprint: string;
+  ip?: string;
+  userAgent?: string;
+  createdAt: string;
+  lastSeenAt: string;
+}
+
 export interface AuthFile {
   users: AuthUser[];
   sessions: AuthSession[];
   notices: StaffNotice[];
   mailbox: MailItem[];
+  guests: GuestDevice[];
+  accessKeys: AccessKeyRecord[];
 }
 
 export type { PublicUser };
@@ -92,7 +113,7 @@ export function newAccessKey() {
   return `SP-${raw.slice(0, 4)}-${raw.slice(4)}`;
 }
 
-function publicUser(user: AuthUser): PublicUser {
+export function publicUser(user: AuthUser): PublicUser {
   return {
     id: user.id,
     email: user.email,
@@ -100,6 +121,8 @@ function publicUser(user: AuthUser): PublicUser {
     role: user.role,
     status: user.status,
     clientId: user.clientId,
+    organizationId: user.organizationId,
+    issuedByUserId: user.issuedByUserId,
   };
 }
 
@@ -117,12 +140,25 @@ function emptyAuth(): AuthFile {
         createdAt: now,
       },
       {
+        id: EXAMPLE_ORG_USER_ID,
+        email: "org@sadparts.local",
+        name: "Пример организации",
+        role: "organization",
+        status: "active",
+        passwordHash: hashPassword("Org12345"),
+        organizationId: EXAMPLE_ORG_ID,
+        issuedByUserId: "usr-admin",
+        createdAt: now,
+      },
+      {
         id: "usr-manager",
         email: "manager@sadparts.local",
-        name: "Менеджер склада",
+        name: "Менеджер организации",
         role: "manager",
         status: "active",
         passwordHash: hashPassword("Manager12345"),
+        organizationId: EXAMPLE_ORG_ID,
+        issuedByUserId: EXAMPLE_ORG_USER_ID,
         createdAt: now,
       },
       {
@@ -133,6 +169,7 @@ function emptyAuth(): AuthFile {
         status: "active",
         passwordHash: hashPassword("Client12345"),
         clientId: "cli-sto",
+        issuedByUserId: "usr-admin",
         createdAt: now,
         lastLoginAt: now,
       },
@@ -167,6 +204,140 @@ function emptyAuth(): AuthFile {
         body: "Тестовый аккаунт уже подтверждён. Для новых регистраций код придёт в это письмо и в админку.",
       },
     ],
+    guests: [],
+    accessKeys: [
+      {
+        id: "key-org-demo",
+        key: "SP-ORG-DEMO1",
+        role: "organization",
+        status: "active",
+        issuedByUserId: "usr-admin",
+        issuedByRole: "admin",
+        organizationId: EXAMPLE_ORG_ID,
+        userId: EXAMPLE_ORG_USER_ID,
+        createdAt: now,
+      },
+      {
+        id: "key-sto",
+        key: "SP-TEST-4812",
+        role: "client",
+        status: "active",
+        issuedByUserId: "usr-admin",
+        issuedByRole: "admin",
+        userId: "usr-sto",
+        clientId: "cli-sto",
+        createdAt: now,
+      },
+      {
+        id: "key-manager",
+        key: "SP-MGR-DEMO1",
+        role: "manager",
+        status: "active",
+        issuedByUserId: EXAMPLE_ORG_USER_ID,
+        issuedByRole: "organization",
+        organizationId: EXAMPLE_ORG_ID,
+        userId: "usr-manager",
+        createdAt: now,
+      },
+    ],
+  };
+}
+
+function migrateAuth(auth: AuthFile): { next: AuthFile; changed: boolean } {
+  let changed = false;
+  const users = [...auth.users];
+  if (!users.some((item) => item.id === EXAMPLE_ORG_USER_ID)) {
+    const seed = emptyAuth();
+    const extra = seed.users.find((item) => item.id === EXAMPLE_ORG_USER_ID);
+    if (extra) {
+      users.push(extra);
+      changed = true;
+    }
+  }
+  const manager = users.find((item) => item.id === "usr-manager");
+  if (manager) {
+    if (!manager.organizationId) {
+      manager.organizationId = EXAMPLE_ORG_ID;
+      changed = true;
+    }
+    if (!manager.issuedByUserId) {
+      manager.issuedByUserId = EXAMPLE_ORG_USER_ID;
+      changed = true;
+    }
+  }
+  const sto = users.find((item) => item.id === "usr-sto");
+  if (sto && !sto.issuedByUserId) {
+    sto.issuedByUserId = "usr-admin";
+    changed = true;
+  }
+  const org = users.find((item) => item.id === EXAMPLE_ORG_USER_ID);
+  if (org) {
+    if (org.role !== "organization") {
+      org.role = "organization";
+      changed = true;
+    }
+    if (org.organizationId !== EXAMPLE_ORG_ID) {
+      org.organizationId = EXAMPLE_ORG_ID;
+      changed = true;
+    }
+    if (!org.issuedByUserId) {
+      org.issuedByUserId = "usr-admin";
+      changed = true;
+    }
+  }
+  const keys = Array.isArray(auth.accessKeys) ? [...auth.accessKeys] : [];
+  if (!Array.isArray(auth.accessKeys)) changed = true;
+  const needed = [
+    {
+      id: "key-org-demo",
+      key: "SP-ORG-DEMO1",
+      role: "organization" as const,
+      status: "active" as const,
+      issuedByUserId: "usr-admin",
+      issuedByRole: "admin" as const,
+      organizationId: EXAMPLE_ORG_ID,
+      userId: EXAMPLE_ORG_USER_ID,
+      createdAt: org?.createdAt || new Date().toISOString(),
+    },
+    {
+      id: "key-sto",
+      key: "SP-TEST-4812",
+      role: "client" as const,
+      status: "active" as const,
+      issuedByUserId: "usr-admin",
+      issuedByRole: "admin" as const,
+      userId: "usr-sto",
+      clientId: "cli-sto",
+      createdAt: sto?.createdAt || new Date().toISOString(),
+    },
+    {
+      id: "key-manager",
+      key: "SP-MGR-DEMO1",
+      role: "manager" as const,
+      status: "active" as const,
+      issuedByUserId: EXAMPLE_ORG_USER_ID,
+      issuedByRole: "organization" as const,
+      organizationId: EXAMPLE_ORG_ID,
+      userId: "usr-manager",
+      createdAt: manager?.createdAt || new Date().toISOString(),
+    },
+  ];
+  for (const extra of needed) {
+    if (!keys.some((item) => item.id === extra.id || item.key === extra.key)) {
+      keys.push(extra);
+      changed = true;
+    }
+  }
+  return {
+    next: {
+      users,
+      sessions: auth.sessions ?? [],
+      notices: auth.notices ?? [],
+      mailbox: auth.mailbox ?? [],
+      guests: Array.isArray(auth.guests) ? auth.guests : [],
+      accessKeys: keys,
+    },
+    changed: changed || !Array.isArray(auth.guests),
   };
 }
 
@@ -175,12 +346,19 @@ async function readAuthFile(): Promise<AuthFile> {
     const raw = await readFile(AUTH_FILE, "utf8");
     const parsed = JSON.parse(raw) as AuthFile;
     if (!Array.isArray(parsed.users)) throw new Error("bad auth");
-    return {
+    const migrated = migrateAuth({
       users: parsed.users,
       sessions: parsed.sessions ?? [],
       notices: parsed.notices ?? [],
       mailbox: parsed.mailbox ?? [],
-    };
+      guests: parsed.guests ?? [],
+      accessKeys: parsed.accessKeys ?? [],
+    });
+    if (migrated.changed) {
+      await mkdir(DATA_DIR, { recursive: true });
+      await writeFile(AUTH_FILE, JSON.stringify(migrated.next, null, 2), "utf8");
+    }
+    return migrated.next;
   } catch {
     const initial = emptyAuth();
     await mkdir(DATA_DIR, { recursive: true });
@@ -196,6 +374,8 @@ async function persist(auth: AuthFile) {
     sessions: auth.sessions.filter((item) => Date.parse(item.expiresAt) > Date.now()).slice(-400),
     notices: auth.notices.slice(0, 200),
     mailbox: auth.mailbox.slice(0, 200),
+    guests: (auth.guests ?? []).slice(-400),
+    accessKeys: auth.accessKeys ?? [],
   };
   await writeFile(AUTH_FILE, JSON.stringify(next, null, 2), "utf8");
   return next;
@@ -245,23 +425,57 @@ export function loginUser(email: string, password: string) {
   });
 }
 
-export function guestLogin() {
+function guestFingerprint(cookieId: string, ip: string, userAgent: string) {
+  return createHash("sha256").update(`${cookieId}|${ip}|${userAgent}`).digest("hex");
+}
+
+export function guestLogin(input: { cookieId?: string; ip?: string; userAgent?: string }) {
   return enqueue(async () => {
     const auth = await readAuthFile();
-    let user = auth.users.find((item) => item.role === "guest");
     const now = new Date().toISOString();
-    if (!user) {
+    const ip = (input.ip || "local").slice(0, 80);
+    const userAgent = (input.userAgent || "unknown").slice(0, 240);
+    let device = auth.guests.find((item) => input.cookieId && item.id === input.cookieId);
+    if (!device) {
+      device = auth.guests.find((item) => item.ip === ip && item.userAgent === userAgent);
+    }
+    let user: AuthUser | undefined = device
+      ? auth.users.find((item) => item.id === device!.userId)
+      : undefined;
+    if (!device || !user) {
+      const cookieId = input.cookieId || randomBytes(18).toString("hex");
+      const clientId = `cli-guest-${cookieId.slice(0, 12)}`;
+      const userId = `usr-guest-${cookieId.slice(0, 12)}`;
       user = {
-        id: "usr-guest",
-        email: "guest@sadparts.local",
+        id: userId,
+        email: `guest-${cookieId.slice(0, 8)}@sadparts.local`,
         name: "Гость",
         role: "guest",
         status: "active",
         passwordHash: hashPassword(randomBytes(12).toString("hex")),
-        clientId: GUEST_CLIENT_ID,
+        clientId,
+        guestCookieId: cookieId,
+        guestFingerprint: guestFingerprint(cookieId, ip, userAgent),
         createdAt: now,
       };
+      device = {
+        id: cookieId,
+        userId,
+        clientId,
+        fingerprint: user.guestFingerprint!,
+        ip,
+        userAgent,
+        createdAt: now,
+        lastSeenAt: now,
+      };
       auth.users.push(user);
+      auth.guests.push(device);
+    } else {
+      device.lastSeenAt = now;
+      device.ip = ip;
+      device.userAgent = userAgent;
+      user.guestCookieId = device.id;
+      user.clientId = user.clientId || device.clientId;
     }
     user.lastLoginAt = now;
     const session: AuthSession = {
@@ -272,7 +486,7 @@ export function guestLogin() {
     };
     auth.sessions.push(session);
     await persist(auth);
-    return { sessionId: session.id, user: publicUser(user) };
+    return { sessionId: session.id, user: publicUser(user), guestCookieId: device.id };
   });
 }
 
@@ -357,20 +571,52 @@ export function verifyEmail(email: string, code: string) {
   });
 }
 
-export function listStaffUsers() {
+function staffPayload(auth: AuthFile, actor?: PublicUser) {
+  const keys = auth.accessKeys ?? [];
+  let users = auth.users.filter((item) => item.role !== "guest");
+  let notices = auth.notices;
+  let mailbox = auth.mailbox;
+  let scopedKeys = keys;
+  if (actor && actor.role !== "admin") {
+    const keyed = keyedUserIdsFor(actor, keys, users);
+    keyed.add(actor.id);
+    users = users.filter((item) => {
+      if (item.role === "admin") return false;
+      if (item.id === actor.id) return true;
+      if (keyed.has(item.id)) return true;
+      if (actor.organizationId && item.organizationId === actor.organizationId) return true;
+      if (item.issuedByUserId === actor.id) return true;
+      return false;
+    });
+    const allowed = new Set(users.map((item) => item.id));
+    notices = notices.filter(
+      (item) =>
+        (item.userId && allowed.has(item.userId)) ||
+        (actor.organizationId && item.organizationId === actor.organizationId),
+    );
+    mailbox = mailbox.filter((item) => users.some((user) => user.email === item.to));
+    scopedKeys = keys.filter(
+      (key) =>
+        key.issuedByUserId === actor.id ||
+        (actor.organizationId && key.organizationId === actor.organizationId),
+    );
+  }
+  return {
+    users: users.map((item) => ({
+      ...publicUser(item),
+      createdAt: item.createdAt,
+      lastLoginAt: item.lastLoginAt,
+    })),
+    notices,
+    mailbox,
+    accessKeys: scopedKeys,
+  };
+}
+
+export function listStaffUsers(actor?: PublicUser) {
   return enqueue(async () => {
     const auth = await readAuthFile();
-    return {
-      users: auth.users
-        .filter((item) => item.role !== "guest")
-        .map((item) => ({
-          ...publicUser(item),
-          createdAt: item.createdAt,
-          lastLoginAt: item.lastLoginAt,
-        })),
-      notices: auth.notices,
-      mailbox: auth.mailbox,
-    };
+    return staffPayload(auth, actor);
   });
 }
 
@@ -385,20 +631,28 @@ export function updateUserStatus(userId: string, status: AccountStatus) {
   });
 }
 
-export function attachClient(userId: string, clientId: string, accessKey?: string) {
+export function attachClient(
+  userId: string,
+  clientId: string,
+  accessKey?: string,
+  extra?: { organizationId?: string; issuedByUserId?: string; role?: UserRole },
+) {
   return enqueue(async () => {
     const auth = await readAuthFile();
     const user = auth.users.find((item) => item.id === userId);
     if (!user) throw new Error("Пользователь не найден");
     user.clientId = clientId;
     user.status = "active";
+    if (extra?.organizationId) user.organizationId = extra.organizationId;
+    if (extra?.issuedByUserId) user.issuedByUserId = extra.issuedByUserId;
+    if (extra?.role) user.role = extra.role;
     auth.mailbox.unshift({
       id: crypto.randomUUID(),
       at: new Date().toISOString(),
       to: user.email,
       subject: "Ключ доступа SadParts",
       body: accessKey
-        ? `Доступ открыт. Ваш ключ: ${accessKey}. Войдите почтой и паролем. Ключ сохраните — по нему администратор видит ваши условия.`
+        ? `Доступ открыт. Ваш ключ: ${accessKey}. Войдите почтой и паролем. Ключ сохраните — по нему видно ваши условия.`
         : `Доступ открыт. Войдите с вашей почтой и паролем.`,
     });
     auth.notices.unshift({
@@ -408,6 +662,7 @@ export function attachClient(userId: string, clientId: string, accessKey?: strin
       title: "Ключ выдан",
       detail: `${user.email} активирован, клиент привязан.`,
       userId: user.id,
+      organizationId: user.organizationId,
       read: false,
     });
     await persist(auth);
@@ -415,12 +670,162 @@ export function attachClient(userId: string, clientId: string, accessKey?: strin
   });
 }
 
-export function markNoticesRead() {
+export function requestAccessKey(input: {
+  actor: PublicUser;
+  target: "admin" | "organization";
+  organizationId?: string;
+  role?: UserRole;
+  detail?: string;
+}) {
   return enqueue(async () => {
     const auth = await readAuthFile();
-    auth.notices = auth.notices.map((item) => ({ ...item, read: true }));
+    const now = new Date().toISOString();
+    const orgId =
+      input.organizationId ||
+      (input.target === "organization" ? input.actor.organizationId : undefined);
+    const orgOwner = orgId
+      ? auth.users.find((item) => item.role === "organization" && item.organizationId === orgId)
+      : undefined;
+    const rec: AccessKeyRecord = {
+      id: crypto.randomUUID(),
+      key: newAccessKey(),
+      role: input.role || (input.actor.role === "organization" ? "organization" : "client"),
+      status: "pending",
+      issuedByUserId:
+        input.target === "admin" ? "usr-admin" : orgOwner?.id || input.actor.id,
+      issuedByRole: input.target === "admin" ? "admin" : "organization",
+      organizationId: orgId,
+      userId: input.actor.id,
+      clientId: input.actor.clientId,
+      requestedByUserId: input.actor.id,
+      requestedByEmail: input.actor.email,
+      createdAt: now,
+    };
+    auth.accessKeys.unshift(rec);
+    auth.notices.unshift({
+      id: crypto.randomUUID(),
+      at: now,
+      kind: "key",
+      title: input.target === "admin" ? "Запрос ключа администратору" : "Запрос ключа организации",
+      detail: input.detail || `${input.actor.email} просит ключ (${ROLE_REQUEST[rec.role]}).`,
+      userId: input.actor.id,
+      organizationId: orgId,
+      read: false,
+    });
     await persist(auth);
-    return auth.notices;
+    return rec;
+  });
+}
+
+const ROLE_REQUEST: Record<UserRole, string> = {
+  admin: "админ",
+  organization: "организация",
+  manager: "менеджер",
+  client: "клиент",
+  guest: "гость",
+};
+
+export function recordIssuedKey(input: {
+  key: string;
+  role: UserRole;
+  issuedBy: PublicUser;
+  userId?: string;
+  clientId?: string;
+  organizationId?: string;
+}) {
+  return enqueue(async () => {
+    const auth = await readAuthFile();
+    const rec: AccessKeyRecord = {
+      id: crypto.randomUUID(),
+      key: input.key,
+      role: input.role,
+      status: "active",
+      issuedByUserId: input.issuedBy.id,
+      issuedByRole: input.issuedBy.role,
+      organizationId: input.organizationId || input.issuedBy.organizationId,
+      userId: input.userId,
+      clientId: input.clientId,
+      createdAt: new Date().toISOString(),
+    };
+    auth.accessKeys.unshift(rec);
+    await persist(auth);
+    return rec;
+  });
+}
+
+export function revokeAccessKey(actor: PublicUser, keyId: string) {
+  return enqueue(async () => {
+    const auth = await readAuthFile();
+    const rec = auth.accessKeys.find((item) => item.id === keyId || item.key === keyId);
+    if (!rec) throw new Error("Ключ не найден");
+    const can =
+      actor.role === "admin" ||
+      rec.issuedByUserId === actor.id ||
+      (actor.role === "organization" &&
+        actor.organizationId &&
+        rec.organizationId === actor.organizationId);
+    if (!can) throw new Error("Нельзя отозвать чужой ключ");
+    rec.status = "revoked";
+    rec.revokedAt = new Date().toISOString();
+    rec.revokedByUserId = actor.id;
+    if (rec.userId) {
+      const user = auth.users.find((item) => item.id === rec.userId);
+      if (user && user.role !== "admin") user.status = "blocked";
+    }
+    await persist(auth);
+    return rec;
+  });
+}
+
+export function createDeskUser(input: {
+  email: string;
+  name: string;
+  password: string;
+  role: UserRole;
+  organizationId?: string;
+  issuedByUserId?: string;
+}) {
+  return enqueue(async () => {
+    const email = input.email.trim().toLowerCase();
+    if (!email.includes("@") || input.password.length < 8) {
+      throw new Error("Укажите почту и пароль не короче 8 символов");
+    }
+    const auth = await readAuthFile();
+    if (auth.users.some((item) => item.email === email)) {
+      throw new Error("Этот email уже зарегистрирован");
+    }
+    const user: AuthUser = {
+      id: crypto.randomUUID(),
+      email,
+      name: input.name.trim() || email,
+      role: input.role,
+      status: "pending_key",
+      passwordHash: hashPassword(input.password),
+      organizationId: input.organizationId,
+      issuedByUserId: input.issuedByUserId,
+      createdAt: new Date().toISOString(),
+    };
+    auth.users.push(user);
+    await persist(auth);
+    return publicUser(user);
+  });
+}
+
+export function markNoticesRead(actor?: PublicUser) {
+  return enqueue(async () => {
+    const auth = await readAuthFile();
+    if (!actor || actor.role === "admin") {
+      auth.notices = auth.notices.map((item) => ({ ...item, read: true }));
+    } else {
+      const allowed = new Set(
+        staffPayload(auth, actor).notices.map((item) => item.id),
+      );
+      auth.notices = auth.notices.map((item) =>
+        allowed.has(item.id) ? { ...item, read: true } : item,
+      );
+    }
+    await persist(auth);
+    return staffPayload(auth, actor).notices;
   });
 }
 
@@ -431,8 +836,38 @@ export function cookieHeader(sessionId: string, clear = false) {
   return `${SESSION_COOKIE}=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}`;
 }
 
+export function guestCookieHeader(guestId: string) {
+  return `${GUEST_COOKIE}=${guestId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${GUEST_DAYS * 86400}`;
+}
+
 export function sessionFromRequest(request: Request) {
   const header = request.headers.get("cookie") ?? "";
   const match = header.match(new RegExp(`(?:^|; )${SESSION_COOKIE}=([^;]+)`));
   return match?.[1];
+}
+
+export function guestCookieFromRequest(request: Request) {
+  const header = request.headers.get("cookie") ?? "";
+  const match = header.match(new RegExp(`(?:^|; )${GUEST_COOKIE}=([^;]+)`));
+  return match?.[1];
+}
+
+export function requestIp(request: Request) {
+  const forwarded = request.headers.get("x-forwarded-for") ?? "";
+  const ip = forwarded.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "local";
+  return ip.slice(0, 80);
+}
+
+export function getAuthUserRecord(userId: string) {
+  return enqueue(async () => {
+    const auth = await readAuthFile();
+    return auth.users.find((item) => item.id === userId) ?? null;
+  });
+}
+
+export function listAccessKeys() {
+  return enqueue(async () => {
+    const auth = await readAuthFile();
+    return auth.accessKeys ?? [];
+  });
 }

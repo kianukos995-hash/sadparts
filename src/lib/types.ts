@@ -7,9 +7,10 @@ export type OrderStatus = "draft" | "assembled" | "sent";
 export type PaymentMethod = "cash" | "card" | "cashless";
 export type MoneyDirection = "income" | "expense";
 export type BillPayStatus = "unpaid" | "partial" | "paid";
-export type UserRole = "admin" | "manager" | "client" | "guest";
+export type UserRole = "admin" | "organization" | "manager" | "client" | "guest";
 export type AccountStatus = "pending_email" | "pending_key" | "active" | "blocked";
 export type PriceView = "clean" | "retail" | "cost";
+export type KeyStatus = "pending" | "active" | "revoked";
 
 export interface PublicUser {
   id: string;
@@ -18,6 +19,8 @@ export interface PublicUser {
   role: UserRole;
   status: AccountStatus;
   clientId?: string;
+  organizationId?: string;
+  issuedByUserId?: string;
 }
 
 export interface ActivityEvent {
@@ -27,6 +30,8 @@ export interface ActivityEvent {
   email?: string;
   role?: UserRole;
   clientId?: string;
+  organizationId?: string;
+  issuedByUserId?: string;
   action: string;
   detail: string;
   path?: string;
@@ -119,6 +124,8 @@ export interface Offer {
   pairSku?: string;
   updatedAt: string;
   source: SupplierSource;
+  sellPrice?: number;
+  costPrice?: number;
 }
 
 export interface SyncLog {
@@ -141,9 +148,46 @@ export interface TelegramChat {
   updatedAt: string;
 }
 
+export interface Organization {
+  id: string;
+  name: string;
+  inn: string;
+  phone: string;
+  email?: string;
+  notes: string;
+  createdAt: string;
+  createdByUserId: string;
+  discountPercent: number;
+  markupPercent?: number;
+  bandMarkups?: Record<string, number>;
+  priceBands?: PriceBand[];
+  maxMarkup?: number;
+  accessKey?: string;
+  accountStatus?: AccountStatus;
+  priceView?: PriceView;
+}
+
+export interface AccessKeyRecord {
+  id: string;
+  key: string;
+  role: UserRole;
+  status: KeyStatus;
+  issuedByUserId: string;
+  issuedByRole: UserRole;
+  organizationId?: string;
+  userId?: string;
+  clientId?: string;
+  requestedByUserId?: string;
+  requestedByEmail?: string;
+  createdAt: string;
+  revokedAt?: string;
+  revokedByUserId?: string;
+}
+
 export interface Client {
   id: string;
   name: string;
+  fio?: string;
   phone: string;
   inn: string;
   email?: string;
@@ -161,6 +205,10 @@ export interface Client {
   plate?: string;
   year?: string;
   color?: string;
+  ownerUserId?: string;
+  organizationId?: string;
+  issuedByUserId?: string;
+  maxMarkup?: number;
 }
 
 export interface OrderLine {
@@ -203,6 +251,8 @@ export interface Order {
   year?: string;
   color?: string;
   paidAmount?: number;
+  createdByUserId?: string;
+  organizationId?: string;
 }
 
 export interface PriceBand {
@@ -245,6 +295,9 @@ export interface PublicSettings {
   vatPercent: number;
   telegramNotifyChatId: string;
   telegramChats: TelegramChat[];
+  organizationPriceBands?: PriceBand[];
+  maxMarkup?: number | null;
+  showAdminPricing?: boolean;
 }
 
 export interface MoneyMovement {
@@ -281,6 +334,7 @@ export interface StoreSnapshot {
   orders: Order[];
   moneyMovements: MoneyMovement[];
   supplierBills: SupplierBill[];
+  organizations: Organization[];
 }
 
 export interface ParsedTable {

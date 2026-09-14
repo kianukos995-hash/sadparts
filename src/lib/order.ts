@@ -15,13 +15,14 @@ export function offerToLine(offer: Offer, qty = 1): OrderLine {
     name: offerTitle(offer),
     oem: offer.oem,
     qty: count,
-    buyPrice: offer.price,
+    buyPrice: offer.costPrice ?? offer.price,
     currency: offer.currency || "RUB",
     deliveryDays: offer.deliveryDays || 0,
     warehouse: offer.warehouse,
     guid: offer.guid,
     stockId: offer.stockId,
     vendorCode: offer.vendorCode,
+    snapshotSell: offer.sellPrice,
   };
 }
 
@@ -57,7 +58,7 @@ export function emptyDraft(
   clientId?: string,
 ): Order {
   const now = new Date().toISOString();
-  const chosen = clientId ?? clients[0]?.id ?? "";
+  const chosen = clientId ?? "";
   const client = clients.find((item) => item.id === chosen);
   return {
     id: crypto.randomUUID(),

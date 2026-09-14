@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
+  Building2,
   ClipboardList,
   FileSpreadsheet,
   History,
@@ -29,11 +30,12 @@ import type { PublicSettings, UserRole } from "@/lib/types";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLE_LABELS } from "@/lib/roles";
+import { homeHref } from "@/lib/scope";
 
 const ALL_GROUPS = [
   {
     title: "Склад",
-    roles: ["admin", "manager"] as UserRole[],
+    roles: ["admin", "organization", "manager"] as UserRole[],
     items: [
       { href: "/", label: "Обзор", icon: LayoutGrid },
       { href: "/catalog", label: "Каталог", icon: PackageSearch },
@@ -48,21 +50,22 @@ const ALL_GROUPS = [
       { href: "/quote", label: "Проценка", icon: Search },
       { href: "/cart", label: "Корзина", icon: ShoppingCart },
       { href: "/orders", label: "Заказы", icon: ClipboardList },
+      { href: "/clients", label: "Клиенты", icon: Users, roles: ["client"] as UserRole[] },
     ],
   },
   {
     title: "Сделки",
-    roles: ["admin", "manager"] as UserRole[],
+    roles: ["admin", "organization", "manager"] as UserRole[],
     items: [
       { href: "/cart", label: "Корзина", icon: ShoppingCart },
       { href: "/orders", label: "Заказы", icon: ClipboardList },
-      { href: "/money", label: "Деньги", icon: Wallet, roles: ["admin"] as UserRole[] },
+      { href: "/money", label: "Деньги", icon: Wallet, roles: ["admin", "organization"] as UserRole[] },
       { href: "/clients", label: "Клиенты", icon: Users },
     ],
   },
   {
     title: "Прайсы",
-    roles: ["admin"] as UserRole[],
+    roles: ["admin", "organization"] as UserRole[],
     items: [
       { href: "/suppliers/files", label: "Поставщики через файлы", icon: FileSpreadsheet },
       { href: "/suppliers/api", label: "Поставщики через API", icon: KeyRound },
@@ -71,12 +74,14 @@ const ALL_GROUPS = [
   },
   {
     title: "Контроль",
-    roles: ["admin", "manager"] as UserRole[],
+    roles: ["admin", "organization", "manager"] as UserRole[],
     items: [
+      { href: "/organizations", label: "Организации", icon: Building2, roles: ["admin"] as UserRole[] },
       { href: "/history", label: "История визитов", icon: History },
       { href: "/staff", label: "Ключи и регистрации", icon: Shield, roles: ["admin"] as UserRole[] },
+      { href: "/staff", label: "Ключи клиентов", icon: KeyRound, roles: ["organization", "manager"] as UserRole[] },
       { href: "/telegram", label: "Telegram-бот", icon: Send, roles: ["admin"] as UserRole[] },
-      { href: "/settings", label: "Настройки", icon: Settings, roles: ["admin"] as UserRole[] },
+      { href: "/settings", label: "Настройки", icon: Settings, roles: ["admin", "organization"] as UserRole[] },
     ],
   },
 ];
@@ -100,7 +105,7 @@ function NavLinks({ onNavigate, role }: { onNavigate?: () => void; role: UserRol
             const Icon = item.icon;
             return (
               <Link
-                key={item.href}
+                key={`${item.href}:${item.label}`}
                 href={item.href}
                 onClick={onNavigate}
                 className={cn(
@@ -144,17 +149,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const role = user?.role ?? "guest";
   const draftCount = drafts.reduce((sum, order) => sum + order.lines.reduce((s, line) => s + line.qty, 0), 0);
   const printMode = pathname.startsWith("/orders/print");
-  const homeHref = useMemo(
-    () => (role === "client" || role === "guest" ? "/quote" : "/"),
-    [role],
-  );
+  const startHref = useMemo(() => homeHref(role), [role]);
 
   useEffect(() => {
+    if (role !== "admin") return;
     void fetch("/api/settings")
       .then((response) => response.json())
       .then((data: PublicSettings) => setBot(data))
       .catch(() => undefined);
-  }, []);
+  }, [role]);
 
   if (printMode) {
     return <div className="min-h-full bg-white">{children}</div>;
@@ -163,7 +166,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-full bg-background">
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-white/5 bg-zinc-950 px-3 py-4 md:flex">
-        <Brand href={homeHref} />
+        <Brand href={startHref} />
         <div className="mt-6 flex-1 overflow-y-auto">
           <NavLinks role={role} />
         </div>
@@ -205,7 +208,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Button variant="outline" size="icon-sm" className="md:hidden" onClick={() => setOpen(true)}>
             <Menu />
           </Button>
-          <Link href={homeHref} className="md:hidden">
+          <Link href={startHref} className="md:hidden">
             <BrandMark />
           </Link>
           <div className="ml-auto flex items-center gap-2">
@@ -237,7 +240,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <SheetContent side="left" className="w-72 bg-zinc-950 p-4 text-white">
           <SheetHeader>
             <SheetTitle className="sr-only">Меню</SheetTitle>
-            <Brand href={homeHref} />
+            <Brand href={startHref} />
           </SheetHeader>
           <div className="mt-6">
             <NavLinks role={role} onNavigate={() => setOpen(false)} />

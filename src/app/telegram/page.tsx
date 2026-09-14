@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { RoleGate } from "@/components/role-gate";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +13,14 @@ import { KeyField } from "@/components/key-field";
 import type { PublicSettings } from "@/lib/types";
 
 export default function TelegramPage() {
+  return (
+    <RoleGate allow={["admin"]}>
+      <TelegramInner />
+    </RoleGate>
+  );
+}
+
+function TelegramInner() {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);

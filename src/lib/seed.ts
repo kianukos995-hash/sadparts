@@ -1,8 +1,8 @@
-import { DEMO_KEYS, ROSSKO_API_BASE, STORE_VERSION } from "@/lib/constants";
+import { DEMO_KEYS, EXAMPLE_ORG_ID, ROSSKO_API_BASE, STORE_VERSION } from "@/lib/constants";
 import { mergeCrosses } from "@/lib/cross-catalog";
 import { offerKey } from "@/lib/format";
 import { CORE_PARTS, partPrice, partStock } from "@/lib/mock-parts";
-import type { Client, ColumnMap, Offer, StoreSnapshot, Supplier } from "@/lib/types";
+import type { Client, ColumnMap, Offer, Organization, StoreSnapshot, Supplier } from "@/lib/types";
 import { DEFAULT_COLUMN_MAP } from "@/lib/types";
 
 const AUTOPITER_MAP: ColumnMap = {
@@ -41,15 +41,19 @@ export const DEFAULT_CLIENTS: Client[] = [
   {
     id: "cli-cash",
     name: "Розница",
+    fio: "Розничный покупатель",
     phone: "",
     inn: "",
     discountPercent: 0,
     notes: "Базовая цена склада с наценкой, скидка 0%.",
     createdAt: "2026-03-01T09:00:00.000Z",
+    ownerUserId: "usr-admin",
+    issuedByUserId: "usr-admin",
   },
   {
     id: "cli-sto",
     name: "СТО Север",
+    fio: "Иванов Сергей Петрович",
     phone: "+7 495 120-40-18",
     inn: "7701234567",
     discountPercent: 8,
@@ -60,15 +64,26 @@ export const DEFAULT_CLIENTS: Client[] = [
     priceView: "clean",
     notes: "Постоянный клиент, скидка 8% от цены с наценкой.",
     createdAt: "2026-03-12T09:00:00.000Z",
+    telegramChatId: "",
+    car: "Audi A4",
+    vin: "WAUZZZ8K9BA123456",
+    plate: "А123АА777",
+    year: "2012",
+    color: "чёрный",
+    ownerUserId: "usr-sto",
+    issuedByUserId: "usr-admin",
   },
   {
     id: "cli-opt",
     name: "Опт Юг",
+    fio: "Петрова Мария",
     phone: "+7 495 331-09-44",
     inn: "7720981120",
     discountPercent: 15,
-    notes: "Оптовая скидка 15%.",
+    notes: "Оптовая скидка 15%. Карточка администратора, не организации.",
     createdAt: "2026-04-02T09:00:00.000Z",
+    ownerUserId: "usr-admin",
+    issuedByUserId: "usr-admin",
   },
   {
     id: "cli-guest",
@@ -79,8 +94,28 @@ export const DEFAULT_CLIENTS: Client[] = [
     discountPercent: 0,
     priceView: "clean",
     accountStatus: "active",
-    notes: "Гостевой вход: рыночная наценка без скидки.",
+    notes: "Шаблон гостевого входа. Живые гости получают отдельную карточку.",
     createdAt: "2026-03-01T09:00:00.000Z",
+    ownerUserId: "usr-admin",
+  },
+];
+
+export const DEFAULT_ORGANIZATIONS: Organization[] = [
+  {
+    id: EXAMPLE_ORG_ID,
+    name: "Пример организации",
+    inn: "",
+    phone: "",
+    email: "org@sadparts.local",
+    notes: "Пустой пример. Список клиентов организации специально пуст — можно удалить.",
+    createdAt: "2026-05-01T09:00:00.000Z",
+    createdByUserId: "usr-admin",
+    discountPercent: 5,
+    markupPercent: 14,
+    maxMarkup: 28,
+    accessKey: "SP-ORG-DEMO1",
+    accountStatus: "active",
+    priceView: "clean",
   },
 ];
 
@@ -265,6 +300,48 @@ export function createDemoOffers(suppliers: Supplier[]): Offer[] {
         updatedAt,
         source: "api",
       });
+      if (config.id === "sup-rossko" && index === 0) {
+        offers.push({
+          id: offerKey(config.id, sku, "podolsk"),
+          supplierId: config.id,
+          sku,
+          brand: part.brand,
+          name: part.name,
+          displayName: "",
+          oem,
+          crossOems: mergeCrosses(oem),
+          category: part.category,
+          price: partPrice(part.basePrice, config.priceMul + 0.02),
+          currency: "RUB",
+          stock: 0,
+          warehouse: "Подольск",
+          multiplicity: 1,
+          deliveryDays: 2,
+          images: part.image ? [part.image] : undefined,
+          updatedAt,
+          source: "api",
+        });
+        offers.push({
+          id: offerKey(config.id, sku, "spb2"),
+          supplierId: config.id,
+          sku,
+          brand: part.brand,
+          name: part.name,
+          displayName: "",
+          oem,
+          crossOems: mergeCrosses(oem),
+          category: part.category,
+          price: partPrice(part.basePrice, config.priceMul + 0.04),
+          currency: "RUB",
+          stock: 6,
+          warehouse: "СПб-2",
+          multiplicity: 1,
+          deliveryDays: 4,
+          images: part.image ? [part.image] : undefined,
+          updatedAt,
+          source: "api",
+        });
+      }
     });
   }
   return [...offers, ...EXTRA_ANALOGS];
@@ -295,6 +372,7 @@ export function createInitialStore(): StoreSnapshot {
     orders: [],
     moneyMovements: [],
     supplierBills: [],
+    organizations: DEFAULT_ORGANIZATIONS,
   };
 }
 

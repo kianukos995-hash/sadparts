@@ -92,8 +92,8 @@ export default function LoginPage() {
             </Link>
           </p>
           <p className="text-xs text-muted-foreground">
-            Тест: admin@sadparts.local / Admin12345 · manager@sadparts.local / Manager12345 ·
-            sto@sadparts.local / Client12345
+            Тест: admin@sadparts.local / Admin12345 · org@sadparts.local / Org12345 ·
+            manager@sadparts.local / Manager12345 · sto@sadparts.local / Client12345
           </p>
         </CardContent>
       </Card>

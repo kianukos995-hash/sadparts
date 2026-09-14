@@ -1,9 +1,10 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ChevronDown, Filter, Search } from "lucide-react";
+import { ChevronDown, Filter, Search, X } from "lucide-react";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -19,13 +20,18 @@ import {
 import { OfferDrawer } from "@/components/offer-drawer";
 import { BrandDialog, BrandMark } from "@/components/brand-mark";
 import { PriceChange } from "@/components/price-change";
-import { AddToOrderButtons, offerContextAdd } from "@/components/add-to-order";
+import {
+  AddToOrderButtons,
+  openQuoteContextMenu,
+  type QuoteMenuState,
+} from "@/components/add-to-order";
+import { QuoteContextMenu } from "@/components/quote-context-menu";
 import { ClientCartBar } from "@/components/client-carts";
 import { SearchPick } from "@/components/search-pick";
 import { SortToggle, type SortDir } from "@/components/sort-toggle";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { useViewerPricing } from "@/hooks/use-viewer-pricing";
-import { formatDays, formatMoney } from "@/lib/format";
+import { formatDays, formatMoney, formatStock } from "@/lib/format";
 import { findDraftForClient } from "@/lib/order";
 import { applicabilityOf, sellWarning } from "@/lib/offer-extra";
 import { pairLabel } from "@/lib/pairs";
@@ -35,11 +41,21 @@ import { sortOffers } from "@/lib/sort-offers";
 import { availableStock, formatFreeStock, reservedQty } from "@/lib/stock";
 import type { Offer } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { normalizeSku } from "@/lib/format";
 
 function QuotePageInner() {
   const searchParams = useSearchParams();
-  const { ready, suppliers, clients, settings, addToDraft, drafts, orders, setActiveDraftId } =
-    useAvtoPrice();
+  const {
+    ready,
+    suppliers,
+    clients,
+    settings,
+    drafts,
+    orders,
+    setActiveDraftId,
+    removeOrder,
+    draft,
+  } = useAvtoPrice();
   const [sku, setSku] = useState("");
   const [name, setName] = useState("");
   const [supplierId, setSupplierId] = useState("all");
@@ -62,9 +78,13 @@ function QuotePageInner() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [deliverySort, setDeliverySort] = useState<SortDir>("asc");
   const [priceSort, setPriceSort] = useState<SortDir>("");
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [skuOffers, setSkuOffers] = useState<Offer[]>([]);
+  const [menu, setMenu] = useState<QuoteMenuState | null>(null);
   const viewer = useViewerPricing(clientId);
+  const quoteClientId = viewer.locked && viewer.clientId ? viewer.clientId : clientId;
 
-  const client = viewer.client ?? clients.find((item) => item.id === clientId);
+  const client = viewer.client ?? clients.find((item) => item.id === quoteClientId);
   const targetOrder = orders.find((item) => item.id === orderId) ?? null;
   const names = useMemo(
     () => new Map(suppliers.map((item) => [item.id, item.name])),
@@ -83,12 +103,6 @@ function QuotePageInner() {
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [searchParams, setActiveDraftId]);
 
-  useEffect(() => {
-    if (viewer.locked && viewer.clientId && clientId !== viewer.clientId) {
-      setClientId(viewer.clientId);
-    }
-  }, [viewer.locked, viewer.clientId, clientId]);
-
   const load = useCallback(() => {
     const params = new URLSearchParams();
     const q = [sku, name].filter(Boolean).join(" ").trim();
@@ -100,7 +114,8 @@ function QuotePageInner() {
     if (maxDays) params.set("maxDays", maxDays);
     if (inStock) params.set("inStock", "1");
     if (changedOnly) params.set("changed", "1");
-    if (live) params.set("live", "1");
+    if (live && !viewer.locked) params.set("live", "1");
+    if (quoteClientId) params.set("clientId", quoteClientId);
     params.set("page", String(page));
     params.set("pageSize", "40");
     setBusy(true);
@@ -116,7 +131,21 @@ function QuotePageInner() {
         if (data.brands?.length) setBrands(data.brands);
       })
       .finally(() => setBusy(false));
-  }, [sku, name, supplierId, brand, minPrice, maxPrice, maxDays, inStock, changedOnly, live, page]);
+  }, [
+    sku,
+    name,
+    supplierId,
+    brand,
+    minPrice,
+    maxPrice,
+    maxDays,
+    inStock,
+    changedOnly,
+    live,
+    page,
+    quoteClientId,
+    viewer.locked,
+  ]);
 
   useEffect(() => {
     const timer = window.setTimeout(load, 250);
@@ -140,6 +169,34 @@ function QuotePageInner() {
     priceSort,
   ].filter(Boolean).length;
 
+  function sellOf(offer: Offer) {
+    if (offer.sellPrice != null) return offer.sellPrice;
+    if (viewer.locked) return offer.price;
+    const breakdown = clientPriceBreakdown(
+      offer.price,
+      viewer.bands,
+      settings.markupPercent,
+      client,
+    );
+    return breakdown.sell;
+  }
+
+  function openExpand(offer: Offer) {
+    const key = normalizeSku(offer.sku);
+    setExpanded((current) => (current === offer.id ? null : offer.id));
+    const local = displayed.filter((item) => normalizeSku(item.sku) === key);
+    setSkuOffers(local);
+    void fetch(
+      `/api/catalog/browse?q=${encodeURIComponent(offer.sku)}&field=sku&pageSize=40${quoteClientId ? `&clientId=${quoteClientId}` : ""}`,
+    )
+      .then(async (response) => {
+        const data = (await response.json()) as { offers?: Offer[] };
+        const rows = (data.offers ?? []).filter((item) => normalizeSku(item.sku) === key);
+        setSkuOffers(rows.length ? rows : local);
+      })
+      .catch(() => setSkuOffers(local));
+  }
+
   if (!ready) return <p className="text-sm text-muted-foreground">Готовлю проценку…</p>;
 
   return (
@@ -147,28 +204,51 @@ function QuotePageInner() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Проценка</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Поиск по клиенту, бренду и поставщику. Срок — стрелками от быстрых к долгим. Доп. фильтры
-          скрыты за кнопкой.
+          Цена — продажная с наценкой категории. ПКМ открывает меню, а не новый заказ. Ноль на
+          складе нельзя положить в корзину.
         </p>
       </div>
 
-      {targetOrder ? (
+      {targetOrder || draft ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm">
           <span>
-            Добавление в {targetOrder.status === "draft" ? "корзину" : "заказ"}{" "}
-            <span className="font-mono font-semibold">{targetOrder.number}</span>
+            Текущий черновик{" "}
+            <span className="font-mono font-semibold">
+              {(targetOrder ?? draft)?.number}
+            </span>
             {client ? ` · ${client.name}` : ""}
           </span>
-          <Link
-            href={
-              targetOrder.status === "draft"
-                ? `/cart?id=${targetOrder.id}`
-                : `/orders/${targetOrder.id}`
-            }
-            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-          >
-            Вернуться
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {(targetOrder ?? draft) ? (
+              <Link
+                href={
+                  (targetOrder ?? draft)!.status === "draft"
+                    ? `/cart?id=${(targetOrder ?? draft)!.id}`
+                    : `/orders/${(targetOrder ?? draft)!.id}`
+                }
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+              >
+                К корзине
+              </Link>
+            ) : null}
+            {draft ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                title="Сбросить черновик"
+                onClick={() => {
+                  if (!confirm(`Удалить черновик ${draft.number}?`)) return;
+                  void removeOrder(draft.id).then(() => {
+                    setOrderId("");
+                    toast.success("Черновик удалён");
+                  });
+                }}
+              >
+                <X />
+                Сбросить
+              </Button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -196,25 +276,34 @@ function QuotePageInner() {
               if (event.key === "Enter") load();
             }}
           />
-          <div>
-            <Label className="mb-1 block text-xs text-muted-foreground">Клиент</Label>
-            <SearchPick
-              value={clientId}
-              onChange={(id) => {
-                setClientId(id);
-                if (id) {
-                  const existing = findDraftForClient(drafts, id);
-                  if (existing) setActiveDraftId(existing.id);
-                }
-              }}
-              placeholder="Найти клиента…"
-              emptyLabel="Все клиенты"
-              options={clients.map((item) => ({
-                id: item.id,
-                label: `${item.name} · ${item.discountPercent}%`,
-              }))}
-            />
-          </div>
+          {!viewer.locked ? (
+            <div>
+              <Label className="mb-1 block text-xs text-muted-foreground">Клиент</Label>
+              <SearchPick
+                value={clientId}
+                onChange={(id) => {
+                  setClientId(id);
+                  if (id) {
+                    const existing = findDraftForClient(drafts, id);
+                    if (existing) setActiveDraftId(existing.id);
+                  }
+                }}
+                placeholder="Найти клиента…"
+                emptyLabel="Все клиенты"
+                options={clients.map((item) => ({
+                  id: item.id,
+                  label: `${item.name} · ${item.discountPercent}%`,
+                }))}
+              />
+            </div>
+          ) : (
+            <div>
+              <Label className="mb-1 block text-xs text-muted-foreground">Клиент</Label>
+              <p className="flex h-9 items-center rounded-lg border px-3 text-sm">
+                {client?.name || "Гость"}
+              </p>
+            </div>
+          )}
           <div className="flex flex-wrap items-end gap-2">
             <SortToggle
               label="Срок"
@@ -320,30 +409,32 @@ function QuotePageInner() {
                 />
                 <Label className="font-normal">В наличии</Label>
               </label>
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={changedOnly}
-                  onCheckedChange={(checked) => setChangedOnly(checked === true)}
-                />
-                <Label className="font-normal">Обновления цены</Label>
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox checked={live} onCheckedChange={(checked) => setLive(checked === true)} />
-                <Label className="font-normal">Живой Росско</Label>
-              </label>
+              {viewer.showAdminCost ? (
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={changedOnly}
+                    onCheckedChange={(checked) => setChangedOnly(checked === true)}
+                  />
+                  <Label className="font-normal">Обновления цены</Label>
+                </label>
+              ) : null}
+              {viewer.showAdminCost ? (
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox checked={live} onCheckedChange={(checked) => setLive(checked === true)} />
+                  <Label className="font-normal">Живой Росско</Label>
+                </label>
+              ) : null}
             </div>
           </div>
         ) : null}
       </div>
 
-      <ClientCartBar clientId={clientId} onClientId={setClientId} onSelectDraft={setOrderId} />
+      {!viewer.locked ? (
+        <ClientCartBar clientId={quoteClientId} onClientId={setClientId} onSelectDraft={setOrderId} />
+      ) : null}
 
       <p className="text-xs text-muted-foreground">
         {busy ? "Ищу…" : `${total.toLocaleString("ru-RU")} позиций`} · страница {page + 1}/{pages}
-        {deliverySort === "asc" ? " · сначала быстрые" : ""}
-        {deliverySort === "desc" ? " · сначала долгие" : ""}
-        {priceSort === "asc" ? " · цена ↑" : ""}
-        {priceSort === "desc" ? " · цена ↓" : ""}
       </p>
 
       {displayed.length === 0 && !busy ? (
@@ -358,7 +449,9 @@ function QuotePageInner() {
               <TableHead>Бренд</TableHead>
               <TableHead>Наименование</TableHead>
               <TableHead>Поставщик</TableHead>
-              {viewer.showCost ? <TableHead className="text-right">Закуп</TableHead> : null}
+              {viewer.showCost ? (
+                <TableHead className="text-right">{viewer.costLabel}</TableHead>
+              ) : null}
               <TableHead className="text-right">Цена</TableHead>
               <TableHead className="hidden text-right md:table-cell">Срок</TableHead>
               <TableHead className="text-right">Ост.</TableHead>
@@ -373,84 +466,147 @@ function QuotePageInner() {
                 settings.markupPercent,
                 client,
               );
-              const sell = breakdown.sell;
-              const warn = sellWarning(
-                offer.price,
-                viewer.bands,
-                settings.markupPercent,
-                client,
-              );
+              const sell = sellOf(offer);
+              const warn = viewer.showCost
+                ? sellWarning(offer.price, viewer.bands, settings.markupPercent, client)
+                : "";
               const cars = applicabilityOf(offer);
+              const open = expanded === offer.id;
               return (
-                <TableRow
-                  key={offer.id}
-                  className="cursor-pointer"
-                  onClick={() => {
-                    setSelected(offer);
-                    void fetch("/api/activity/track", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        action: "view_offer",
-                        detail: `Проценка ${offer.sku} ${offer.brand}`,
-                        path: "/quote",
-                        sku: offer.sku,
-                        brand: offer.brand,
-                        offerId: offer.id,
-                        buyPrice: offer.price,
-                        sellPrice: sell,
-                        stock: offer.stock,
-                        deliveryDays: offer.deliveryDays,
-                      }),
-                    });
-                  }}
-                  onContextMenu={offerContextAdd(offer, addToDraft, clientId, orderId)}
-                >
-                  <TableCell className="font-mono text-xs">
-                    {offer.sku}
-                    {offer.pairSide ? (
-                      <p className="text-[10px] text-muted-foreground">{pairLabel(offer.pairSide)}</p>
-                    ) : null}
-                  </TableCell>
-                  <TableCell onClick={(event) => event.stopPropagation()}>
-                    <BrandMark brand={offer.brand} onOpen={(item) => setBrandInfo(item.name)} />
-                  </TableCell>
-                  <TableCell>
-                    <p>{offer.name}</p>
-                    {cars ? <p className="text-[11px] text-muted-foreground">{cars}</p> : null}
-                    <PriceChange offer={offer} />
-                  </TableCell>
-                  <TableCell className="text-xs">{names.get(offer.supplierId)}</TableCell>
-                  {viewer.showCost ? (
-                    <TableCell className="text-right">
-                      {formatMoney(offer.price, offer.currency)}
+                <Fragment key={offer.id}>
+                  <TableRow
+                    key={offer.id}
+                    className="cursor-pointer"
+                    onClick={() => {
+                      if (viewer.locked) {
+                        openExpand(offer);
+                        return;
+                      }
+                      setSelected(offer);
+                      void fetch("/api/activity/track", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          action: "view_offer",
+                          detail: `Проценка ${offer.sku} ${offer.brand}`,
+                          path: "/quote",
+                          sku: offer.sku,
+                          brand: offer.brand,
+                          offerId: offer.id,
+                          sellPrice: sell,
+                          stock: offer.stock,
+                          deliveryDays: offer.deliveryDays,
+                        }),
+                      });
+                    }}
+                    onContextMenu={(event) => openQuoteContextMenu(event, offer, setMenu)}
+                  >
+                    <TableCell className="font-mono text-xs">
+                      {offer.sku}
+                      {offer.pairSide ? (
+                        <p className="text-[10px] text-muted-foreground">{pairLabel(offer.pairSide)}</p>
+                      ) : null}
                     </TableCell>
+                    <TableCell onClick={(event) => event.stopPropagation()}>
+                      <BrandMark brand={offer.brand} onOpen={(item) => setBrandInfo(item.name)} />
+                    </TableCell>
+                    <TableCell>
+                      <p>{offer.name}</p>
+                      {cars ? <p className="text-[11px] text-muted-foreground">{cars}</p> : null}
+                      {viewer.showCost ? <PriceChange offer={offer} /> : null}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      <p>{names.get(offer.supplierId)}</p>
+                      <p className="text-[11px] text-muted-foreground">{offer.warehouse || "склад не указан"}</p>
+                    </TableCell>
+                    {viewer.showCost ? (
+                      <TableCell className="text-right">
+                        {formatMoney(offer.costPrice ?? offer.price, offer.currency)}
+                      </TableCell>
+                    ) : null}
+                    <TableCell className={cn("text-right", warn && "text-amber-800")}>
+                      <div className="flex items-center justify-end gap-1">
+                        <span className="font-medium">{formatMoney(sell, offer.currency)}</span>
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          type="button"
+                          title="Склады и поставщики"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openExpand(offer);
+                          }}
+                        >
+                          <ChevronDown className={cn("size-4 transition", open && "rotate-180")} />
+                        </Button>
+                      </div>
+                      {viewer.view !== "clean" && !viewer.locked ? (
+                        <PriceFormula
+                          breakdown={breakdown}
+                          currency={offer.currency}
+                          compact
+                          view={viewer.view}
+                        />
+                      ) : null}
+                      {warn && viewer.showCost ? (
+                        <p className="text-[10px] font-normal">ниже закупа</p>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="hidden text-right text-xs md:table-cell">
+                      {formatDays(offer.deliveryDays)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatFreeStock(availableStock(offer, orders), reservedQty(orders, offer.id))}
+                    </TableCell>
+                    <TableCell onClick={(event) => event.stopPropagation()}>
+                      <AddToOrderButtons
+                        offer={offer}
+                        compact
+                        clientId={quoteClientId}
+                        orderId={orderId || undefined}
+                      />
+                    </TableCell>
+                  </TableRow>
+                  {open ? (
+                    <TableRow key={`${offer.id}-warehouses`}>
+                      <TableCell colSpan={viewer.showCost ? 9 : 8} className="bg-muted/30">
+                        <p className="mb-2 text-xs font-medium">
+                          Все склады и поставщики {offer.sku}
+                        </p>
+                        <div className="grid gap-2">
+                          {(skuOffers.length ? skuOffers : [offer]).map((row) => (
+                            <div
+                              key={row.id}
+                              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2"
+                            >
+                              <div>
+                                <p className="text-sm font-medium">
+                                  {names.get(row.supplierId) || "Поставщик"} · склад{" "}
+                                  {row.warehouse || "не указан"}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {formatDays(row.deliveryDays)} с этого склада ·{" "}
+                                  {formatStock(row.stock)}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-3">
+                                <p className="text-sm font-semibold">
+                                  {formatMoney(sellOf(row), row.currency)}
+                                </p>
+                                <AddToOrderButtons
+                                  offer={row}
+                                  compact
+                                  clientId={quoteClientId}
+                                  orderId={orderId || undefined}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </TableCell>
+                    </TableRow>
                   ) : null}
-                  <TableCell className={cn("text-right", warn && "text-amber-800")}>
-                    {formatMoney(sell, offer.currency)}
-                    <PriceFormula
-                      breakdown={breakdown}
-                      currency={offer.currency}
-                      compact
-                      view={viewer.view}
-                    />
-                    {warn && viewer.showCost ? <p className="text-[10px] font-normal">ниже закупа</p> : null}
-                  </TableCell>
-                  <TableCell className="hidden text-right text-xs md:table-cell">
-                    {formatDays(offer.deliveryDays)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {formatFreeStock(availableStock(offer, orders), reservedQty(orders, offer.id))}
-                  </TableCell>
-                  <TableCell onClick={(event) => event.stopPropagation()}>
-                    <AddToOrderButtons
-                      offer={offer}
-                      compact
-                      clientId={clientId}
-                      orderId={orderId || undefined}
-                    />
-                  </TableCell>
-                </TableRow>
+                </Fragment>
               );
             })}
           </TableBody>
@@ -475,18 +631,43 @@ function QuotePageInner() {
         </div>
       ) : null}
 
-      <OfferDrawer
-        offer={selected}
-        offers={displayed}
-        suppliers={suppliers}
-        clients={clients}
-        clientId={clientId}
-        orderId={orderId || undefined}
-        markupPercent={settings.markupPercent}
-        priceBands={settings.priceBands}
-        onOpenChange={(open) => !open && setSelected(null)}
-      />
+      {!viewer.locked ? (
+        <OfferDrawer
+          offer={selected}
+          offers={displayed}
+          suppliers={suppliers}
+          clients={clients}
+          clientId={quoteClientId}
+          orderId={orderId || undefined}
+          markupPercent={settings.markupPercent}
+          priceBands={viewer.bands}
+          onOpenChange={(openState) => !openState && setSelected(null)}
+        />
+      ) : selected ? (
+        <OfferDrawer
+          offer={selected}
+          offers={skuOffers.length ? skuOffers : displayed}
+          suppliers={suppliers}
+          clients={clients}
+          clientId={quoteClientId}
+          orderId={orderId || undefined}
+          markupPercent={settings.markupPercent}
+          priceBands={viewer.bands}
+          compact
+          onOpenChange={(openState) => !openState && setSelected(null)}
+        />
+      ) : null}
       <BrandDialog brand={brandInfo} onOpenChange={(open) => !open && setBrandInfo(null)} />
+      <QuoteContextMenu
+        menu={menu}
+        clientId={quoteClientId}
+        orderId={orderId || undefined}
+        onClose={() => setMenu(null)}
+        onDetails={(offer) => {
+          if (viewer.locked) openExpand(offer);
+          else setSelected(offer);
+        }}
+      />
     </div>
   );
 }

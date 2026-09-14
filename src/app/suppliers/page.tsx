@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FileSpreadsheet, KeyRound } from "lucide-react";
+import { RoleGate } from "@/components/role-gate";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
@@ -9,6 +10,14 @@ import { isApiSupplier, isFileSupplier } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 export default function SuppliersHubPage() {
+  return (
+    <RoleGate allow={["admin", "organization"]}>
+      <SuppliersHubInner />
+    </RoleGate>
+  );
+}
+
+function SuppliersHubInner() {
   const { ready, error, refresh, suppliers } = useAvtoPrice();
   const files = suppliers.filter(isFileSupplier).length;
   const api = suppliers.filter(isApiSupplier).length;

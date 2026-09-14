@@ -35,7 +35,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- session is loaded from the cookie after mount */
     void refresh();
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [refresh]);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -46,6 +48,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     const data = (await response.json()) as { user?: PublicUser; error?: string };
     if (!response.ok || !data.user) throw new Error(data.error || "Не войти");
+    const { clearLegacyDrafts } = await import("@/lib/local-drafts");
+    clearLegacyDrafts();
     setUser(data.user);
     return data.user;
   }, []);
@@ -54,15 +58,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const response = await fetch("/api/auth/guest", { method: "POST" });
     const data = (await response.json()) as { user?: PublicUser; error?: string };
     if (!response.ok || !data.user) throw new Error(data.error || "Не войти гостем");
+    const { clearLegacyDrafts } = await import("@/lib/local-drafts");
+    clearLegacyDrafts();
     setUser(data.user);
     return data.user;
   }, []);
 
   const logout = useCallback(async () => {
+    const { clearLocalDrafts } = await import("@/lib/local-drafts");
+    clearLocalDrafts(user?.id);
     await fetch("/api/auth/logout", { method: "POST" });
     setUser(null);
     router.replace("/login");
-  }, [router]);
+  }, [router, user?.id]);
 
   const open = pathname.startsWith("/login") || pathname.startsWith("/register");
 

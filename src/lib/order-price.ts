@@ -7,6 +7,24 @@ export type PricedLine = OrderLine & {
   breakdown: PriceBreakdown;
 };
 
+function frozenBreakdown(sell: number): PriceBreakdown {
+  const value = roundMoney(sell);
+  return {
+    buy: value,
+    markupPercent: 0,
+    markupAmount: 0,
+    marked: value,
+    discountPercent: 0,
+    discountAmount: 0,
+    sell: value,
+    belowBuy: false,
+  };
+}
+
+function lineAlreadyPriced(line: OrderLine) {
+  return line.snapshotSell != null && Math.abs(line.snapshotSell - line.buyPrice) < 0.02;
+}
+
 export function priceOrder(
   order: Order,
   client: Client | null | undefined,
@@ -15,13 +33,9 @@ export function priceOrder(
   markupOverride?: number | null,
 ) {
   const lines: PricedLine[] = order.lines.map((line) => {
-    const breakdown = clientPriceBreakdown(
-      line.buyPrice,
-      bands,
-      fallbackMarkup,
-      client,
-      markupOverride,
-    );
+    const breakdown = lineAlreadyPriced(line)
+      ? frozenBreakdown(line.snapshotSell ?? line.buyPrice)
+      : clientPriceBreakdown(line.buyPrice, bands, fallbackMarkup, client, markupOverride);
     const sell = breakdown.sell;
     return {
       ...line,

@@ -1,9 +1,19 @@
 import type { PriceBand, UserRole } from "@/lib/types";
 import { DEFAULT_PRICE_BANDS, sanitizeBands } from "@/lib/price-bands";
 
+export {
+  canSeeCost,
+  canSeeOwnCost,
+  canSeeAnyCost,
+  canManageStaff,
+  canSeeDesk,
+  clientNavOnly,
+} from "@/lib/scope";
+
 export const ROLE_LABELS: Record<UserRole, string> = {
   admin: "Администратор",
-  manager: "Менеджер",
+  organization: "Организация",
+  manager: "Менеджер организации",
   client: "Клиент",
   guest: "Гость",
 };
@@ -24,25 +34,13 @@ export function bandsForRole(
   role: UserRole | undefined,
   warehouse: PriceBand[] | undefined,
   guest: PriceBand[] | undefined,
-  manager: PriceBand[] | undefined,
+  _manager: PriceBand[] | undefined,
+  organization?: PriceBand[] | undefined,
+  underOrg = false,
 ) {
   if (role === "guest") return sanitizeBands(guest?.length ? guest : DEFAULT_GUEST_BANDS);
-  if (role === "manager") return sanitizeBands(manager?.length ? manager : warehouse);
+  if (role === "organization" || role === "manager" || underOrg) {
+    return sanitizeBands(organization?.length ? organization : DEFAULT_PRICE_BANDS);
+  }
   return sanitizeBands(warehouse);
-}
-
-export function canSeeCost(role?: UserRole) {
-  return role === "admin" || role === "manager";
-}
-
-export function canManageStaff(role?: UserRole) {
-  return role === "admin";
-}
-
-export function canSeeDesk(role?: UserRole) {
-  return role === "admin" || role === "manager";
-}
-
-export function clientNavOnly(role?: UserRole) {
-  return role === "client" || role === "guest";
 }

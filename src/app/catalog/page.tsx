@@ -18,9 +18,12 @@ import { OfferMedia } from "@/components/offer-media";
 import { OfferSpecs } from "@/components/offer-specs";
 import { BrandDialog, BrandMark } from "@/components/brand-mark";
 import { PriceChange } from "@/components/price-change";
-import { AddToOrderButtons, offerContextAdd } from "@/components/add-to-order";
+import { RoleGate } from "@/components/role-gate";
+import { AddToOrderButtons, openQuoteContextMenu, type QuoteMenuState } from "@/components/add-to-order";
+import { QuoteContextMenu } from "@/components/quote-context-menu";
 import { ClientCartBar } from "@/components/client-carts";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
+import { useViewerPricing } from "@/hooks/use-viewer-pricing";
 import { formatDays, formatMoney, formatStock } from "@/lib/format";
 import { findDraftForClient } from "@/lib/order";
 import { groupByOem, offerTitle } from "@/lib/oem";
@@ -35,7 +38,15 @@ import { cn } from "@/lib/utils";
 const PAGE_SIZE = 24;
 
 export default function CatalogPage() {
-  const { ready, suppliers, clients, settings, addToDraft, drafts, setActiveDraftId } = useAvtoPrice();
+  return (
+    <RoleGate allow={["admin", "organization", "manager"]}>
+      <CatalogInner />
+    </RoleGate>
+  );
+}
+
+function CatalogInner() {
+  const { ready, suppliers, clients, settings, drafts, setActiveDraftId } = useAvtoPrice();
   const [query, setQuery] = useState("");
   const [offers, setOffers] = useState<Offer[]>([]);
   const [total, setTotal] = useState(0);
@@ -54,9 +65,11 @@ export default function CatalogPage() {
   const [selected, setSelected] = useState<Offer | null>(null);
   const [brandInfo, setBrandInfo] = useState<string | null>(null);
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  const [menu, setMenu] = useState<QuoteMenuState | null>(null);
+  const viewer = useViewerPricing(clientId);
 
-  const client = clients.find((item) => item.id === clientId);
-  const bands = settings.priceBands;
+  const client = viewer.client ?? clients.find((item) => item.id === clientId);
+  const bands = viewer.bands;
 
   const load = useCallback(() => {
     const params = new URLSearchParams();
@@ -67,6 +80,7 @@ export default function CatalogPage() {
     if (maxDays) params.set("maxDays", maxDays);
     if (inStock) params.set("inStock", "1");
     if (changedOnly) params.set("changed", "1");
+    if (clientId) params.set("clientId", clientId);
     params.set("page", String(page));
     params.set("pageSize", String(PAGE_SIZE));
     setSearching(true);
@@ -86,7 +100,7 @@ export default function CatalogPage() {
       })
       .catch(() => setNote("Не удалось прочитать прайс"))
       .finally(() => setSearching(false));
-  }, [query, supplierId, brand, maxPrice, maxDays, inStock, changedOnly, page]);
+  }, [query, supplierId, brand, maxPrice, maxDays, inStock, changedOnly, page, clientId]);
 
   useEffect(() => {
     const timer = window.setTimeout(load, query ? 280 : 0);
@@ -257,7 +271,8 @@ export default function CatalogPage() {
           {groups.map((group) => {
             const open = openGroups.has(group.key) || Boolean(query.trim()) || groups.length <= 8;
             const best = group.offers[0];
-            const bestSell = clientSellPrice(best.price, bands, settings.markupPercent, client);
+            const bestSell =
+              best.sellPrice ?? clientSellPrice(best.price, bands, settings.markupPercent, client);
             return (
               <div key={group.key} className="overflow-hidden rounded-xl border">
                 <button
@@ -291,9 +306,13 @@ export default function CatalogPage() {
                   </div>
                   <div className="hidden shrink-0 text-right sm:block">
                     <p className="text-sm font-semibold">{formatMoney(bestSell)}</p>
-                    <p className="text-xs text-muted-foreground">
-                      клиенту · закуп от {formatMoney(group.minPrice)}
-                    </p>
+                    {viewer.showCost ? (
+                      <p className="text-xs text-muted-foreground">
+                        клиенту · {viewer.costLabel.toLowerCase()} от {formatMoney(group.minPrice)}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">цена клиенту</p>
+                    )}
                     <p className="text-xs text-muted-foreground">
                       от {formatDays(group.minDays)} · {formatStock(group.stock)}
                     </p>
@@ -308,20 +327,22 @@ export default function CatalogPage() {
                         settings.markupPercent,
                         client,
                       );
-                      const sell = breakdown.sell;
-                      const warn = sellWarning(
-                        offer.price,
-                        bands,
-                        settings.markupPercent,
-                        client,
-                      );
-                      const band = findBand(offer.price, bands);
+                      const sell = offer.sellPrice ?? breakdown.sell;
+                      const warn = viewer.showCost
+                        ? sellWarning(
+                            offer.costPrice ?? offer.price,
+                            bands,
+                            settings.markupPercent,
+                            client,
+                          )
+                        : "";
+                      const band = findBand(offer.costPrice ?? offer.price, bands);
                       const cars = applicabilityOf(offer);
                       return (
                         <div
                           key={offer.id}
                           className="flex flex-col gap-2 border-b px-4 py-3 last:border-b-0 sm:flex-row sm:items-start"
-                          onContextMenu={offerContextAdd(offer, addToDraft, clientId)}
+                          onContextMenu={(event) => openQuoteContextMenu(event, offer, setMenu)}
                         >
                           <div className="shrink-0">
                             <OfferMedia images={offer.images} sku={offer.sku} size="sm" />
@@ -360,15 +381,22 @@ export default function CatalogPage() {
                               >
                                 {formatMoney(sell, offer.currency)}
                               </p>
-                              <p className="text-[11px] text-muted-foreground">
-                                закуп {formatMoney(offer.price, offer.currency)} · {formatBandLabel(band)}
-                              </p>
-                              <PriceFormula
-                                breakdown={breakdown}
-                                currency={offer.currency}
-                                compact
-                              />
-                              {warn ? (
+                              {viewer.showCost ? (
+                                <p className="text-[11px] text-muted-foreground">
+                                  {viewer.costLabel.toLowerCase()}{" "}
+                                  {formatMoney(offer.costPrice ?? offer.price, offer.currency)} ·{" "}
+                                  {formatBandLabel(band)}
+                                </p>
+                              ) : null}
+                              {viewer.view !== "clean" ? (
+                                <PriceFormula
+                                  breakdown={breakdown}
+                                  currency={offer.currency}
+                                  compact
+                                  view={viewer.view}
+                                />
+                              ) : null}
+                              {warn && viewer.showCost ? (
                                 <p className="text-[11px] text-amber-800">ниже закупа — только предупреждение</p>
                               ) : null}
                             </div>
@@ -411,12 +439,17 @@ export default function CatalogPage() {
         clientId={clientId}
         markupPercent={settings.markupPercent}
         priceBands={bands}
-        onAdd={(item) => void addToDraft(item)}
         onOpenChange={(openState) => {
           if (!openState) setSelected(null);
         }}
       />
       <BrandDialog brand={brandInfo} onOpenChange={(open) => !open && setBrandInfo(null)} />
+      <QuoteContextMenu
+        menu={menu}
+        clientId={clientId}
+        onClose={() => setMenu(null)}
+        onDetails={(offer) => setSelected(offer)}
+      />
     </div>
   );
 }

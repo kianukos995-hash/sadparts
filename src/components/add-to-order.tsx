@@ -1,12 +1,101 @@
 "use client";
 
-import { ShoppingCart, ListPlus } from "lucide-react";
+import { useState, type MouseEvent } from "react";
+import { ShoppingCart, Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { availableStock } from "@/lib/stock";
 import type { Offer } from "@/lib/types";
-import type { MouseEvent } from "react";
+
+export const STOCK_EMPTY_ERROR = "выбери другого поставщика, у этого нет данной позиции";
+
+export function qtyStep(offer: Offer) {
+  return Math.max(1, offer.multiplicity || 1);
+}
+
+export async function addOfferToCart(
+  offer: Offer,
+  addToDraft: ReturnType<typeof useAvtoPrice>["addToDraft"],
+  orders: ReturnType<typeof useAvtoPrice>["orders"],
+  qty: number,
+  options?: { clientId?: string; orderId?: string; newOrder?: boolean },
+) {
+  const step = qtyStep(offer);
+  const count = Math.max(step, Math.ceil(qty / step) * step);
+  const free = availableStock(offer, orders);
+  if (free <= 0 || offer.stock <= 0) {
+    toast.error(STOCK_EMPTY_ERROR);
+    return null;
+  }
+  if (count > free) {
+    toast.error(
+      `На складе «${offer.warehouse || "этот"}» свободно ${free} шт. ${STOCK_EMPTY_ERROR}`,
+    );
+    return null;
+  }
+  const next = await addToDraft(offer, count, options);
+  toast.success(`${offer.sku} → ${next.number} · ${count} шт.`);
+  return next;
+}
+
+export function QtyControl({
+  offer,
+  compact,
+  clientId,
+  orderId,
+}: {
+  offer: Offer;
+  compact?: boolean;
+  clientId?: string;
+  orderId?: string;
+}) {
+  const { addToDraft, orders } = useAvtoPrice();
+  const step = qtyStep(offer);
+  const [qty, setQty] = useState(step);
+  const free = availableStock(offer, orders);
+
+  return (
+    <div className="flex flex-wrap items-center gap-1" onClick={(event) => event.stopPropagation()}>
+      <Button
+        size="icon-sm"
+        variant="outline"
+        type="button"
+        onClick={() => setQty((value) => Math.max(step, value - step))}
+      >
+        <Minus />
+      </Button>
+      <Input
+        className="h-7 w-14 px-1 text-center"
+        value={qty}
+        onChange={(event) => setQty(Math.max(step, Number.parseInt(event.target.value, 10) || step))}
+      />
+      <Button
+        size="icon-sm"
+        variant="outline"
+        type="button"
+        onClick={() => setQty((value) => value + step)}
+      >
+        <Plus />
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        type="button"
+        onClick={() => void addOfferToCart(offer, addToDraft, orders, qty, { clientId, orderId })}
+      >
+        <ShoppingCart />
+        {compact ? "В корзину" : "Добавить"}
+      </Button>
+      {free <= 0 ? (
+        <span className="text-[11px] text-amber-800">нет на складе</span>
+      ) : (
+        <span className="text-[11px] text-muted-foreground">своб. {free}</span>
+      )}
+    </div>
+  );
+}
 
 export function AddToOrderButtons({
   offer,
@@ -19,73 +108,21 @@ export function AddToOrderButtons({
   clientId?: string;
   orderId?: string;
 }) {
-  const { addToDraft, draft, clients, orders } = useAvtoPrice();
-  const client = clients.find((item) => item.id === clientId);
-  const target = orderId ? orders.find((item) => item.id === orderId) : null;
-  const label = target
-    ? `В ${target.number}`
-    : client
-      ? compact
-        ? "В корзину"
-        : `В ${client.name}`
-      : compact
-        ? "В корзину"
-        : draft
-          ? `В ${draft.number}`
-          : "В корзину";
-
-  async function intoCurrent() {
-    const qty = Math.max(1, offer.multiplicity || 1);
-    const free = availableStock(offer, orders);
-    if (qty > free) {
-      toast.warning(
-        `Свободно ${free} шт. (прайс ${offer.stock}). Кладём ${qty} — остаток в учёте уйдёт в минус.`,
-      );
-    }
-    const next = await addToDraft(offer, qty, {
-      clientId: clientId || undefined,
-      orderId: orderId || undefined,
-    });
-    toast.success(`${offer.sku} → ${next.number}`);
-  }
-
-  async function intoNew() {
-    const next = await addToDraft(offer, Math.max(1, offer.multiplicity || 1), {
-      newOrder: true,
-      clientId: clientId || undefined,
-    });
-    toast.success(`Новая корзина ${next.number}`);
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-1">
-      <Button size="sm" variant="outline" onClick={() => void intoCurrent()}>
-        <ShoppingCart />
-        {label}
-      </Button>
-      <Button size="sm" variant="ghost" title="Новая корзина" onClick={() => void intoNew()}>
-        <ListPlus />
-        {compact ? "" : "Новая корзина"}
-      </Button>
-    </div>
-  );
+  return <QtyControl offer={offer} compact={compact} clientId={clientId} orderId={orderId} />;
 }
 
-export function offerContextAdd(
+export type QuoteMenuState = {
+  x: number;
+  y: number;
+  offer: Offer;
+};
+
+export function openQuoteContextMenu(
+  event: MouseEvent,
   offer: Offer,
-  addToDraft: AvtoAdd,
-  clientId?: string,
-  orderId?: string,
+  setMenu: (menu: QuoteMenuState) => void,
 ) {
-  return async (event: MouseEvent) => {
-    event.preventDefault();
-    const next = await addToDraft(offer, Math.max(1, offer.multiplicity || 1), {
-      newOrder: !orderId,
-      orderId: orderId || undefined,
-      clientId: clientId || undefined,
-    });
-    toast.success(`ПКМ: ${offer.sku} в ${next.number}`);
-  };
+  event.preventDefault();
+  event.stopPropagation();
+  setMenu({ x: event.clientX, y: event.clientY, offer });
 }
-
-type AvtoAdd = ReturnType<typeof useAvtoPrice>["addToDraft"];

@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { OrderEditor } from "@/components/order-editor";
 import { RosskoCheckout } from "@/components/rossko-checkout";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
+import { useAuth } from "@/hooks/use-auth";
 import { formatMoney } from "@/lib/format";
 import { emptyDraft } from "@/lib/order";
 import { priceOrder } from "@/lib/order-price";
@@ -29,6 +30,7 @@ function CartPageInner() {
     upsertOrder,
     removeOrder,
   } = useAvtoPrice();
+  const { user } = useAuth();
   const selectedId = params.get("id") || draft?.id || "";
   const selected = drafts.find((item) => item.id === selectedId) ?? draft;
 
@@ -51,7 +53,12 @@ function CartPageInner() {
         </div>
         <Button
           onClick={() => {
-            const created = emptyDraft(orders, clients, settings.markupPercent, selected?.clientId);
+            const created = emptyDraft(
+              orders,
+              clients,
+              settings.markupPercent,
+              selected?.clientId || user?.clientId,
+            );
             void upsertOrder(created).then(() => {
               setActiveDraftId(created.id);
               router.push(`/cart?id=${created.id}`);
