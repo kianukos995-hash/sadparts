@@ -405,7 +405,8 @@ function DeskSettings() {
 }
 
 function AdminDirectory({ users }: { users: StaffUser[] }) {
-  const { organizations, clients, upsertOrganization, upsertClient, settings } = useAvtoPrice();
+  const { organizations, clients, upsertOrganization, takeOrganizationKey, upsertClient, settings } =
+    useAvtoPrice();
   const [tab, setTab] = useState("orgs");
   const managers = users.filter((item) => item.role === "manager");
   const clientUsers = users.filter((item) => item.role === "client");
@@ -438,7 +439,7 @@ function AdminDirectory({ users }: { users: StaffUser[] }) {
                 <PolicyAccordion
                   key={org.id}
                   title={org.name}
-                  hint={`${org.email || ""} · потолок ${org.maxMarkup ?? "нет"}%`}
+                  hint={`${org.email || ""} · потолок ${org.maxMarkup ?? "нет"}%${org.adminControlsClients ? " · ключ забран" : ""}`}
                 >
                   <OrgPolicyForm
                     org={org}
@@ -446,6 +447,11 @@ function AdminDirectory({ users }: { users: StaffUser[] }) {
                     bands={bands}
                     onSave={(next) =>
                       void upsertOrganization(next).then(() => toast.success("Организация сохранена"))
+                    }
+                    onTakeKey={() =>
+                      void takeOrganizationKey(org.id).then(() =>
+                        toast.success("Ключ забран. Клиентами управляете вы."),
+                      )
                     }
                   />
                 </PolicyAccordion>
@@ -658,17 +664,22 @@ function OrgPolicyForm({
   account,
   bands,
   onSave,
+  onTakeKey,
 }: {
   org: Organization;
   account?: StaffUser;
   bands: PriceBand[];
   onSave: (org: Organization) => void;
+  onTakeKey?: () => void;
 }) {
   const [draft, setDraft] = useState(org);
   return (
     <div className="grid gap-3">
       {account ? <UserSeeCost userId={account.id} seeCost={Boolean(account.seeCost)} /> : null}
-      <div className="grid gap-3 sm:grid-cols-3">
+      {org.adminControlsClients ? (
+        <p className="text-xs text-destructive">Ключ забран. Клиентами и их ценами управляет администратор.</p>
+      ) : null}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <NumberField
           label="Наценка, %"
           value={draft.markupPercent ?? ""}
@@ -680,11 +691,24 @@ function OrgPolicyForm({
           onChange={(value) => setDraft({ ...draft, discountPercent: value ?? 0 })}
         />
         <NumberField
-          label="Потолок, %"
+          label="Потолок наценки, %"
           value={draft.maxMarkup ?? ""}
           onChange={(value) => setDraft({ ...draft, maxMarkup: value })}
         />
+        <NumberField
+          label="Потолок скидки клиентам, %"
+          value={draft.maxDiscountPercent ?? ""}
+          onChange={(value) => setDraft({ ...draft, maxDiscountPercent: value })}
+        />
       </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={Boolean(draft.adminControlsClients)}
+          onChange={(event) => setDraft({ ...draft, adminControlsClients: event.target.checked })}
+        />
+        Клиентами управляет администратор
+      </label>
       <div className="grid gap-2">
         <Label>Коридоры организации</Label>
         <PriceBandsEditor
@@ -692,9 +716,24 @@ function OrgPolicyForm({
           onChange={(next) => setDraft({ ...draft, priceBands: next })}
         />
       </div>
-      <Button size="sm" className="w-fit" onClick={() => onSave(draft)}>
-        Сохранить политику
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" className="w-fit" onClick={() => onSave(draft)}>
+          Сохранить политику
+        </Button>
+        {onTakeKey && !org.adminControlsClients && org.accessKey ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-fit"
+            onClick={() => {
+              if (!confirm(`Забрать ключ у «${org.name}»?`)) return;
+              onTakeKey();
+            }}
+          >
+            Забрать ключ
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 }
