@@ -9,7 +9,7 @@ import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { availableStock } from "@/lib/stock";
 import type { Offer } from "@/lib/types";
 
-export const STOCK_EMPTY_ERROR = "выбери другого поставщика, у этого нет данной позиции";
+export const STOCK_EMPTY_ERROR = "нет в наличии на этом складе — выберите другую позицию";
 
 export function qtyStep(offer: Offer) {
   return Math.max(1, offer.multiplicity || 1);

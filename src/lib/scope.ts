@@ -109,7 +109,7 @@ export function visibleAccessKeys<T extends { issuedByUserId?: string; organizat
 }
 
 export function homeHref(role?: UserRole) {
-  return clientNavOnly(role) ? "/quote" : "/";
+  return "/";
 }
 
 export function orgAsClient(org: Organization): Client {

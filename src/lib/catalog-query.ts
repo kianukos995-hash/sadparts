@@ -1,5 +1,6 @@
 import { applyPairFields } from "@/lib/offer-extra";
 import { browseCatalog, catalogMeta, type CatalogBrowseFilter } from "@/lib/file-catalog";
+import { categoryMatches } from "@/lib/client-catalog";
 import { isRosskoDemo, isRosskoSupplier, rosskoSearch } from "@/lib/rossko";
 import type { Offer, Supplier } from "@/lib/types";
 
@@ -32,6 +33,7 @@ export async function queryPriceOffers(
     q: filters.q,
     qField: filters.qField,
     brand: filters.brand,
+    category: filters.category,
     minPrice: filters.minPrice,
     maxPrice: filters.maxPrice,
     maxDays: filters.maxDays,
@@ -64,6 +66,7 @@ export async function queryPriceOffers(
     ? demoOffers.filter((offer) => {
         if (filters.supplierId && offer.supplierId !== filters.supplierId) return false;
         if (filters.brand && offer.brand.toLowerCase() !== filters.brand.toLowerCase()) return false;
+        if (!categoryMatches(offer.category, filters.category)) return false;
         if (filters.inStock && offer.stock <= 0) return false;
         if (filters.minPrice && offer.price < filters.minPrice) return false;
         if (filters.maxPrice && offer.price > filters.maxPrice) return false;

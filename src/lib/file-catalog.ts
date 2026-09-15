@@ -2,6 +2,7 @@ import { createWriteStream } from "node:fs";
 import { once } from "node:events";
 import { mkdir, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
+import { categoryMatches } from "@/lib/client-catalog";
 import { normalizeSku, offerKey } from "@/lib/format";
 import { applyPatch, readPatches } from "@/lib/offer-patches";
 import { applyPairFields } from "@/lib/offer-extra";
@@ -168,6 +169,7 @@ export interface CatalogBrowseFilter {
   q?: string;
   qField?: "any" | "sku" | "oem" | "name" | "brand";
   brand?: string;
+  category?: string;
   minPrice?: number;
   maxPrice?: number;
   maxDays?: number;
@@ -179,6 +181,7 @@ export interface CatalogBrowseFilter {
 
 function rowMatches(row: CatalogRow, filter: CatalogBrowseFilter, q: string, qSku: string) {
   if (filter.brand && row.brand.toLowerCase() !== filter.brand.toLowerCase()) return false;
+  if (!categoryMatches(row.category, filter.category)) return false;
   if (filter.inStock && row.stock <= 0) return false;
   if (filter.minPrice && row.price < filter.minPrice) return false;
   if (filter.maxPrice && row.price > filter.maxPrice) return false;
@@ -220,7 +223,8 @@ function browseIsOpen(filter: CatalogBrowseFilter) {
     !filter.maxPrice &&
     !filter.maxDays &&
     !filter.inStock &&
-    !filter.changedOnly
+    !filter.changedOnly &&
+    !filter.category
   );
 }
 

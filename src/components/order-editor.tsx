@@ -174,8 +174,8 @@ export function OrderEditor({
               <TableRow>
                 <TableHead>Артикул</TableHead>
                 <TableHead className="hidden md:table-cell">OEM</TableHead>
-                <TableHead>Поставщик</TableHead>
-                <TableHead className="hidden lg:table-cell">Откуда</TableHead>
+                {viewer.locked ? null : <TableHead>Поставщик</TableHead>}
+                <TableHead className="hidden lg:table-cell">{viewer.locked ? "Откуда" : "Откуда"}</TableHead>
                 <TableHead className="text-right">Кол-во</TableHead>
                 {viewer.showCost ? (
                   <TableHead className="hidden text-right sm:table-cell">Закуп</TableHead>
@@ -207,11 +207,13 @@ export function OrderEditor({
                     <TableCell className="hidden font-mono text-xs md:table-cell">
                       {line.oem || "—"}
                     </TableCell>
+                    {viewer.locked ? null : (
                     <TableCell>{names.get(line.supplierId) ?? "—"}</TableCell>
+                    )}
                     <TableCell className="hidden lg:table-cell">
                       {viewer.locked ? (
                         <p className="text-xs text-muted-foreground">
-                          {(line.fulfillFrom ?? "supplier") === "own" ? "свой склад" : "у поставщика"}
+                          {(line.fulfillFrom ?? "supplier") === "own" ? "свой склад" : "поставка"}
                         </p>
                       ) : (
                         <select
@@ -235,7 +237,7 @@ export function OrderEditor({
                         <p className="text-[11px] text-muted-foreground">
                           свой склад {ownQty(warehouseLots, line.sku, line.brand, order.organizationId, line.warehouse)} шт.
                         </p>
-                      ) : (
+                      ) : viewer.locked ? null : (
                         <p className="text-[11px] text-muted-foreground">у поставщика</p>
                       )}
                     </TableCell>
@@ -281,7 +283,7 @@ export function OrderEditor({
                     </TableCell>
                     <TableCell className="hidden text-right lg:table-cell">
                       {formatDays(line.deliveryDays)}
-                      {line.warehouse ? (
+                      {line.warehouse && !viewer.locked ? (
                         <p className="text-[11px] text-muted-foreground">{line.warehouse}</p>
                       ) : null}
                     </TableCell>

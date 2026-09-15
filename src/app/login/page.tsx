@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/use-auth";
+import { homeHref } from "@/lib/scope";
+import type { UserRole } from "@/lib/types";
 
 export default function LoginPage() {
   const { login, loginByKey, guest, user } = useAuth();
@@ -20,11 +22,11 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
 
   if (user) {
-    router.replace(user.role === "client" || user.role === "guest" ? "/quote" : "/");
+    router.replace(homeHref(user.role));
   }
 
-  function goHome(role: string) {
-    router.replace(role === "client" || role === "guest" ? "/quote" : "/");
+  function goHome(role: UserRole) {
+    router.replace(homeHref(role));
   }
 
   return (
@@ -136,7 +138,7 @@ export default function LoginPage() {
                   guest()
                     .then(() => {
                       toast.success("Гостевой вход");
-                      router.replace("/quote");
+                      router.replace(homeHref("guest"));
                     })
                     .catch((error: unknown) =>
                       toast.error(error instanceof Error ? error.message : "Ошибка"),

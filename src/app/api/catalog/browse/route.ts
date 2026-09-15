@@ -6,6 +6,7 @@ import { fail, requireUser } from "@/lib/session";
 import { publicOffer, viewerPriceContext } from "@/lib/viewer-price";
 import { clientNavOnly } from "@/lib/scope";
 import { catalogSupplierIds, filterOffersForActor } from "@/lib/suppliers-scope";
+import { anonymizeOffer, hideSuppliersFor } from "@/lib/client-catalog";
 
 export const runtime = "nodejs";
 
@@ -33,17 +34,26 @@ export async function GET(request: NextRequest) {
   }
   const settings = await readSettings();
   const live = url.searchParams.get("live") === "1" && user.role === "admin";
-  const requestedSupplier = url.searchParams.get("supplierId") || undefined;
+  const requestedSupplier = hideSuppliersFor(user.role)
+    ? undefined
+    : url.searchParams.get("supplierId") || undefined;
   if (requestedSupplier && !allowedIds.has(requestedSupplier)) {
     return Response.json({ offers: [], total: 0, page: 0, pageSize: 40 });
   }
+  const q = url.searchParams.get("q") ?? "";
+  const category = url.searchParams.get("category") || undefined;
+  const brand = url.searchParams.get("brand") || undefined;
+  if (clientNavOnly(user.role) && !q.trim() && !category) {
+    return Response.json({ offers: [], total: 0, page: 0, pageSize: 40, brands: [] });
+  }
   const result = await queryPriceOffers(scopedSuppliers, scopedOffers, {
-    q: url.searchParams.get("q") ?? "",
+    q,
     qField: (["sku", "oem", "name", "brand"].includes(url.searchParams.get("field") ?? "")
       ? (url.searchParams.get("field") as CatalogBrowseFilter["qField"])
       : "any"),
-    supplierId: url.searchParams.get("supplierId") || undefined,
-    brand: url.searchParams.get("brand") || undefined,
+    supplierId: requestedSupplier,
+    brand,
+    category,
     minPrice: num(url.searchParams.get("minPrice")),
     maxPrice: num(url.searchParams.get("maxPrice")),
     maxDays: num(url.searchParams.get("maxDays")),
@@ -56,8 +66,9 @@ export async function GET(request: NextRequest) {
   const selectedClientId = url.searchParams.get("clientId") || user.clientId;
   const selected = store.clients.find((item) => item.id === selectedClientId);
   const ctx = viewerPriceContext(user, store, settings);
-  const offers = result.offers.map((offer) => publicOffer(offer, ctx, selected));
-  const q = url.searchParams.get("q") ?? "";
+  const offers = result.offers
+    .map((offer) => publicOffer(offer, ctx, selected))
+    .map((offer) => (hideSuppliersFor(user.role) ? anonymizeOffer(offer) : offer));
   if (q.trim()) {
     const { logActivity } = await import("@/lib/activity");
     void logActivity({

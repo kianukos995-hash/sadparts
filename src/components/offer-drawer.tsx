@@ -150,7 +150,11 @@ function DrawerBody({
         <div className="flex flex-wrap items-center gap-2">
           <BrandMark brand={offer.brand} onOpen={() => setBrandOpen(true)} />
           <Badge variant="secondary">{offer.category}</Badge>
-          <Badge variant="outline">{names.get(offer.supplierId)}</Badge>
+          {viewer.locked ? (
+            <Badge variant="outline">срок {formatDays(offer.deliveryDays)}</Badge>
+          ) : (
+            <Badge variant="outline">{names.get(offer.supplierId)}</Badge>
+          )}
           <Badge variant="outline">{formatBandLabel(band)}</Badge>
         </div>
         <div>
@@ -179,8 +183,8 @@ function DrawerBody({
         <OfferMedia images={offer.images} sku={offer.sku} size="lg" />
         <dl className="grid grid-cols-2 gap-3 text-sm">
           <Info label="Остаток" value={formatStock(offer.stock)} />
-          <Info label="Склад" value={offer.warehouse || "—"} />
-          <Info label="До Москвы" value={formatDays(offer.deliveryDays)} />
+          <Info label="Склад" value={viewer.locked ? "склад" : offer.warehouse || "—"} />
+          <Info label="Срок поставки" value={formatDays(offer.deliveryDays)} />
           <Info label="Обновлено" value={formatDateTime(offer.updatedAt)} />
         </dl>
 
@@ -255,7 +259,9 @@ function DrawerBody({
         ) : null}
 
         <div>
-          <h3 className="mb-2 text-sm font-medium">Аналоги и предложения</h3>
+          <h3 className="mb-2 text-sm font-medium">
+            {viewer.locked ? "Аналоги и сроки" : "Аналоги и предложения"}
+          </h3>
           <div className="flex flex-col gap-2">
             {related.map((item) => (
               <div
@@ -266,10 +272,16 @@ function DrawerBody({
                 )}
               >
                 <div>
-                  <p className="text-sm font-medium">{names.get(item.supplierId)}</p>
+                  <p className="text-sm font-medium">
+                    {viewer.locked
+                      ? `Срок ${formatDays(item.deliveryDays)}`
+                      : names.get(item.supplierId)}
+                  </p>
                   <p className="text-xs text-muted-foreground">
-                    {item.brand} {item.sku} · склад {item.warehouse || "не указан"} ·{" "}
-                    {formatStock(item.stock)} · {formatDays(item.deliveryDays)} с этого склада
+                    {item.brand} {item.sku}
+                    {viewer.locked
+                      ? ` · наличие ${formatStock(item.stock)}`
+                      : ` · склад ${item.warehouse || "не указан"} · ${formatStock(item.stock)} · ${formatDays(item.deliveryDays)} с этого склада`}
                   </p>
                 </div>
                 <p className="text-sm font-semibold">

@@ -8,11 +8,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { useAuth } from "@/hooks/use-auth";
+import { ClientHome } from "@/components/client-home";
 import { RoleGate } from "@/components/role-gate";
 import { daysSince, formatDateTime, formatMoney } from "@/lib/format";
+import { clientNavOnly } from "@/lib/scope";
 import { cn } from "@/lib/utils";
 
 export default function HomePage() {
+  const { user, loading } = useAuth();
+  if (loading) {
+    return <p className="text-sm text-muted-foreground">Загрузка…</p>;
+  }
+  if (user && clientNavOnly(user.role)) {
+    return <ClientHome />;
+  }
   return (
     <RoleGate allow={["admin", "organization", "manager"]}>
       <HomeInner />

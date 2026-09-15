@@ -8,6 +8,7 @@ import {
   ClipboardList,
   FileSpreadsheet,
   History,
+  Home,
   KeyRound,
   LayoutGrid,
   BookOpen,
@@ -58,6 +59,7 @@ const ALL_GROUPS = [
     title: "Клиенту",
     roles: ["client", "guest"] as UserRole[],
     items: [
+      { href: "/", label: "Главная", icon: Home },
       { href: "/quote", label: "Проценка", icon: Search },
       { href: "/cart", label: "Корзина", icon: ShoppingCart },
       { href: "/orders", label: "Заказы", icon: ClipboardList },

@@ -10,6 +10,7 @@ import {
   scopedMoney,
   scopedOrders,
 } from "@/lib/scope";
+import { anonymizeSupplier, hideSuppliersFor } from "@/lib/client-catalog";
 import { publicOffer, publicSupplier, viewerPriceContext } from "@/lib/viewer-price";
 import type { AppSettings } from "@/lib/types";
 import {
@@ -32,16 +33,19 @@ export function publicStoreFor(
   );
   const orgs = store.organizations ?? [];
   const catalogIds = catalogSupplierIds(store.suppliers, user);
+  const hideNames = hideSuppliersFor(user.role);
   const suppliers = canSeeSuppliers(user.role)
     ? visibleSuppliers(store.suppliers, user).map((item) =>
         sanitizeSupplierForActor(item, user, orgs),
       )
     : store.suppliers
         .filter((item) => catalogIds.has(item.id))
-        .map((item) => publicSupplier(stripSupplier(item), true));
-  const offers = filterOffersForActor(store.offers ?? [], store.suppliers, user).map((offer) =>
-    publicOffer(offer, ctx),
-  );
+        .map((item) => anonymizeSupplier(publicSupplier(stripSupplier(item), true)));
+  const offers = hideNames
+    ? []
+    : filterOffersForActor(store.offers ?? [], store.suppliers, user).map((offer) =>
+        publicOffer(offer, ctx),
+      );
   const organizations =
     user.role === "admin"
       ? orgs
@@ -120,5 +124,7 @@ export function publicOffersFor(
   settings: AppSettings,
 ) {
   const ctx = viewerPriceContext(user, store, settings);
-  return offers.map((offer) => publicOffer(offer, ctx));
+  const priced = offers.map((offer) => publicOffer(offer, ctx));
+  if (!hideSuppliersFor(user.role)) return priced;
+  return priced.map((offer) => ({ ...offer, warehouse: "склад" }));
 }
