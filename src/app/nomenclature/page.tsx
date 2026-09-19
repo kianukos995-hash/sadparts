@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { canCreateSupplier } from "@/lib/suppliers-scope";
 import { RoleGate } from "@/components/role-gate";
 import { Pencil, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -205,6 +206,7 @@ function NomenclatureInner() {
                 setSupplierId(id === "all" ? "" : id);
                 setPage(0);
               }}
+              canCreate={canCreateSupplier(viewer.user)}
             />
           </div>
           <div>

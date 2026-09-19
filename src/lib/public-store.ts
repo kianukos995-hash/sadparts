@@ -1,4 +1,4 @@
-import type { AccessKeyRecord, Offer, Order, PublicUser, StoreSnapshot, Supplier } from "@/lib/types";
+import type { AccessKeyRecord, Offer, Order, PublicUser, StoreSnapshot, Supplier, SupplierRequest } from "@/lib/types";
 import {
   canSeeCost,
   canSeeMoney,
@@ -14,6 +14,7 @@ import { anonymizeSupplier, hideSuppliersFor } from "@/lib/client-catalog";
 import { publicOffer, publicSupplier, viewerPriceContext } from "@/lib/viewer-price";
 import type { AppSettings } from "@/lib/types";
 import {
+  canSeeSupplierCatalog,
   catalogSupplierIds,
   filterOffersForActor,
   sanitizeSupplierForActor,
@@ -46,6 +47,7 @@ export function publicStoreFor(
     : filterOffersForActor(store.offers ?? [], store.suppliers, user).map((offer) =>
         publicOffer(offer, ctx),
       );
+  const supplierRequests = publicSupplierRequests(user, store.supplierRequests ?? []);
   const organizations =
     user.role === "admin"
       ? orgs
@@ -93,6 +95,7 @@ export function publicStoreFor(
     managerMemberships: memberships,
     scheduleDays,
     scheduleArchives,
+    supplierRequests,
   };
 }
 
@@ -126,5 +129,21 @@ export function publicOffersFor(
   const ctx = viewerPriceContext(user, store, settings);
   const priced = offers.map((offer) => publicOffer(offer, ctx));
   if (!hideSuppliersFor(user.role)) return priced;
-  return priced.map((offer) => ({ ...offer, warehouse: "склад" }));
+  return priced;
+}
+
+function publicSupplierRequests(user: PublicUser, requests: SupplierRequest[]): SupplierRequest[] {
+  if (!canSeeSupplierCatalog(user)) return [];
+  const scoped =
+    user.role === "admin"
+      ? requests
+      : requests.filter(
+          (item) =>
+            item.requestedByUserId === user.id ||
+            (user.organizationId && item.organizationId === user.organizationId),
+        );
+  return scoped.map((item) => ({
+    ...item,
+    filePath: undefined,
+  }));
 }

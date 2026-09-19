@@ -483,6 +483,28 @@ export interface WarehouseDoc {
   lines: WarehouseDocLine[];
 }
 
+export type SupplierRequestStatus = "pending" | "approved" | "rejected";
+
+export interface SupplierRequest {
+  id: string;
+  createdAt: string;
+  requestedByUserId: string;
+  requestedByName: string;
+  requestedByEmail: string;
+  organizationId?: string;
+  name: string;
+  comment: string;
+  presetId?: string;
+  fileName?: string;
+  /** Относительный путь в data/, только на сервере. Клиенту не отдаём. */
+  filePath?: string;
+  status: SupplierRequestStatus;
+  adminNote?: string;
+  reviewedAt?: string;
+  reviewedByUserId?: string;
+  supplierId?: string;
+}
+
 export interface StoreSnapshot {
   version: number;
   suppliers: Supplier[];
@@ -499,6 +521,7 @@ export interface StoreSnapshot {
   managerMemberships: ManagerMembership[];
   scheduleDays: ScheduleDay[];
   scheduleArchives: ScheduleArchive[];
+  supplierRequests: SupplierRequest[];
 }
 
 export interface ParsedTable {

@@ -13,11 +13,13 @@ export function SupplierFilter({
   value,
   onChange,
   showCatalog = true,
+  canCreate = true,
 }: {
   suppliers: Supplier[];
   value: string;
   onChange: (id: string) => void;
   showCatalog?: boolean;
+  canCreate?: boolean;
 }) {
   const connected = suppliers.filter(isSupplierConnected);
   const current = value === "all" || !value ? "" : value;
@@ -67,7 +69,8 @@ export function SupplierFilter({
               </button>
             );
           })}
-          {SUPPLIER_PRESETS.filter(
+          {canCreate
+            ? SUPPLIER_PRESETS.filter(
             (preset) =>
               !suppliers.some(
                 (item) => item.presetId === preset.id || item.code === preset.code || item.name === preset.name,
@@ -82,7 +85,25 @@ export function SupplierFilter({
               <SupplierLogo src={preset.logoUrl} name={preset.name} size="sm" className="size-6 rounded-full" />
               <span className="max-w-28 truncate">{preset.name}</span>
             </Link>
-          ))}
+          ))
+            : SUPPLIER_PRESETS.filter(
+                (preset) =>
+                  !suppliers.some(
+                    (item) => item.presetId === preset.id || item.code === preset.code || item.name === preset.name,
+                  ),
+              )
+                .slice(0, 24)
+                .map((preset) => (
+                  <Link
+                    key={preset.id}
+                    href={`/settings?tab=suppliers&requestPreset=${preset.id}`}
+                    title={`${preset.name} — запросить добавление`}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-dashed py-0.5 pr-2.5 pl-0.5 text-xs text-muted-foreground hover:bg-muted"
+                  >
+                    <SupplierLogo src={preset.logoUrl} name={preset.name} size="sm" className="size-6 rounded-full" />
+                    <span className="max-w-28 truncate">{preset.name}</span>
+                  </Link>
+                ))}
           {connected.length === 0 && suppliers.length === 0 ? (
             <p className="text-xs text-muted-foreground">Поставщиков пока нет — добавьте в Настройках.</p>
           ) : null}

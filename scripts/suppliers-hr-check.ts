@@ -1,7 +1,9 @@
 import { computeManagerKpi } from "../src/lib/hr";
 import {
+  canCreateSupplier,
   canEditSupplier,
   canManageSuppliers,
+  canRequestSupplier,
   catalogSupplierIds,
   filterOffersForActor,
   looksMaskedSecret,
@@ -127,7 +129,13 @@ function main() {
 
   assert(supplierVisibleTo(locked, org), "org sees shared");
   assert(supplierVisibleTo(own, org), "org sees own");
-  assert(!supplierVisibleTo(privateAdmin, org), "org does not see unshared");
+  assert(supplierVisibleTo(privateAdmin, org), "org sees all suppliers including unshared");
+  assert(supplierVisibleTo(locked, manager), "manager sees all");
+  assert(!canCreateSupplier(org), "org cannot create");
+  assert(!canCreateSupplier(manager), "manager cannot create");
+  assert(canCreateSupplier(admin), "admin creates");
+  assert(canRequestSupplier(org) && canRequestSupplier(manager), "desk request");
+  assert(!canRequestSupplier(client) && !canRequestSupplier(guest), "client/guest no request");
   assert(!canEditSupplier(locked, org, orgs), "locked not editable");
   assert(canEditSupplier(own, org, orgs), "own editable");
   assert(!canEditSupplier(own, admin, orgs), "admin does not overwrite org private");
@@ -141,7 +149,7 @@ function main() {
   assert(!canEditSupplier(locked, manager, orgs), "manager cannot edit locked");
 
   const ids = catalogSupplierIds([locked, own, privateAdmin], org);
-  assert(ids.has("sup-admin") && ids.has("sup-org") && !ids.has("sup-hidden"), "catalog union");
+  assert(ids.has("sup-admin") && ids.has("sup-org") && ids.has("sup-hidden"), "org sees all in catalog");
   const guestIds = catalogSupplierIds([locked, own, privateAdmin], guest);
   assert(guestIds.has("sup-admin") && !guestIds.has("sup-org"), "guest only admin-owned");
 
@@ -184,7 +192,7 @@ function main() {
     },
   ];
   const filtered = filterOffersForActor(offers, [locked, own, privateAdmin], org);
-  assert(filtered.length === 1 && filtered[0].id === "a", "org offers exclude unshared");
+  assert(filtered.length === 2, "org offers include all suppliers");
 
   assert(looksMaskedSecret("••••"), "mask");
   assert(!looksMaskedSecret("live-key"), "live");

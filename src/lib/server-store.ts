@@ -42,6 +42,7 @@ import type {
   StoreSnapshot,
   Supplier,
   SupplierBill,
+  SupplierRequest,
   SyncLog,
 } from "@/lib/types";
 import { DEFAULT_COLUMN_MAP } from "@/lib/types";
@@ -265,6 +266,7 @@ function migrateStore(store: StoreSnapshot): StoreSnapshot {
     managerMemberships,
     scheduleDays: Array.isArray(store.scheduleDays) ? store.scheduleDays : [],
     scheduleArchives: Array.isArray(store.scheduleArchives) ? store.scheduleArchives : [],
+    supplierRequests: Array.isArray(store.supplierRequests) ? store.supplierRequests : [],
   };
 }
 
@@ -370,7 +372,8 @@ async function readStoreFile(): Promise<StoreSnapshot> {
         !Array.isArray(parsed.organizations) ||
         !Array.isArray(parsed.purchases) ||
         !Array.isArray(parsed.warehouseLots) ||
-        !Array.isArray(parsed.warehouseDocs)
+        !Array.isArray(parsed.warehouseDocs) ||
+        !Array.isArray(parsed.supplierRequests)
       ) {
         await persistStore(migrated);
       }
@@ -413,6 +416,35 @@ export function upsertSupplier(supplier: Supplier) {
       suppliers: exists
         ? store.suppliers.map((item) => (item.id === nextSupplier.id ? nextSupplier : item))
         : [nextSupplier, ...store.suppliers],
+    };
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function upsertSupplierRequest(request: SupplierRequest) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const current = (store.supplierRequests ?? []).filter((item) => item.id !== request.id);
+    const next: StoreSnapshot = {
+      ...store,
+      supplierRequests: [request, ...current].slice(0, 200),
+    };
+    await persistStore(next);
+    return next;
+  });
+}
+
+export function patchSupplierRequest(id: string, patch: Partial<SupplierRequest>) {
+  return enqueue(async () => {
+    const store = await readStoreFile();
+    const requests = store.supplierRequests ?? [];
+    const found = requests.find((item) => item.id === id);
+    if (!found) throw Object.assign(new Error("Запрос не найден"), { status: 404 });
+    const nextReq = { ...found, ...patch };
+    const next: StoreSnapshot = {
+      ...store,
+      supplierRequests: requests.map((item) => (item.id === id ? nextReq : item)),
     };
     await persistStore(next);
     return next;

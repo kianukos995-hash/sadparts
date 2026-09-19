@@ -29,6 +29,7 @@ import { QuoteContextMenu } from "@/components/quote-context-menu";
 import { ClientCartBar } from "@/components/client-carts";
 import { SearchPick } from "@/components/search-pick";
 import { SupplierFilter } from "@/components/supplier-filter";
+import { SupplierLogo } from "@/components/supplier-logo";
 import { SortToggle, type SortDir } from "@/components/sort-toggle";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { useViewerPricing } from "@/hooks/use-viewer-pricing";
@@ -41,7 +42,8 @@ import { clientPriceBreakdown } from "@/lib/pricing";
 import { sortOffers } from "@/lib/sort-offers";
 import { availableStock, formatFreeStock, reservedQty } from "@/lib/stock";
 import { ownQty } from "@/lib/warehouse";
-import { CATEGORIES, type Offer } from "@/lib/types";
+import { canCreateSupplier } from "@/lib/suppliers-scope";
+import { CATEGORIES, type Offer, type Supplier } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { normalizeSku } from "@/lib/format";
 
@@ -91,7 +93,7 @@ function QuotePageInner() {
   const client = viewer.client ?? clients.find((item) => item.id === quoteClientId);
   const targetOrder = orders.find((item) => item.id === orderId) ?? null;
   const names = useMemo(
-    () => new Map(suppliers.map((item) => [item.id, item.name])),
+    () => new Map(suppliers.map((item) => [item.id, item])),
     [suppliers],
   );
 
@@ -187,7 +189,7 @@ function QuotePageInner() {
     live,
     priceSort,
   ].filter(Boolean).length;
-  const colCount = viewer.locked ? 7 : viewer.showCost ? 9 : 8;
+  const colCount = viewer.locked ? 8 : viewer.showCost ? 9 : 8;
   const searched = Boolean(sku.trim() || name.trim() || category);
 
   function sellOf(offer: Offer) {
@@ -226,7 +228,7 @@ function QuotePageInner() {
         <h1 className="text-2xl font-semibold tracking-tight">Проценка</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {viewer.locked
-            ? "Цена продажная. Срок — дни поставки. Поставщиков не показываем. Ищите по артикулу, названию или категории — полный прайс закрыт."
+            ? "Цена продажная. Имя поставщика скрыто, видны логотип, срок и наличие. Ищите по артикулу, названию или категории — полный прайс закрыт."
             : "Цена — продажная с наценкой категории. ПКМ открывает меню, а не новый заказ. Ноль на складе нельзя положить в корзину."}
         </p>
       </div>
@@ -398,6 +400,7 @@ function QuotePageInner() {
                   setSupplierId(id || "all");
                   setPage(0);
                 }}
+                canCreate={canCreateSupplier(viewer.user)}
               />
             </div>
             ) : null}
@@ -510,7 +513,7 @@ function QuotePageInner() {
               <TableHead>Артикул</TableHead>
               <TableHead>Бренд</TableHead>
               <TableHead>Наименование</TableHead>
-              {viewer.locked ? null : <TableHead>Поставщик</TableHead>}
+              <TableHead>{viewer.locked ? "Склад" : "Поставщик"}</TableHead>
               {viewer.showCost ? (
                 <TableHead className="text-right">{viewer.costLabel}</TableHead>
               ) : null}
@@ -577,12 +580,13 @@ function QuotePageInner() {
                       {cars ? <p className="text-[11px] text-muted-foreground">{cars}</p> : null}
                       {viewer.showCost ? <PriceChange offer={offer} /> : null}
                     </TableCell>
-                    {viewer.locked ? null : (
                     <TableCell className="text-xs">
-                      <p>{names.get(offer.supplierId)}</p>
-                      <p className="text-[11px] text-muted-foreground">{offer.warehouse || "склад не указан"}</p>
+                      <QuoteSupplierCell
+                        supplier={names.get(offer.supplierId)}
+                        warehouse={offer.warehouse}
+                        hideName={viewer.locked}
+                      />
                     </TableCell>
-                    )}
                     {viewer.showCost ? (
                       <TableCell className="text-right">
                         {formatMoney(offer.costPrice ?? offer.price, offer.currency)}
@@ -655,11 +659,17 @@ function QuotePageInner() {
                               key={row.id}
                               className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2"
                             >
-                              <div>
+                              <div className="flex min-w-0 items-center gap-2">
+                                <SupplierLogo
+                                  supplier={names.get(row.supplierId)}
+                                  size="sm"
+                                  className="size-8 shrink-0 rounded-md"
+                                />
+                                <div>
                                 {viewer.locked ? (
                                   <>
                                     <p className="text-sm font-medium">
-                                      Склад · срок {formatDays(row.deliveryDays)}
+                                      {row.warehouse || "склад"} · {formatDays(row.deliveryDays)}
                                     </p>
                                     <p className="text-xs text-muted-foreground">
                                       наличие {formatStock(row.stock)}
@@ -668,7 +678,7 @@ function QuotePageInner() {
                                 ) : (
                                   <>
                                     <p className="text-sm font-medium">
-                                      {names.get(row.supplierId) || "Поставщик"} · склад{" "}
+                                      {names.get(row.supplierId)?.name || "Поставщик"} · склад{" "}
                                       {row.warehouse || "не указан"}
                                     </p>
                                     <p className="text-xs text-muted-foreground">
@@ -677,6 +687,7 @@ function QuotePageInner() {
                                     </p>
                                   </>
                                 )}
+                                </div>
                               </div>
                               <div className="flex flex-wrap items-center gap-3">
                                 <p className="text-sm font-semibold">
@@ -757,6 +768,26 @@ function QuotePageInner() {
           else setSelected(offer);
         }}
       />
+    </div>
+  );
+}
+
+function QuoteSupplierCell({
+  supplier,
+  warehouse,
+  hideName,
+}: {
+  supplier?: Supplier;
+  warehouse?: string;
+  hideName: boolean;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <SupplierLogo supplier={supplier} size="sm" className="size-8 shrink-0 rounded-md" />
+      <div className="min-w-0">
+        {hideName ? null : <p className="truncate font-medium">{supplier?.name || "Поставщик"}</p>}
+        <p className="truncate text-[11px] text-muted-foreground">{warehouse || "склад не указан"}</p>
+      </div>
     </div>
   );
 }

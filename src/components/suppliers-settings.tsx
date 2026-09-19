@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { SupplierFormDialog } from "@/components/supplier-form";
 import { SupplierLogo } from "@/components/supplier-logo";
 import { PriceListUpload } from "@/components/price-list-upload";
+import { SupplierRequestPanel } from "@/components/supplier-request-panel";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { useAuth } from "@/hooks/use-auth";
 import { formatDays, maskKey } from "@/lib/format";
@@ -25,23 +26,26 @@ import {
   isSupplierConnected,
   presetById,
 } from "@/lib/supplier-presets";
-import { canDeleteSupplier, canEditSupplier, canManageSuppliers } from "@/lib/suppliers-scope";
+import { canCreateSupplier, canDeleteSupplier, canEditSupplier, canSeeSupplierCatalog } from "@/lib/suppliers-scope";
 import type { Supplier } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export function SuppliersSettingsPanel() {
   const search = useSearchParams();
   const presetFromUrl = search.get("preset") ?? undefined;
+  const requestPresetFromUrl = search.get("requestPreset") ?? undefined;
   const { user } = useAuth();
   const { suppliers, organizations, upsertSupplier, removeSupplier, refresh } = useAvtoPrice();
-  const [open, setOpen] = useState(Boolean(presetFromUrl));
+  const canSee = canSeeSupplierCatalog(user);
+  const canCreate = canCreateSupplier(user);
+  const [open, setOpen] = useState(Boolean(presetFromUrl) && canCreateSupplier(user));
   const [editing, setEditing] = useState<Supplier | undefined>();
-  const [presetId, setPresetId] = useState<string | undefined>(presetFromUrl);
+  const [presetId, setPresetId] = useState<string | undefined>(canCreateSupplier(user) ? presetFromUrl : undefined);
   const [query, setQuery] = useState("");
   const [fileName, setFileName] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const [fileBusy, setFileBusy] = useState(false);
-  const canManage = canManageSuppliers(user, organizations);
+  const requestPreset = requestPresetFromUrl || (!canCreate ? presetFromUrl : undefined);
 
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -97,10 +101,10 @@ export function SuppliersSettingsPanel() {
     }
   }
 
-  if (!canManage) {
+  if (!canSee) {
     return (
       <p className="text-sm text-muted-foreground">
-        Поставщиков добавляет администратор или организация. Менеджеру доступ открывает организация.
+        Справочник поставщиков открыт администратору, организации и менеджеру.
       </p>
     );
   }
@@ -117,6 +121,8 @@ export function SuppliersSettingsPanel() {
         </CardHeader>
         <CardContent className="grid gap-4">
           <div className="flex flex-wrap gap-2">
+            {canCreate ? (
+              <>
             <Button
               onClick={() => {
                 setEditing(undefined);
@@ -133,6 +139,12 @@ export function SuppliersSettingsPanel() {
             <Button variant="outline" onClick={() => openPreset(CUSTOM_EMAIL_ID)}>
               На почту
             </Button>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Карточки ниже — весь справочник. Нового поставщика не создаём: заполните запрос.
+              </p>
+            )}
           </div>
           <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти в списке…" />
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
@@ -155,7 +167,15 @@ export function SuppliersSettingsPanel() {
                       setOpen(true);
                       return;
                     }
-                    openPreset(preset.id);
+                    if (canCreate) {
+                      openPreset(preset.id);
+                      return;
+                    }
+                    const params = new URLSearchParams(search.toString());
+                    params.set("tab", "suppliers");
+                    params.set("requestPreset", preset.id);
+                    window.history.replaceState(null, "", `/settings?${params.toString()}`);
+                    toast.message(`Запрос на «${preset.name}» — заполните форму ниже`);
                   }}
                 >
                   <SupplierLogo src={preset.logoUrl} name={preset.name} />
@@ -172,6 +192,9 @@ export function SuppliersSettingsPanel() {
         </CardContent>
       </Card>
 
+      <SupplierRequestPanel presetId={requestPreset} />
+
+      {canCreate ? (
       <Card>
         <CardHeader>
           <CardTitle>Файл с названием</CardTitle>
@@ -206,11 +229,12 @@ export function SuppliersSettingsPanel() {
           </Button>
         </CardContent>
       </Card>
+      ) : null}
 
       <Card>
         <CardHeader>
           <CardTitle>Подключённые</CardTitle>
-          <CardDescription>Ключи, файлы и почтовые алиасы. Видны тем, кому открыт доступ.</CardDescription>
+          <CardDescription>Ключи, файлы и почтовые алиасы. Видны администратору, организации и менеджеру.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-2">
           {suppliers.length === 0 ? (
@@ -284,6 +308,7 @@ export function SuppliersSettingsPanel() {
         </CardContent>
       </Card>
 
+      {canCreate || editing ? (
       <SupplierFormDialog
         open={open}
         onOpenChange={(next) => {
@@ -299,6 +324,7 @@ export function SuppliersSettingsPanel() {
           void upsertSupplier(supplier).then(() => toast.success("Поставщик сохранён"));
         }}
       />
+      ) : null}
     </div>
   );
 }

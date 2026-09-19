@@ -20,6 +20,7 @@ import { BrandDialog, BrandMark } from "@/components/brand-mark";
 import { PriceChange } from "@/components/price-change";
 import { SupplierFilter } from "@/components/supplier-filter";
 import { RoleGate } from "@/components/role-gate";
+import { canCreateSupplier } from "@/lib/suppliers-scope";
 import { AddToOrderButtons, openQuoteContextMenu, type QuoteMenuState } from "@/components/add-to-order";
 import { QuoteContextMenu } from "@/components/quote-context-menu";
 import { ClientCartBar } from "@/components/client-carts";
@@ -175,6 +176,7 @@ function CatalogInner() {
               setSupplierId(id || "all");
               setPage(0);
             }}
+            canCreate={canCreateSupplier(viewer.user)}
           />
         </div>
         <Select

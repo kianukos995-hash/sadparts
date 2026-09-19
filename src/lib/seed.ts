@@ -179,7 +179,7 @@ export function createDemoSuppliers(): Supplier[] {
       lockedByAdmin: true,
       sharedWithOrgIds: [EXAMPLE_ORG_ID],
       presetId: "rossko",
-      logoUrl: "",
+      logoUrl: "/suppliers/rossko.png",
       emailAlias: plusAliasFor("rossko"),
       apiKind: "rossko-soap",
     },
@@ -210,7 +210,7 @@ export function createDemoSuppliers(): Supplier[] {
       lockedByAdmin: true,
       sharedWithOrgIds: [EXAMPLE_ORG_ID],
       presetId: "autopiter",
-      logoUrl: "",
+      logoUrl: "/suppliers/autopiter.png",
       emailAlias: plusAliasFor("apiter"),
       apiKind: "bearer",
     },
@@ -241,7 +241,7 @@ export function createDemoSuppliers(): Supplier[] {
       lockedByAdmin: true,
       sharedWithOrgIds: [EXAMPLE_ORG_ID],
       presetId: "exist",
-      logoUrl: "",
+      logoUrl: "/suppliers/exist.png",
       emailAlias: plusAliasFor("exist"),
       apiKind: "query",
     },
@@ -447,6 +447,7 @@ export function createInitialStore(): StoreSnapshot {
     ],
     scheduleDays: [],
     scheduleArchives: [],
+    supplierRequests: [],
   };
 }
 

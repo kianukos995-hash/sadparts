@@ -126,6 +126,11 @@ export async function POST(request: NextRequest) {
         if (!canEditSupplier(current, user, store.organizations ?? [])) {
           return Response.json({ error: "Поставщика закрепил администратор" }, { status: 403 });
         }
+      } else if (user.role !== "admin") {
+        return Response.json(
+          { error: "Нового поставщика добавляет администратор. Отправьте запрос на карточке." },
+          { status: 403 },
+        );
       }
       let nextSupplier: Supplier = resolveSupplierSecrets(body.supplier, current);
       if (admin) {

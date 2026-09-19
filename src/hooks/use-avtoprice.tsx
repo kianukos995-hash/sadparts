@@ -22,6 +22,7 @@ import type {
   StoreSnapshot,
   Supplier,
   SupplierBill,
+  SupplierRequest,
   SyncLog,
   WarehouseDoc,
   WarehouseLot,
@@ -43,6 +44,7 @@ const EMPTY_STORE: StoreSnapshot = {
   managerMemberships: [],
   scheduleDays: [],
   scheduleArchives: [],
+  supplierRequests: [],
 };
 
 const EMPTY_PUBLIC: PublicSettings = {
@@ -88,6 +90,7 @@ export interface AvtoPriceApi {
   managerMemberships: ManagerMembership[];
   scheduleDays: ScheduleDay[];
   scheduleArchives: ScheduleArchive[];
+  supplierRequests: SupplierRequest[];
   drafts: Order[];
   draft: Order | null;
   activeDraftId: string;
@@ -559,6 +562,7 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       managerMemberships: store.managerMemberships ?? [],
       scheduleDays: store.scheduleDays ?? [],
       scheduleArchives: store.scheduleArchives ?? [],
+      supplierRequests: store.supplierRequests ?? [],
       drafts,
       draft,
       activeDraftId: draft?.id ?? "",

@@ -27,6 +27,19 @@ export function orgAllowsManagerSupplierEdit(orgs: Organization[], organizationI
   return Boolean(org?.managersCanEditSuppliers);
 }
 
+export function canSeeSupplierCatalog(actor: PublicUser | null | undefined): boolean {
+  return actor?.role === "admin" || actor?.role === "organization" || actor?.role === "manager";
+}
+
+/** Нового поставщика в справочник заводит только администратор. */
+export function canCreateSupplier(actor: PublicUser | null | undefined): boolean {
+  return actor?.role === "admin";
+}
+
+export function canRequestSupplier(actor: PublicUser | null | undefined): boolean {
+  return actor?.role === "organization" || actor?.role === "manager";
+}
+
 export function canManageSuppliers(actor: PublicUser | null | undefined, orgs: Organization[]): boolean {
   if (!actor) return false;
   if (actor.role === "admin") return true;
@@ -39,10 +52,10 @@ export function canManageSuppliers(actor: PublicUser | null | undefined, orgs: O
 
 export function supplierVisibleTo(supplier: Supplier, actor: PublicUser | null | undefined): boolean {
   if (!actor) return false;
-  if (actor.role === "admin") return true;
+  if (canSeeSupplierCatalog(actor)) return true;
   const orgId = actor.organizationId;
   if (!orgId) return false;
-  if (actor.role === "organization" || actor.role === "manager" || actor.role === "client") {
+  if (actor.role === "client") {
     if (isOrgOwnedSupplier(supplier, orgId)) return true;
     if (isAdminOwnedSupplier(supplier) && supplierSharedWithOrg(supplier, orgId)) return true;
   }

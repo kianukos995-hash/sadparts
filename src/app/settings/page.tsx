@@ -20,7 +20,7 @@ import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { useAuth } from "@/hooks/use-auth";
 import { DEFAULT_PRICE_BANDS, formatBandLabel, markupForPrice, sanitizeBands } from "@/lib/price-bands";
 import { priceBreakdown } from "@/lib/pricing";
-import { canEditSupplier, canManageSuppliers } from "@/lib/suppliers-scope";
+import { canEditSupplier, canSeeSupplierCatalog } from "@/lib/suppliers-scope";
 import type { Client, Organization, PriceBand, PriceView, PublicUser } from "@/lib/types";
 
 type StaffUser = PublicUser & { createdAt?: string; lastLoginAt?: string };
@@ -126,7 +126,7 @@ function DeskSettingsInner() {
   const search = useSearchParams();
   const router = useRouter();
   const tab = search.get("tab") || "general";
-  const canSuppliers = canManageSuppliers(user, organizations);
+  const canSuppliers = canSeeSupplierCatalog(user);
   const editableSuppliers = suppliers.filter((item) => canEditSupplier(item, user, organizations));
 
   if (!ready) return <p className="text-sm text-muted-foreground">Загружаю настройки…</p>;
@@ -138,7 +138,7 @@ function DeskSettingsInner() {
         <p className="mt-1 text-sm text-muted-foreground">
           {admin
             ? "Коридоры, справочник, поставщики и прайсы. Добавление ключей API — во вкладке «Поставщики»."
-            : "Коридоры для клиентов и гостей. Поставщики и прайсы — отдельные вкладки, если вам открыт доступ."}
+            : "Справочник поставщиков виден целиком. Нового поставщика заводит администратор по запросу."}
         </p>
       </div>
 
