@@ -127,6 +127,25 @@ const names = [
   "SCHOFFER",
   "SellParts",
   "7 seven cars",
+  "стелс-юг",
+  "STK GROUP",
+  "PENTOSIN",
+  "Stutzen.ru",
+  "TP TATPARTS",
+  "TSS ГРУППА ПАРТНЁРОВ",
+  "TRINITY PARTS",
+  "ТРАК-ФОРУМ AUTO PARTS",
+  "TURNCAR.ru",
+  "ЮГАВТОДЕТАЛЬ",
+  "UNIQUM",
+  "Сервис-шестерня",
+  "VIN-PARTS.RU",
+  "VintTop",
+  "VOLVO 77",
+  "ВОСХОД",
+  "ВЫМПЕЛ",
+  "ЮгТрендАвто",
+  "Юрбел",
 ];
 
 for (const name of names) {
@@ -138,7 +157,7 @@ for (const name of names) {
   }
 }
 
-assert(SUPPLIER_PRESETS.length >= 122, "мало пресетов");
+assert(SUPPLIER_PRESETS.length >= 141, "мало пресетов");
 assert(presetById("armtek")?.logoUrl === "/suppliers/armtek.png", "логотип ARMTEK");
 assert(presetById("autopiter")?.logoUrl === "/suppliers/autopiter.png", "логотип Автопитер");
 assert(presetById("exist")?.logoUrl === "/suppliers/exist.png", "логотип Exist");
@@ -162,6 +181,11 @@ assert(matchPreset("mx group")?.id === "mx-group", "mx group");
 assert(matchPreset("Москворечье прайс")?.id === "moskvorechie", "москворечье");
 assert(matchPreset("sale-parts.ru")?.id === "sale-parts", "sale-parts.ru");
 assert(matchPreset("Партком")?.id === "partkom", "Партком");
+assert(matchPreset("tss")?.id === "tss", "tss");
+assert(matchPreset("pentosin")?.id === "pentosin", "pentosin");
+assert(matchPreset("yurbel")?.id === "yurbel", "yurbel");
+assert(matchPreset("трак-форум")?.id === "trak-forum", "трак-форум не FORUM-AUTO");
+assert(matchPreset("сервис-шестерня")?.id === "service-gear", "сервис-шестерня не Gears");
 assert(presetById("rossko")?.logoUrl === "/suppliers/rossko.png", "логотип Росско");
 assert(presetById("rossko")?.apiKind === "rossko-soap", "rossko soap");
 
