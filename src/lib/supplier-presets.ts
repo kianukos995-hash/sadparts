@@ -826,6 +826,31 @@ export const SUPPLIER_PRESETS: SupplierPreset[] = [
     "stutzen",
     "штутцен",
   ]),
+  filePreset("shate-m", "ШАТЕ-М", "SHATEM", "shate-m.png", [
+    "шате-м",
+    "шате м",
+    "shate-m",
+    "shate m",
+    "shatem",
+  ]),
+  filePreset("sixth-gear", "Шестая передача", "SIXTHGEAR", "sixth-gear.png", [
+    "шестая передача",
+    "6 передача",
+    "sixth gear",
+    "sixth-gear",
+  ]),
+  filePreset("sps-zap", "SPS-ZAP", "SPSZAP", "sps-zap.png", [
+    "sps-zap",
+    "sps zap",
+    "spszap",
+    "спс-зап",
+  ]),
+  filePreset("stparts", "STparts", "STPARTS", "stparts.png", [
+    "stparts",
+    "st parts",
+    "стпартс",
+    "ст parts",
+  ]),
   filePreset("tatparts", "TP TATPARTS", "TATPARTS", "tatparts.png", [
     "tp tatparts",
     "tatparts",

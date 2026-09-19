@@ -131,6 +131,10 @@ const names = [
   "STK GROUP",
   "PENTOSIN",
   "Stutzen.ru",
+  "ШАТЕ-М",
+  "Шестая передача",
+  "SPS-ZAP",
+  "STparts",
   "TP TATPARTS",
   "TSS ГРУППА ПАРТНЁРОВ",
   "TRINITY PARTS",
@@ -157,7 +161,13 @@ for (const name of names) {
   }
 }
 
-assert(SUPPLIER_PRESETS.length >= 141, "мало пресетов");
+assert(SUPPLIER_PRESETS.length >= 145, "мало пресетов");
+assert(presetById("shate-m")?.name === "ШАТЕ-М", "ШАТЕ-М");
+assert(presetById("sixth-gear")?.name === "Шестая передача", "Шестая передача");
+assert(presetById("sps-zap")?.name === "SPS-ZAP", "SPS-ZAP");
+assert(presetById("stparts")?.name === "STparts", "STparts");
+assert(matchPreset("шате-м")?.id === "shate-m", "шате-м");
+assert(matchPreset("шестая передача")?.id === "sixth-gear", "шестая передача");
 assert(presetById("armtek")?.logoUrl === "/suppliers/armtek.png", "логотип ARMTEK");
 assert(presetById("autopiter")?.logoUrl === "/suppliers/autopiter.png", "логотип Автопитер");
 assert(presetById("exist")?.logoUrl === "/suppliers/exist.png", "логотип Exist");
@@ -186,6 +196,8 @@ assert(matchPreset("pentosin")?.id === "pentosin", "pentosin");
 assert(matchPreset("yurbel")?.id === "yurbel", "yurbel");
 assert(matchPreset("трак-форум")?.id === "trak-forum", "трак-форум не FORUM-AUTO");
 assert(matchPreset("сервис-шестерня")?.id === "service-gear", "сервис-шестерня не Gears");
+assert(matchPreset("sps-zap")?.id === "sps-zap", "sps-zap");
+assert(matchPreset("stparts")?.id === "stparts", "stparts");
 assert(presetById("rossko")?.logoUrl === "/suppliers/rossko.png", "логотип Росско");
 assert(presetById("rossko")?.apiKind === "rossko-soap", "rossko soap");
 
