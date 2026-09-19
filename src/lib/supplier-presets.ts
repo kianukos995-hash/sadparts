@@ -676,6 +676,42 @@ export const SUPPLIER_PRESETS: SupplierPreset[] = [
     "мега зап",
     "мегазап",
   ]),
+  filePreset("megaros", "MEGAROS", "MEGAROS", "megaros.png", ["megaros", "мегарос"]),
+  filePreset("mikado", "Микадо", "MIKADO", "mikado.png", ["микадо", "mikado"]),
+  filePreset("mosteknorot", "MosTeknorot", "TEKNOROT", "mosteknorot.png", [
+    "mosteknorot",
+    "mos teknorot",
+    "teknorot",
+    "мостекнорот",
+  ]),
+  filePreset("moskvorechie", "Москворечье", "MSKRECH", "moskvorechie.png", [
+    "москворечье",
+    "москворечье опт",
+    "moskvorechie",
+  ]),
+  filePreset("motexc", "MoTexC", "MOTEXC", "motexc.png", ["motexc", "motex", "мотекс"]),
+  filePreset("mx-group", "MX group", "MXGROUP", "mx-group.png", [
+    "mx group",
+    "mxgroup",
+    "мх групп",
+    "mx-group",
+  ]),
+  filePreset("my-detal", "my-detal", "MYDETAL", "my-detal.png", [
+    "my-detal",
+    "mydetal",
+    "май деталь",
+  ]),
+  filePreset("myparts86", "Myparts86", "MYPARTS86", "myparts86.png", [
+    "myparts86",
+    "my parts 86",
+    "майпартс86",
+  ]),
+  filePreset("nord", "Норд", "NORD", "nord.png", ["норд", "nord auto", "nord"]),
+  filePreset("novaya-logistika", "Новая логистика", "NOVLOG", "novaya-logistika.png", [
+    "новая логистика",
+    "новая>>>логистика",
+    "novaya logistika",
+  ]),
   {
     id: "rossko",
     name: "Росско",

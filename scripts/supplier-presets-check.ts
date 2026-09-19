@@ -98,6 +98,16 @@ const names = [
   "MC auto",
   "MP73",
   "MEGA-ZAP-AUTO",
+  "MEGAROS",
+  "Микадо",
+  "MosTeknorot",
+  "Москворечье",
+  "MoTexC",
+  "MX group",
+  "my-detal",
+  "Myparts86",
+  "Норд",
+  "Новая логистика",
 ];
 
 for (const name of names) {
@@ -109,7 +119,7 @@ for (const name of names) {
   }
 }
 
-assert(SUPPLIER_PRESETS.length >= 93, "мало пресетов");
+assert(SUPPLIER_PRESETS.length >= 103, "мало пресетов");
 assert(presetById("armtek")?.logoUrl === "/suppliers/armtek.png", "логотип ARMTEK");
 assert(presetById("autopiter")?.logoUrl === "/suppliers/autopiter.png", "логотип Автопитер");
 assert(presetById("exist")?.logoUrl === "/suppliers/exist.png", "логотип Exist");
@@ -129,6 +139,8 @@ assert(matchPreset("FLAGMAN AUTO")?.id === "avtoflagman", "flagman auto");
 assert(matchPreset("forum-auto.csv")?.id === "forum-auto", "forum-auto");
 assert(matchPreset("ixora auto parts")?.id === "ixora", "ixora");
 assert(matchPreset("mega-zap-auto.csv")?.id === "mega-zap-auto", "megazap");
+assert(matchPreset("mx group")?.id === "mx-group", "mx group");
+assert(matchPreset("Москворечье прайс")?.id === "moskvorechie", "москворечье");
 
 const stub: Supplier = {
   ...emptySupplierFromPreset(presetById("armtek")!),
