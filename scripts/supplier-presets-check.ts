@@ -43,27 +43,51 @@ const names = [
   "Автооптима",
   "Авторусь",
   "Автоспутник",
+  "Аванта",
+  "АвтоФормула",
+  "Автогут",
+  "autopriavok.com",
+  "AVTO10",
+  "Балткам",
+  "BERG",
+  "BERLIN MOTORS",
+  "BiG1.RU",
+  "Бином Авто",
+  "CARRETA",
+  "Chel Parts",
+  "CTO.PARTS.RU",
+  "Passion for Cars",
+  "IGRA RU",
+  "DP Discount Parts",
+  "DONAVTO PART.RU",
+  "DROMEX.RU",
+  "Эльбрус",
 ];
 
 for (const name of names) {
   const preset = matchPreset(name);
   assert(preset, `нет пресета для ${name}`);
   assert(preset!.name === name, `имя «${preset!.name}» ≠ «${name}»`);
-  if (preset!.id !== "rossko" && preset!.id !== "autopiter" && preset!.id !== "exist") {
+  if (preset!.id !== "rossko") {
     assert(preset!.logoUrl.startsWith("/suppliers/"), `${name} без логотипа`);
   }
 }
 
-assert(SUPPLIER_PRESETS.length >= 38, "мало пресетов");
+assert(SUPPLIER_PRESETS.length >= 57, "мало пресетов");
 assert(presetById("armtek")?.logoUrl === "/suppliers/armtek.png", "логотип ARMTEK");
 assert(presetById("autopiter")?.logoUrl === "/suppliers/autopiter.png", "логотип Автопитер");
+assert(presetById("exist")?.logoUrl === "/suppliers/exist.png", "логотип Exist");
 assert(presetById("avtorus")?.logoUrl === "/suppliers/avtorus.png", "логотип Авторусь");
 assert(presetById("da-detal")?.name === "DA DETAL", "DA DETAL");
+assert(presetById("elbrus")?.name === "Эльбрус", "Эльбрус");
 assert(matchPreset("ARMTEK прайс 19.09")?.id === "armtek", "тема письма");
 assert(matchPreset("autodoc.ru.csv")?.id === "autodoc", "имя файла autodoc");
 assert(matchPreset("prajsy+dadetal@sadparts.ru")?.id === "da-detal" || matchPreset("DA DETAL прайс")?.id === "da-detal", "DA DETAL по теме");
 assert(matchPreset("Авторусь опт")?.id === "avtorus", "Авторусь");
 assert(matchPreset("autopiter.ru")?.id === "autopiter", "autopiter.ru");
+assert(matchPreset("dromex.ru.csv")?.id === "dromex", "dromex");
+assert(matchPreset("Эльбрус прайс")?.id === "elbrus", "эльбрус тема");
+assert(matchPreset("exist.ru")?.id === "exist", "exist.ru");
 
 const stub: Supplier = {
   ...emptySupplierFromPreset(presetById("armtek")!),
