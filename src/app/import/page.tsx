@@ -38,8 +38,8 @@ function ImportInner() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Добавить прайс</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Сначала быстрый просмотр и имя прайса — потом запись. Ошибки в CSV/ZIP не рвут загрузку.
-          Новый прайс можно откатить из истории.
+          Сначала быстрый просмотр и имя прайса — потом запись. Тот же мастер лежит в Настройках →
+          Прайсы, чтобы не занимать меню.
         </p>
       </div>
       <ImportWizard />

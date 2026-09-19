@@ -55,14 +55,19 @@ function SuppliersHubInner() {
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <p className="text-sm text-muted-foreground">
-              CSV, ZIP, XLSX и каталоги `data/catalogs/*.jsonl`, в том числе прайс Росско после загрузки.
+              CSV, ZIP, XLSX и каталоги `data/catalogs/*.jsonl`. Добавление — в Настройках → Поставщики.
             </p>
             <p className="text-sm">
               {files} {files === 1 ? "поставщик" : "поставщиков"}
             </p>
-            <Link href="/suppliers/files" className={cn(buttonVariants(), "w-fit")}>
-              Открыть
-            </Link>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/suppliers/files" className={cn(buttonVariants(), "w-fit")}>
+                Открыть
+              </Link>
+              <Link href="/settings?tab=suppliers" className={cn(buttonVariants({ variant: "outline" }), "w-fit")}>
+                В настройки
+              </Link>
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -75,14 +80,19 @@ function SuppliersHubInner() {
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <p className="text-sm text-muted-foreground">
-              Росско SOAP KEY1/KEY2, Автопитер, Exist и любой JSON с авторизацией.
+              Росско SOAP KEY1/KEY2, ARMTEK, Autodoc и любой JSON. Ключи добавляются в Настройках.
             </p>
             <p className="text-sm">
               {api} {api === 1 ? "поставщик" : "поставщиков"}
             </p>
-            <Link href="/suppliers/api" className={cn(buttonVariants(), "w-fit")}>
-              Открыть
-            </Link>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/suppliers/api" className={cn(buttonVariants(), "w-fit")}>
+                Открыть
+              </Link>
+              <Link href="/settings?tab=suppliers" className={cn(buttonVariants({ variant: "outline" }), "w-fit")}>
+                В настройки
+              </Link>
+            </div>
           </CardContent>
         </Card>
       </div>

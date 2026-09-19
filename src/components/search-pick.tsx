@@ -16,7 +16,7 @@ export function SearchPick({
 }: {
   value: string;
   onChange: (id: string) => void;
-  options: { id: string; label: string }[];
+  options: { id: string; label: string; logo?: string }[];
   placeholder: string;
   emptyLabel?: string;
   className?: string;
@@ -71,7 +71,7 @@ export function SearchPick({
               <button
                 type="button"
                 className={cn(
-                  "w-full px-3 py-2 text-left text-sm hover:bg-muted",
+                  "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted",
                   item.id === value && "bg-muted",
                 )}
                 onMouseDown={(event) => {
@@ -80,6 +80,10 @@ export function SearchPick({
                   setOpen(false);
                 }}
               >
+                {item.logo ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- логотип поставщика
+                  <img src={item.logo} alt="" className="size-6 shrink-0 rounded border bg-white object-contain" />
+                ) : null}
                 {item.label}
               </button>
             </li>

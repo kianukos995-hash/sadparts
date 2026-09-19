@@ -11,11 +11,14 @@ export function anonymizeSupplier(supplier: Supplier): Supplier {
     ...supplier,
     name: "",
     code: "",
+    logoUrl: "",
     notes: "",
     deliveryNote: "",
     apiUrl: "",
     apiKey: "",
     apiKey2: "",
+    emailAlias: "",
+    presetId: "",
   };
 }
 

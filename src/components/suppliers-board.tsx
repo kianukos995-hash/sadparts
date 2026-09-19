@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table";
 import { PriceListUpload } from "@/components/price-list-upload";
 import { SupplierFormDialog } from "@/components/supplier-form";
+import { SupplierLogo } from "@/components/supplier-logo";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { useAuth } from "@/hooks/use-auth";
 import { AUTH_MODE_LABELS } from "@/lib/constants";
@@ -206,7 +207,8 @@ export function SuppliersBoard({ kind }: { kind: "file" | "api" }) {
               return (
                 <TableRow key={supplier.id}>
                   <TableCell>
-                    <Link href={`/suppliers/${supplier.id}`} className="font-medium hover:underline">
+                    <Link href={`/suppliers/${supplier.id}`} className="flex items-center gap-2 font-medium hover:underline">
+                      <SupplierLogo supplier={supplier} size="sm" />
                       {supplier.name}
                     </Link>
                     <div className="mt-1 flex flex-wrap items-center gap-1">

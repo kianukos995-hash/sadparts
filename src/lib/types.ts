@@ -1,7 +1,16 @@
-export type SupplierSource = "api" | "file" | "url" | "paste" | "manual";
+export type SupplierSource = "api" | "file" | "url" | "paste" | "manual" | "email";
 export type ImportMode = "replace" | "merge";
 export type AuthMode = "bearer" | "header" | "query";
 export type AdapterKind = "generic" | "demo" | "rossko";
+export type SupplierApiKind =
+  | "file"
+  | "email"
+  | "generic-json"
+  | "bearer"
+  | "header"
+  | "query"
+  | "two-key"
+  | "rossko-soap";
 export type SyncStatus = "ok" | "error";
 export type OrderStatus = "draft" | "assembled" | "sent";
 export type PaymentMethod = "cash" | "card" | "cashless";
@@ -108,6 +117,10 @@ export interface Supplier {
   ownerId?: string;
   lockedByAdmin?: boolean;
   sharedWithOrgIds?: string[];
+  presetId?: string;
+  logoUrl?: string;
+  emailAlias?: string;
+  apiKind?: SupplierApiKind;
 }
 
 export interface Offer {
@@ -351,6 +364,11 @@ export interface AppSettings {
   vatPercent: number;
   telegramNotifyChatId: string;
   telegramChats: TelegramChat[];
+  priceMailboxAddress: string;
+  priceMailboxImapHost: string;
+  priceMailboxImapPort: number;
+  priceMailboxImapUser: string;
+  priceMailboxImapPass: string;
 }
 
 export interface PublicSettings {
@@ -371,6 +389,10 @@ export interface PublicSettings {
   organizationPriceBands?: PriceBand[];
   maxMarkup?: number | null;
   showAdminPricing?: boolean;
+  priceMailboxAddress?: string;
+  priceMailboxImapHost?: string;
+  priceMailboxImapPort?: number;
+  priceMailboxImapUser?: string;
 }
 
 export interface MoneyMovement {
@@ -527,4 +549,20 @@ export interface ImportHistoryItem {
   snapshotFile?: string;
   warnings?: string[];
   rolledBackFrom?: string;
+}
+
+export interface EmailInboxItem {
+  id: string;
+  at: string;
+  from: string;
+  to: string;
+  subject: string;
+  fileName: string;
+  supplierId?: string;
+  supplierName?: string;
+  presetId?: string;
+  imported: number;
+  skipped?: number;
+  status: "ok" | "error" | "unmatched";
+  error?: string;
 }

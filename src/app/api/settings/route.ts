@@ -44,6 +44,10 @@ export async function POST(request: NextRequest) {
     sellerAddress?: string;
     vatPercent?: number;
     telegramNotifyChatId?: string;
+    priceMailboxAddress?: string;
+    priceMailboxImapHost?: string;
+    priceMailboxImapPort?: number;
+    priceMailboxImapUser?: string;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -80,6 +84,18 @@ export async function POST(request: NextRequest) {
   }
   if (typeof body.telegramNotifyChatId === "string") {
     tradePatch.telegramNotifyChatId = body.telegramNotifyChatId.trim();
+  }
+  if (typeof body.priceMailboxAddress === "string") {
+    tradePatch.priceMailboxAddress = body.priceMailboxAddress.trim();
+  }
+  if (typeof body.priceMailboxImapHost === "string") {
+    tradePatch.priceMailboxImapHost = body.priceMailboxImapHost.trim();
+  }
+  if (typeof body.priceMailboxImapUser === "string") {
+    tradePatch.priceMailboxImapUser = body.priceMailboxImapUser.trim();
+  }
+  if (typeof body.priceMailboxImapPort === "number" && Number.isFinite(body.priceMailboxImapPort)) {
+    tradePatch.priceMailboxImapPort = body.priceMailboxImapPort;
   }
   if (Array.isArray(body.priceBands)) {
     tradePatch.priceBands = sanitizeBands(body.priceBands);

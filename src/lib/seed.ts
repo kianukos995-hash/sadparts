@@ -177,6 +177,10 @@ export function createDemoSuppliers(): Supplier[] {
       ownerRole: "admin",
       lockedByAdmin: true,
       sharedWithOrgIds: [EXAMPLE_ORG_ID],
+      presetId: "rossko",
+      logoUrl: "",
+      emailAlias: "rossko@prajsy.local",
+      apiKind: "rossko-soap",
     },
     {
       id: "sup-autopiter",
@@ -204,6 +208,10 @@ export function createDemoSuppliers(): Supplier[] {
       ownerRole: "admin",
       lockedByAdmin: true,
       sharedWithOrgIds: [EXAMPLE_ORG_ID],
+      presetId: "autopiter",
+      logoUrl: "",
+      emailAlias: "apiter@prajsy.local",
+      apiKind: "bearer",
     },
     {
       id: "sup-exist",
@@ -231,6 +239,10 @@ export function createDemoSuppliers(): Supplier[] {
       ownerRole: "admin",
       lockedByAdmin: true,
       sharedWithOrgIds: [EXAMPLE_ORG_ID],
+      presetId: "exist",
+      logoUrl: "",
+      emailAlias: "exist@prajsy.local",
+      apiKind: "query",
     },
     {
       id: "sup-file",
@@ -254,6 +266,10 @@ export function createDemoSuppliers(): Supplier[] {
       ownerRole: "admin",
       lockedByAdmin: true,
       sharedWithOrgIds: [EXAMPLE_ORG_ID],
+      presetId: "custom-file",
+      logoUrl: "",
+      emailAlias: "file@prajsy.local",
+      apiKind: "file",
     },
   ];
 }

@@ -13,6 +13,7 @@ import { OfferMedia } from "@/components/offer-media";
 import { NomenclatureEdit } from "@/components/nomenclature-edit";
 import { AddToOrderButtons } from "@/components/add-to-order";
 import { SearchPick } from "@/components/search-pick";
+import { SupplierFilter } from "@/components/supplier-filter";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { useViewerPricing } from "@/hooks/use-viewer-pricing";
 import { formatMoney } from "@/lib/format";
@@ -196,17 +197,14 @@ function NomenclatureInner() {
               }))}
             />
           </div>
-          <div>
-            <Label className="mb-1 block text-xs text-muted-foreground">Поставщик</Label>
-            <SearchPick
-              value={supplierId}
+          <div className="sm:col-span-3">
+            <SupplierFilter
+              suppliers={suppliers}
+              value={supplierId || "all"}
               onChange={(id) => {
-                setSupplierId(id);
+                setSupplierId(id === "all" ? "" : id);
                 setPage(0);
               }}
-              placeholder="Найти поставщика…"
-              emptyLabel="Все поставщики"
-              options={suppliers.map((item) => ({ id: item.id, label: item.name }))}
             />
           </div>
           <div>

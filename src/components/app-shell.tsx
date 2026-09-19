@@ -14,7 +14,6 @@ import {
   BookOpen,
   LogOut,
   Menu,
-  PackagePlus,
   PackageSearch,
   Search,
   Send,
@@ -42,7 +41,6 @@ import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLE_LABELS } from "@/lib/roles";
 import { homeHref } from "@/lib/scope";
-import { orgAllowsManagerSupplierEdit } from "@/lib/suppliers-scope";
 
 const ALL_GROUPS = [
   {
@@ -80,15 +78,6 @@ const ALL_GROUPS = [
     ],
   },
   {
-    title: "Прайсы",
-    roles: ["admin", "organization", "manager"] as UserRole[],
-    items: [
-      { href: "/suppliers/files", label: "Поставщики через файлы", icon: FileSpreadsheet },
-      { href: "/suppliers/api", label: "Поставщики через API", icon: KeyRound },
-      { href: "/import", label: "Добавить прайс", icon: PackagePlus },
-    ],
-  },
-  {
     title: "Контроль",
     roles: ["admin", "organization", "manager"] as UserRole[],
     items: [
@@ -105,15 +94,10 @@ const ALL_GROUPS = [
 
 function NavLinks({ onNavigate, role }: { onNavigate?: () => void; role: UserRole }) {
   const pathname = usePathname();
-  const { user } = useAuth();
-  const { organizations } = useAvtoPrice();
-  let groups = ALL_GROUPS.filter((group) => group.roles.includes(role)).map((group) => ({
+  const groups = ALL_GROUPS.filter((group) => group.roles.includes(role)).map((group) => ({
     ...group,
     items: group.items.filter((item) => !item.roles || item.roles.includes(role)),
   }));
-  if (role === "manager" && !orgAllowsManagerSupplierEdit(organizations, user?.organizationId)) {
-    groups = groups.filter((group) => group.title !== "Прайсы");
-  }
   return (
     <div className="flex flex-col gap-5">
       {groups.map((group) => (

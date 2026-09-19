@@ -45,6 +45,7 @@ import type {
   SyncLog,
 } from "@/lib/types";
 import { DEFAULT_COLUMN_MAP } from "@/lib/types";
+import { attachPresetMeta } from "@/lib/supplier-presets";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const STORE_FILE = path.join(DATA_DIR, "store.json");
@@ -66,6 +67,11 @@ export const EMPTY_SETTINGS: AppSettings = {
   telegramChats: [],
   guestPriceBands: defaultGuestBands(),
   managerPriceBands: DEFAULT_PRICE_BANDS,
+  priceMailboxAddress: "prajsy@sadparts.local",
+  priceMailboxImapHost: "",
+  priceMailboxImapPort: 993,
+  priceMailboxImapUser: "",
+  priceMailboxImapPass: "",
 };
 
 const DEFAULT_DELIVERY: Record<string, { days: number; note: string }> = {
@@ -117,7 +123,7 @@ function migrateStore(store: StoreSnapshot): StoreSnapshot {
     const ownerRole = supplier.ownerRole ?? "admin";
     const grandfatherShare =
       from < 10 && ownerRole === "admin" && !Array.isArray(supplier.sharedWithOrgIds);
-    return {
+    return attachPresetMeta({
       ...supplier,
       apiKey2: supplier.apiKey2 ?? (rossko ? DEMO_KEYS.rossko2 : ""),
       adapter: rossko ? "rossko" : supplier.adapter,
@@ -133,7 +139,7 @@ function migrateStore(store: StoreSnapshot): StoreSnapshot {
         : grandfatherShare
           ? orgIds
           : [],
-    };
+    });
   });
   const supplierDays = new Map(suppliers.map((item) => [item.id, item.deliveryDaysMoscow]));
   const demoPhotos = new Map(
@@ -399,12 +405,13 @@ export function resetStore() {
 export function upsertSupplier(supplier: Supplier) {
   return enqueue(async () => {
     const store = await readStoreFile();
-    const exists = store.suppliers.some((item) => item.id === supplier.id);
+    const nextSupplier = attachPresetMeta(supplier);
+    const exists = store.suppliers.some((item) => item.id === nextSupplier.id);
     const next: StoreSnapshot = {
       ...store,
       suppliers: exists
-        ? store.suppliers.map((item) => (item.id === supplier.id ? supplier : item))
-        : [supplier, ...store.suppliers],
+        ? store.suppliers.map((item) => (item.id === nextSupplier.id ? nextSupplier : item))
+        : [nextSupplier, ...store.suppliers],
     };
     await persistStore(next);
     return next;
@@ -1046,6 +1053,11 @@ async function readSettingsFile(): Promise<AppSettings> {
           ? parsed.priceBands
           : DEFAULT_PRICE_BANDS,
       telegramChats: Array.isArray(parsed.telegramChats) ? parsed.telegramChats : [],
+      priceMailboxAddress: parsed.priceMailboxAddress || EMPTY_SETTINGS.priceMailboxAddress,
+      priceMailboxImapHost: parsed.priceMailboxImapHost ?? "",
+      priceMailboxImapPort: parsed.priceMailboxImapPort || 993,
+      priceMailboxImapUser: parsed.priceMailboxImapUser ?? "",
+      priceMailboxImapPass: parsed.priceMailboxImapPass ?? "",
     };
   } catch {
     return { ...EMPTY_SETTINGS };

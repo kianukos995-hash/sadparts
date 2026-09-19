@@ -1,25 +1,27 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { KeyRound, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SupplierFormDialog } from "@/components/supplier-form";
 import { PriceBandsEditor } from "@/components/price-bands-editor";
 import { PriceFormula } from "@/components/price-formula";
 import { ProfileFields } from "@/components/profile-fields";
+import { SuppliersSettingsPanel } from "@/components/suppliers-settings";
+import { EmailPricesCard } from "@/components/email-prices";
+import { ImportWizard } from "@/components/import-wizard";
+import { ImportHistoryCard } from "@/components/import-history";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { useAuth } from "@/hooks/use-auth";
-import { formatDays, maskKey } from "@/lib/format";
 import { DEFAULT_PRICE_BANDS, formatBandLabel, markupForPrice, sanitizeBands } from "@/lib/price-bands";
 import { priceBreakdown } from "@/lib/pricing";
-import type { Client, Organization, PriceBand, PriceView, PublicUser, Supplier } from "@/lib/types";
+import { canEditSupplier, canManageSuppliers } from "@/lib/suppliers-scope";
+import type { Client, Organization, PriceBand, PriceView, PublicUser } from "@/lib/types";
 
 type StaffUser = PublicUser & { createdAt?: string; lastLoginAt?: string };
 
@@ -53,6 +55,14 @@ function ClientSettings() {
 }
 
 function DeskSettings() {
+  return (
+    <Suspense fallback={<p className="text-sm text-muted-foreground">Загружаю настройки…</p>}>
+      <DeskSettingsInner />
+    </Suspense>
+  );
+}
+
+function DeskSettingsInner() {
   const { user } = useAuth();
   const admin = user?.role === "admin";
   const canTrade = admin || user?.role === "organization";
@@ -60,16 +70,12 @@ function DeskSettings() {
     ready,
     suppliers,
     settings,
-    upsertSupplier,
-    removeSupplier,
     saveTradeSettings,
     organizations,
     upsertOrganization,
     clients,
     upsertClient,
   } = useAvtoPrice();
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<Supplier | undefined>();
   const [markup, setMarkup] = useState<string | null>(null);
   const [hubNote, setHubNote] = useState<string | null>(null);
   const [bands, setBands] = useState<PriceBand[] | null>(null);
@@ -117,32 +123,55 @@ function DeskSettings() {
     [clients, users, user],
   );
 
+  const search = useSearchParams();
+  const router = useRouter();
+  const tab = search.get("tab") || "general";
+  const canSuppliers = canManageSuppliers(user, organizations);
+  const editableSuppliers = suppliers.filter((item) => canEditSupplier(item, user, organizations));
+
   if (!ready) return <p className="text-sm text-muted-foreground">Загружаю настройки…</p>;
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Настройки</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {admin
-              ? "Коридоры для всех рангов ниже, справочник и ключи API. Закуп у клиента/организации виден только если вы включили «видеть закуп»."
-              : "Коридоры для клиентов и гостей, которым вы выдали ключ. Чужой закуп скрыт."}
-          </p>
-        </div>
-        {admin ? (
-          <Button
-            onClick={() => {
-              setEditing(undefined);
-              setOpen(true);
-            }}
-          >
-            <KeyRound />
-            Добавить ключ API
-          </Button>
-        ) : null}
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Настройки</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {admin
+            ? "Коридоры, справочник, поставщики и прайсы. Добавление ключей API — во вкладке «Поставщики»."
+            : "Коридоры для клиентов и гостей. Поставщики и прайсы — отдельные вкладки, если вам открыт доступ."}
+        </p>
       </div>
 
+      <Tabs
+        value={tab}
+        onValueChange={(value) => {
+          if (!value) return;
+          const next = new URLSearchParams(search.toString());
+          next.set("tab", value);
+          router.replace(`/settings?${next.toString()}`, { scroll: false });
+        }}
+      >
+        <TabsList variant="line" className="flex-wrap justify-start">
+          <TabsTrigger value="general">Общие</TabsTrigger>
+          {canSuppliers ? <TabsTrigger value="suppliers">Поставщики</TabsTrigger> : null}
+          {canSuppliers ? <TabsTrigger value="prices">Прайсы</TabsTrigger> : null}
+        </TabsList>
+
+        <TabsContent value="suppliers" className="mt-4">
+          <SuppliersSettingsPanel />
+        </TabsContent>
+        <TabsContent value="prices" className="mt-4 grid gap-5">
+          {editableSuppliers.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Сначала добавьте своего поставщика во вкладке «Поставщики».
+            </p>
+          ) : (
+            <ImportWizard />
+          )}
+          <EmailPricesCard suppliers={editableSuppliers} />
+          <ImportHistoryCard />
+        </TabsContent>
+        <TabsContent value="general" className="mt-4 grid gap-6">
       <Card>
         <CardHeader>
           <CardTitle>Мой профиль</CardTitle>
@@ -324,82 +353,8 @@ function DeskSettings() {
       </Card>
       </>
       ) : null}
-
-      {admin ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Поставщики и API</CardTitle>
-            <CardDescription>Ключи и срок до Москвы. Видны только администратору.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-2">
-            {suppliers
-              .filter((supplier) => (supplier.ownerRole ?? "admin") === "admin")
-              .map((supplier) => (
-              <div
-                key={supplier.id}
-                className="flex flex-col gap-2 rounded-lg border px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-medium">{supplier.name}</p>
-                    <Badge variant="secondary">{supplier.source === "api" ? "API" : "Файл"}</Badge>
-                    <Badge variant="outline">{formatDays(supplier.deliveryDaysMoscow)}</Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {supplier.source === "api" ? maskKey(supplier.apiKey) : "без ключа"} ·{" "}
-                    {supplier.deliveryNote || "комментарий по доставке не задан"}
-                  </p>
-                </div>
-                <div className="flex gap-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setEditing(supplier);
-                      setOpen(true);
-                    }}
-                  >
-                    Изменить
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() => {
-                      if (confirm(`Удалить «${supplier.name}» и его прайс?`)) {
-                        void removeSupplier(supplier.id);
-                      }
-                    }}
-                  >
-                    <Trash2 />
-                  </Button>
-                </div>
-              </div>
-            ))}
-            <Button
-              variant="outline"
-              className="mt-2 w-fit"
-              onClick={() => {
-                setEditing(undefined);
-                setOpen(true);
-              }}
-            >
-              <Plus />
-              Новый поставщик
-            </Button>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {admin ? (
-        <SupplierFormDialog
-          open={open}
-          onOpenChange={setOpen}
-          initial={editing}
-          onSave={(supplier) => {
-            upsertSupplier(supplier).then(() => toast.success("Поставщик сохранён"));
-          }}
-        />
-      ) : null}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

@@ -184,6 +184,10 @@ export function publicSettingsFor(
     showAdminPricing: role === "admin",
     maxMarkup: org?.maxMarkup ?? null,
     organizationPriceBands: org?.priceBands,
+    priceMailboxAddress: isDeskLike(role) ? settings.priceMailboxAddress : "",
+    priceMailboxImapHost: role === "admin" ? settings.priceMailboxImapHost : "",
+    priceMailboxImapPort: role === "admin" ? settings.priceMailboxImapPort : 993,
+    priceMailboxImapUser: role === "admin" ? settings.priceMailboxImapUser : "",
   };
   if (role === "admin") {
     return {

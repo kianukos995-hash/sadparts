@@ -18,6 +18,7 @@ import { OfferMedia } from "@/components/offer-media";
 import { OfferSpecs } from "@/components/offer-specs";
 import { BrandDialog, BrandMark } from "@/components/brand-mark";
 import { PriceChange } from "@/components/price-change";
+import { SupplierFilter } from "@/components/supplier-filter";
 import { RoleGate } from "@/components/role-gate";
 import { AddToOrderButtons, openQuoteContextMenu, type QuoteMenuState } from "@/components/add-to-order";
 import { QuoteContextMenu } from "@/components/quote-context-menu";
@@ -166,31 +167,16 @@ function CatalogInner() {
             ))}
           </SelectContent>
         </Select>
-        <Select
-          value={supplierId}
-          onValueChange={(value) => {
-            if (value) {
-              setSupplierId(value);
+        <div className="md:col-span-4">
+          <SupplierFilter
+            suppliers={suppliers}
+            value={supplierId}
+            onChange={(id) => {
+              setSupplierId(id || "all");
               setPage(0);
-            }
-          }}
-        >
-          <SelectTrigger className="w-full">
-            <span className="flex flex-1 truncate text-left">
-              {supplierId === "all"
-                ? "Все поставщики"
-                : (suppliers.find((item) => item.id === supplierId)?.name ?? "Поставщик")}
-            </span>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Все поставщики</SelectItem>
-            {suppliers.map((supplier) => (
-              <SelectItem key={supplier.id} value={supplier.id}>
-                {supplier.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+            }}
+          />
+        </div>
         <Select
           value={brand}
           onValueChange={(value) => {

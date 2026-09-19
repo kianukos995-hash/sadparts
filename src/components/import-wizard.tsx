@@ -31,6 +31,7 @@ import type { AuthMode, ColumnMap, ImportMode, ParsedTable, Supplier, SupplierSo
 import { CATEGORIES, FIELD_KEYS } from "@/lib/types";
 import { AUTH_MODE_LABELS } from "@/lib/constants";
 import { canEditSupplier } from "@/lib/suppliers-scope";
+import { SupplierLogo } from "@/components/supplier-logo";
 
 export function ImportWizard() {
   const { user } = useAuth();
@@ -136,6 +137,7 @@ function SupplierSelect({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const current = suppliers.find((item) => item.id === value);
   return (
     <label className="grid gap-1.5">
       <Label>Поставщик</Label>
@@ -146,14 +148,24 @@ function SupplierSelect({
         }}
       >
         <SelectTrigger className="w-full">
-          <span className="flex flex-1 truncate text-left">
-            {suppliers.find((item) => item.id === value)?.name ?? "Выберите поставщика"}
+          <span className="flex flex-1 items-center gap-2 truncate text-left">
+            {current ? (
+              <>
+                <SupplierLogo supplier={current} size="sm" />
+                {current.name}
+              </>
+            ) : (
+              "Выберите поставщика"
+            )}
           </span>
         </SelectTrigger>
         <SelectContent>
           {suppliers.map((item) => (
             <SelectItem key={item.id} value={item.id}>
-              {item.name}
+              <span className="flex items-center gap-2">
+                <SupplierLogo supplier={item} size="sm" />
+                {item.name}
+              </span>
             </SelectItem>
           ))}
         </SelectContent>

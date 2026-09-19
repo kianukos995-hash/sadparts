@@ -63,6 +63,10 @@ const EMPTY_PUBLIC: PublicSettings = {
   organizationPriceBands: [],
   maxMarkup: null,
   showAdminPricing: false,
+  priceMailboxAddress: "prajsy@sadparts.local",
+  priceMailboxImapHost: "",
+  priceMailboxImapPort: 993,
+  priceMailboxImapUser: "",
 };
 
 const ORDERS_KEY = "sadparts-orders-v1";
@@ -139,6 +143,8 @@ export interface AvtoPriceApi {
     sellerAddress?: string;
     vatPercent?: number;
     telegramNotifyChatId?: string;
+    priceMailboxImapHost?: string;
+    priceMailboxImapUser?: string;
   }) => Promise<void>;
   resetDemo: () => Promise<void>;
 }
@@ -440,6 +446,8 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       sellerAddress?: string;
       vatPercent?: number;
       telegramNotifyChatId?: string;
+      priceMailboxImapHost?: string;
+      priceMailboxImapUser?: string;
     }) => {
       const response = await fetch("/api/settings", {
         method: "POST",

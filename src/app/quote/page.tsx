@@ -28,6 +28,7 @@ import {
 import { QuoteContextMenu } from "@/components/quote-context-menu";
 import { ClientCartBar } from "@/components/client-carts";
 import { SearchPick } from "@/components/search-pick";
+import { SupplierFilter } from "@/components/supplier-filter";
 import { SortToggle, type SortDir } from "@/components/sort-toggle";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { useViewerPricing } from "@/hooks/use-viewer-pricing";
@@ -389,17 +390,14 @@ function QuotePageInner() {
         {filtersOpen ? (
           <div className="grid gap-3 rounded-lg border border-dashed bg-muted/20 p-3 sm:grid-cols-2 lg:grid-cols-4">
             {!viewer.locked ? (
-            <div>
-              <Label className="mb-1 block text-xs text-muted-foreground">Поставщик</Label>
-              <SearchPick
-                value={supplierId === "all" ? "" : supplierId}
+            <div className="sm:col-span-2 lg:col-span-4">
+              <SupplierFilter
+                suppliers={suppliers}
+                value={supplierId}
                 onChange={(id) => {
                   setSupplierId(id || "all");
                   setPage(0);
                 }}
-                placeholder="Найти поставщика…"
-                emptyLabel="Все поставщики"
-                options={suppliers.map((item) => ({ id: item.id, label: item.name }))}
               />
             </div>
             ) : null}
