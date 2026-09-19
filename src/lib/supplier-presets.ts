@@ -59,6 +59,35 @@ export const CUSTOM_API_ID = "custom-api";
 export const CUSTOM_FILE_ID = "custom-file";
 export const CUSTOM_EMAIL_ID = "custom-email";
 
+function filePreset(
+  id: string,
+  name: string,
+  code: string,
+  file: string,
+  aliases: string[],
+  extra: Partial<SupplierPreset> = {},
+): SupplierPreset {
+  return {
+    id,
+    name,
+    code,
+    logoUrl: `/suppliers/${file}`,
+    apiKind: "file",
+    source: "file",
+    adapter: "generic",
+    authMode: "header",
+    authHeaderName: "X-Api-Key",
+    authQueryParam: "apikey",
+    apiUrl: "",
+    itemsPath: "items",
+    deliveryDaysMoscow: 3,
+    deliveryNote: `${name}. Срок из прайса.`,
+    notes: "Прайс файлом или письмом на plus-адрес. Свой API — вкладка API после создания.",
+    aliases,
+    ...extra,
+  };
+}
+
 export const SUPPLIER_PRESETS: SupplierPreset[] = [
   {
     id: "ad-smartec",
@@ -402,6 +431,88 @@ export const SUPPLIER_PRESETS: SupplierPreset[] = [
     notes: "Прайс файлом. При наличии кабинета укажите URL и ключ.",
     aliases: ["автолига", "авто лига", "liga"],
   },
+  filePreset("abstd", "absTD", "ABSTD", "abstd.png", ["abstd", "abs td", "абстд"]),
+  filePreset("novy-avtomagazin", "Новый автомагазин", "NOVYMAG", "novy-avtomagazin.png", [
+    "новый автомагазин",
+    "новый магазин",
+    "novy avtomagazin",
+  ]),
+  filePreset("da-detal", "DA DETAL", "DADETAL", "da-detal.png", [
+    "da detal",
+    "dadetal",
+    "да деталь",
+    "дадеталь",
+  ]),
+  filePreset("auto-pulse", "AUTO PULSE", "PULSE", "auto-pulse.png", [
+    "auto pulse",
+    "autopulse",
+    "автопульс",
+    "авто пульс",
+  ]),
+  filePreset("avtoray", "АвтоРай", "AVTORAY", "avtoray.png", [
+    "авторай",
+    "авто рай",
+    "avtoray",
+    "ap авторай",
+  ]),
+  filePreset("avtosoyuz", "Автосоюз", "SOYUZ", "avtosoyuz.png", [
+    "автосоюз",
+    "авто союз",
+    "avtosoyuz",
+  ]),
+  filePreset("am-mark", "АМ", "AMARK", "am.png", ["ам лого", "amark", "а м поставщик"]),
+  filePreset("avtotrade", "Автотрейд", "TRADE", "avtotrade.png", [
+    "автотрейд",
+    "авто трейд",
+    "avtotrade",
+    "autotrade",
+  ]),
+  filePreset("avtotrust", "Автотраст", "TRUST", "avtotrust.png", [
+    "автотраст",
+    "авто траст",
+    "авто-траст",
+    "avtotrust",
+  ]),
+  filePreset("autozest", "AutoZest.ru", "ZEST", "autozest.png", [
+    "autozest",
+    "autozest.ru",
+    "автозест",
+  ]),
+  filePreset("avto-evro", "Авто-Евро", "EVRO", "avto-evro.png", [
+    "авто-евро",
+    "автоевро",
+    "авто евро",
+    "avto-evro",
+  ]),
+  filePreset("avtoimport", "Автоимпорт", "IMPORT", "avtoimport.png", [
+    "автоимпорт",
+    "авто импорт",
+    "avtoimport",
+  ]),
+  filePreset("autokhadom", "AUTOKHADOM", "KHADOM", "autokhadom.png", [
+    "autokhadom",
+    "auto khadom",
+    "автохадом",
+  ]),
+  filePreset("a-avto", "A-Авто", "AAVTO", "a-avto.png", ["a-авто", "a-avto", "аавто", "a avto"]),
+  filePreset("avtooptima", "Автооптима", "OPTIMA", "avtooptima.png", [
+    "автооптима",
+    "авто оптима",
+    "avtooptima",
+    "новосибирск автооптима",
+  ]),
+  filePreset("avtorus", "Авторусь", "RUS", "avtorus.png", [
+    "авторусь",
+    "авто русь",
+    "avtorus",
+    "авторус",
+  ]),
+  filePreset("avtosputnik", "Автоспутник", "SPUTNIK", "avtosputnik.png", [
+    "автоспутник",
+    "авто спутник",
+    "as автоспутник",
+    "avtosputnik",
+  ]),
   {
     id: "rossko",
     name: "Росско",
@@ -424,7 +535,7 @@ export const SUPPLIER_PRESETS: SupplierPreset[] = [
     id: "autopiter",
     name: "Автопитер",
     code: "APITER",
-    logoUrl: "",
+    logoUrl: "/suppliers/autopiter.png",
     apiKind: "bearer",
     source: "api",
     adapter: "generic",
@@ -436,7 +547,7 @@ export const SUPPLIER_PRESETS: SupplierPreset[] = [
     deliveryDaysMoscow: 2,
     deliveryNote: "Склад СПб. До Москвы 1–2 дня, экспресс — ночь.",
     notes: "Bearer-токен. Вложенный JSON data.products, поля article/producer/cost.",
-    aliases: ["автопитер", "autopiter", "auto piter"],
+    aliases: ["автопитер", "autopiter", "auto piter", "autopiter.ru"],
   },
   {
     id: "exist",

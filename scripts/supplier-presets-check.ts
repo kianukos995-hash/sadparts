@@ -26,6 +26,23 @@ const names = [
   "autodoc.ru",
   "АвтоЛидер",
   "АВТОЛИГА",
+  "absTD",
+  "Новый автомагазин",
+  "DA DETAL",
+  "AUTO PULSE",
+  "АвтоРай",
+  "Автосоюз",
+  "АМ",
+  "Автотрейд",
+  "Автотраст",
+  "AutoZest.ru",
+  "Авто-Евро",
+  "Автоимпорт",
+  "AUTOKHADOM",
+  "A-Авто",
+  "Автооптима",
+  "Авторусь",
+  "Автоспутник",
 ];
 
 for (const name of names) {
@@ -37,10 +54,16 @@ for (const name of names) {
   }
 }
 
-assert(SUPPLIER_PRESETS.length >= 19, "мало пресетов");
+assert(SUPPLIER_PRESETS.length >= 38, "мало пресетов");
 assert(presetById("armtek")?.logoUrl === "/suppliers/armtek.png", "логотип ARMTEK");
+assert(presetById("autopiter")?.logoUrl === "/suppliers/autopiter.png", "логотип Автопитер");
+assert(presetById("avtorus")?.logoUrl === "/suppliers/avtorus.png", "логотип Авторусь");
+assert(presetById("da-detal")?.name === "DA DETAL", "DA DETAL");
 assert(matchPreset("ARMTEK прайс 19.09")?.id === "armtek", "тема письма");
 assert(matchPreset("autodoc.ru.csv")?.id === "autodoc", "имя файла autodoc");
+assert(matchPreset("prajsy+dadetal@sadparts.ru")?.id === "da-detal" || matchPreset("DA DETAL прайс")?.id === "da-detal", "DA DETAL по теме");
+assert(matchPreset("Авторусь опт")?.id === "avtorus", "Авторусь");
+assert(matchPreset("autopiter.ru")?.id === "autopiter", "autopiter.ru");
 
 const stub: Supplier = {
   ...emptySupplierFromPreset(presetById("armtek")!),
