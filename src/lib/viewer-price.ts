@@ -13,6 +13,7 @@ import { bandsForRole, defaultGuestBands } from "@/lib/roles";
 import { clientPriceBreakdown, clientSellPrice, type PriceBreakdown } from "@/lib/pricing";
 import { canSeeCost, orgAsClient } from "@/lib/scope";
 import { sanitizeBands } from "@/lib/price-bands";
+import { overlayMailboxSettings } from "@/lib/price-mailbox";
 
 export type ViewerPriceContext = {
   role: PublicUser["role"];
@@ -164,6 +165,7 @@ export function publicSettingsFor(
   settings: AppSettings,
   org?: Organization | null,
 ): PublicSettings {
+  const pinned = overlayMailboxSettings(settings);
   const role = user?.role;
   const telegramConfigured = Boolean(settings.telegramToken.trim());
   const base: PublicSettings = {
@@ -184,10 +186,10 @@ export function publicSettingsFor(
     showAdminPricing: role === "admin",
     maxMarkup: org?.maxMarkup ?? null,
     organizationPriceBands: org?.priceBands,
-    priceMailboxAddress: isDeskLike(role) ? settings.priceMailboxAddress : "",
-    priceMailboxImapHost: role === "admin" ? settings.priceMailboxImapHost : "",
-    priceMailboxImapPort: role === "admin" ? settings.priceMailboxImapPort : 993,
-    priceMailboxImapUser: role === "admin" ? settings.priceMailboxImapUser : "",
+    priceMailboxAddress: isDeskLike(role) ? pinned.priceMailboxAddress : "",
+    priceMailboxImapHost: role === "admin" ? pinned.priceMailboxImapHost : "",
+    priceMailboxImapPort: role === "admin" ? pinned.priceMailboxImapPort : 993,
+    priceMailboxImapUser: role === "admin" ? pinned.priceMailboxImapUser : "",
   };
   if (role === "admin") {
     return {

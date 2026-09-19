@@ -1,4 +1,5 @@
 import { ROSSKO_API_BASE } from "@/lib/constants";
+import { plusAliasFor, PINNED_PRICE_MAILBOX } from "@/lib/price-mailbox";
 import type { AdapterKind, AuthMode, Supplier, SupplierSource } from "@/lib/types";
 import { DEFAULT_COLUMN_MAP } from "@/lib/types";
 
@@ -509,7 +510,7 @@ export const CUSTOM_PRESETS: SupplierPreset[] = [
     itemsPath: "items",
     deliveryDaysMoscow: 3,
     deliveryNote: "",
-    notes: "Поставщик с адресом вида code@prajsy.local. Письмо распознаётся по теме и вложению.",
+    notes: "Поставщик с plus-адресом prajsy+код@sadparts.ru. Письмо распознаётся по теме, алиасу и вложению.",
     aliases: ["почта", "email", "mail"],
   },
 ];
@@ -542,12 +543,11 @@ export function matchPreset(text: string): SupplierPreset | undefined {
   });
 }
 
-export function emailAliasFor(code: string, mailbox = "prajsy.local") {
-  const local = code.trim().toLowerCase().replace(/[^a-z0-9]+/g, "") || "price";
-  return `${local}@${mailbox.replace(/^@/, "")}`;
+export function emailAliasFor(code: string, mailbox = PINNED_PRICE_MAILBOX) {
+  return plusAliasFor(code, mailbox);
 }
 
-export function emptySupplierFromPreset(preset: SupplierPreset, mailboxHost = "prajsy.local"): Supplier {
+export function emptySupplierFromPreset(preset: SupplierPreset, mailbox = PINNED_PRICE_MAILBOX): Supplier {
   return {
     id: crypto.randomUUID(),
     name: preset.id.startsWith("custom-") ? "" : preset.name,
@@ -572,7 +572,7 @@ export function emptySupplierFromPreset(preset: SupplierPreset, mailboxHost = "p
     sharedWithOrgIds: [],
     presetId: preset.id,
     logoUrl: preset.logoUrl,
-    emailAlias: emailAliasFor(preset.code || preset.id, mailboxHost),
+    emailAlias: emailAliasFor(preset.code || preset.id, mailbox),
     apiKind: preset.apiKind,
   };
 }
@@ -591,11 +591,15 @@ export function attachPresetMeta(supplier: Supplier): Supplier {
     presetById(supplier.presetId) ||
     matchPreset(supplier.name || "") ||
     matchPreset(supplier.code || "");
+  const stale = /@prajsy\.local$/i.test(supplier.emailAlias ?? "");
+  const alias = stale || !supplier.emailAlias
+    ? emailAliasFor(supplier.code || preset?.code || supplier.name || "price")
+    : supplier.emailAlias;
   if (!preset) {
     return {
       ...supplier,
       logoUrl: supplier.logoUrl ?? "",
-      emailAlias: supplier.emailAlias || emailAliasFor(supplier.code || supplier.name || "price"),
+      emailAlias: alias,
       apiKind: supplier.apiKind,
     };
   }
@@ -603,7 +607,7 @@ export function attachPresetMeta(supplier: Supplier): Supplier {
     ...supplier,
     presetId: supplier.presetId || preset.id,
     logoUrl: supplier.logoUrl || preset.logoUrl,
-    emailAlias: supplier.emailAlias || emailAliasFor(supplier.code || preset.code),
+    emailAlias: alias,
     apiKind: supplier.apiKind || preset.apiKind,
   };
 }

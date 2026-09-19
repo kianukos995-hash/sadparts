@@ -144,3 +144,20 @@ npx --yes cloudflared tunnel --url http://127.0.0.1:43217
 > Либо: `docker compose up --build` и тот же адрес.
 
 Ключи Росско и Telegram каждый вставляет в **Настройки** у себя. Боевые ключи в ZIP не кладите.
+
+---
+
+## 6. Почта прайсов — как зацепить ящик в проект
+
+Закреплённый адрес: **`prajsy@sadparts.ru`**. Алиасы поставщиков: `prajsy+armtek@sadparts.ru` и так далее. Адрес зашит в код (`PINNED_PRICE_MAILBOX`), боевые секреты — только в `.env`.
+
+| Переменная | Зачем |
+|------------|--------|
+| `PRICE_MAILBOX_ADDRESS` | Перекрыть адрес, если не `prajsy@sadparts.ru` |
+| `PRICE_MAILBOX_SECRET` | Секрет webhook `POST /api/prices/email/inbound` |
+| `PRICE_IMAP_HOST` / `PORT` / `USER` / `PASS` | Снять непрочитанные письма с того же ящика |
+| `PRICE_IMAP_TLS` | `1` (по умолчанию) или `0` |
+
+На VPS: скопируйте `.env.example` в `.env`, заполните, перезапустите контейнер (`docker compose up -d`). Compose прокидывает эти переменные в контейнер. Nginx уже должен пропускать тело до 80 МБ (`client_max_body_size 80m`) — прайсы тяжёлые.
+
+Cloudflare Email Routing: правило «Send to webhook» → URL inbound + Bearer. Mailgun: Inbound Parse на тот же URL. Если провайдер умеет только IMAP — секрет webhook не обязателен, достаточно IMAP и кнопки/cron `fetch`.

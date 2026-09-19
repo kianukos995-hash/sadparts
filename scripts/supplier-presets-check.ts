@@ -52,7 +52,7 @@ const stub: Supplier = {
 const csv = Buffer.from("Артикул;Бренд;Цена\nW7008;MANN;1200\n", "utf8");
 const eml = buildSimpleEml({
   from: "opt@armtek.ru",
-  to: "armtek@prajsy.local",
+  to: "prajsy+armtek@sadparts.ru",
   subject: "Прайс ARMTEK",
   filename: "armtek.csv",
   data: csv,

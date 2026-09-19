@@ -44,7 +44,6 @@ export async function POST(request: NextRequest) {
     sellerAddress?: string;
     vatPercent?: number;
     telegramNotifyChatId?: string;
-    priceMailboxAddress?: string;
     priceMailboxImapHost?: string;
     priceMailboxImapPort?: number;
     priceMailboxImapUser?: string;
@@ -84,9 +83,6 @@ export async function POST(request: NextRequest) {
   }
   if (typeof body.telegramNotifyChatId === "string") {
     tradePatch.telegramNotifyChatId = body.telegramNotifyChatId.trim();
-  }
-  if (typeof body.priceMailboxAddress === "string") {
-    tradePatch.priceMailboxAddress = body.priceMailboxAddress.trim();
   }
   if (typeof body.priceMailboxImapHost === "string") {
     tradePatch.priceMailboxImapHost = body.priceMailboxImapHost.trim();

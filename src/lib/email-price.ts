@@ -1,3 +1,4 @@
+import { plusTagFromAddress } from "@/lib/price-mailbox";
 import { matchPreset, type SupplierPreset } from "@/lib/supplier-presets";
 import type { Supplier } from "@/lib/types";
 
@@ -151,15 +152,18 @@ export function matchSupplierFromEmail(
   extraText = "",
 ): { supplier?: Supplier; preset?: SupplierPreset; reason: string } {
   const toLocal = (email.to.split("@")[0] ?? "").toLowerCase();
-  const hay = [email.to, email.subject, email.from, extraText, ...email.attachments.map((item) => item.filename)]
+  const plus = plusTagFromAddress(email.to);
+  const hay = [email.to, email.subject, email.from, extraText, plus, ...email.attachments.map((item) => item.filename)]
     .join(" ")
     .toLowerCase();
 
   const byAlias = suppliers.find((item) => {
     const alias = (item.emailAlias ?? "").toLowerCase();
-    if (alias && email.to.toLowerCase().includes(alias)) return true;
+    const to = email.to.toLowerCase();
+    if (alias && (to.includes(alias) || alias.includes(to))) return true;
     const code = item.code.trim().toLowerCase();
-    return Boolean(code) && (toLocal === code || toLocal.includes(code));
+    if (plus && (plus === code || alias.includes(`+${plus}@`))) return true;
+    return Boolean(code) && (toLocal === code || toLocal.endsWith(`+${code}`));
   });
   if (byAlias) return { supplier: byAlias, reason: "адрес" };
 
@@ -171,6 +175,7 @@ export function matchSupplierFromEmail(
   if (byName) return { supplier: byName, reason: "название" };
 
   const preset =
+    (plus ? matchPreset(plus) : undefined) ||
     matchPreset(email.subject) ||
     matchPreset(email.to) ||
     matchPreset(extraText) ||

@@ -21,6 +21,7 @@ import {
   CUSTOM_FILE_ID,
   SUPPLIER_PRESETS,
   emptySupplierFromPreset,
+  emailAliasFor,
   isSupplierConnected,
   presetById,
 } from "@/lib/supplier-presets";
@@ -74,7 +75,7 @@ export function SuppliersSettingsPanel() {
       const created = emptySupplierFromPreset(presetById(CUSTOM_FILE_ID)!);
       created.name = name;
       created.code = name.slice(0, 8).toUpperCase().replace(/\s+/g, "");
-      created.emailAlias = `${created.code.toLowerCase()}@prajsy.local`;
+      created.emailAlias = emailAliasFor(created.code || name);
       await upsertSupplier(created);
       const form = new FormData();
       form.set("action", "import");

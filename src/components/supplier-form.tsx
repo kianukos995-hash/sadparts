@@ -31,6 +31,7 @@ import {
   CUSTOM_EMAIL_ID,
   CUSTOM_FILE_ID,
   emptySupplierFromPreset,
+  emailAliasFor,
   presetById,
   type SupplierApiKind,
   type SupplierPreset,
@@ -270,8 +271,12 @@ function SupplierFormFields({
             <Input
               value={draft.emailAlias ?? ""}
               onChange={(event) => update("emailAlias", event.target.value.toLowerCase())}
-              placeholder="armtek@prajsy.local"
+              placeholder={emailAliasFor(draft.code || "armtek")}
             />
+            <p className="text-xs text-muted-foreground">
+              Плюс-алиас закреплённого ящика <code>prajsy@sadparts.ru</code>. Поставщик шлёт сюда —
+              письмо само попадает в его прайс.
+            </p>
           </Field>
           <Field label="Тип API">
             <Select
@@ -510,7 +515,7 @@ function SupplierFormFields({
               ...draft,
               name,
               code,
-              emailAlias: (draft.emailAlias || `${code.toLowerCase()}@prajsy.local`).trim(),
+              emailAlias: (draft.emailAlias || emailAliasFor(code)).trim(),
               apiUrl: draft.adapter === "rossko" ? draft.apiUrl.trim() || ROSSKO_API_BASE : draft.apiUrl,
             });
           }}

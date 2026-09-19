@@ -63,7 +63,7 @@ const EMPTY_PUBLIC: PublicSettings = {
   organizationPriceBands: [],
   maxMarkup: null,
   showAdminPricing: false,
-  priceMailboxAddress: "prajsy@sadparts.local",
+  priceMailboxAddress: "prajsy@sadparts.ru",
   priceMailboxImapHost: "",
   priceMailboxImapPort: 993,
   priceMailboxImapUser: "",

@@ -45,6 +45,7 @@ import type {
   SyncLog,
 } from "@/lib/types";
 import { DEFAULT_COLUMN_MAP } from "@/lib/types";
+import { PINNED_PRICE_MAILBOX, overlayMailboxSettings } from "@/lib/price-mailbox";
 import { attachPresetMeta } from "@/lib/supplier-presets";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -67,7 +68,7 @@ export const EMPTY_SETTINGS: AppSettings = {
   telegramChats: [],
   guestPriceBands: defaultGuestBands(),
   managerPriceBands: DEFAULT_PRICE_BANDS,
-  priceMailboxAddress: "prajsy@sadparts.local",
+  priceMailboxAddress: PINNED_PRICE_MAILBOX,
   priceMailboxImapHost: "",
   priceMailboxImapPort: 993,
   priceMailboxImapUser: "",
@@ -1053,10 +1054,12 @@ async function readSettingsFile(): Promise<AppSettings> {
           ? parsed.priceBands
           : DEFAULT_PRICE_BANDS,
       telegramChats: Array.isArray(parsed.telegramChats) ? parsed.telegramChats : [],
-      priceMailboxAddress: parsed.priceMailboxAddress || EMPTY_SETTINGS.priceMailboxAddress,
-      priceMailboxImapHost: parsed.priceMailboxImapHost ?? "",
-      priceMailboxImapPort: parsed.priceMailboxImapPort || 993,
-      priceMailboxImapUser: parsed.priceMailboxImapUser ?? "",
+      ...overlayMailboxSettings({
+        priceMailboxAddress: PINNED_PRICE_MAILBOX,
+        priceMailboxImapHost: parsed.priceMailboxImapHost ?? "",
+        priceMailboxImapPort: parsed.priceMailboxImapPort || 993,
+        priceMailboxImapUser: parsed.priceMailboxImapUser ?? "",
+      }),
       priceMailboxImapPass: parsed.priceMailboxImapPass ?? "",
     };
   } catch {
@@ -1071,7 +1074,11 @@ export function readSettings() {
 export function writeSettings(patch: Partial<AppSettings>) {
   return enqueue(async () => {
     const current = await readSettingsFile();
-    const next = { ...current, ...patch };
+    const next = overlayMailboxSettings({
+      ...current,
+      ...patch,
+      priceMailboxAddress: PINNED_PRICE_MAILBOX,
+    });
     await mkdir(DATA_DIR, { recursive: true });
     await writeFile(SETTINGS_FILE, JSON.stringify(next, null, 2), "utf8");
     return next;

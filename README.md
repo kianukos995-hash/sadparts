@@ -74,7 +74,7 @@
 | Тип | Что нужно | Куда писать |
 |-----|-----------|-------------|
 | Файл с названием | Имя поставщика + CSV/XLSX/ZIP | Настройки → Поставщики → «Файл с названием» или вкладка «Прайсы» |
-| Письмо | Тема или файл содержат имя/код, вложение прайса | Настройки → Прайсы → «Прайсы по почте». Адрес вида `armtek@prajsy.local` |
+| Письмо | Тема, plus-адрес или имя файла | Настройки → Прайсы → «Прайсы по почте». Ящик `prajsy@sadparts.ru`, алиас `prajsy+armtek@sadparts.ru` |
 | Bearer JSON | URL + токен | Вкладка API, авторизация Bearer |
 | Заголовок | URL + ключ + имя заголовка (`X-Api-Key` и т.п.) | Вкладка API |
 | Ключ в URL | URL + имя параметра (`key`, `apikey`) | Вкладка API, query |
@@ -82,6 +82,39 @@
 | Росско SOAP | KEY1 и KEY2 из кабинета | Коннектор «Росско SOAP v2.1», URL подставляется сам |
 
 Ключ уходит только на указанный URL поставщика. Демо-ключи Росско/Автопитер/Exist можно заменить на боевые в карточке.
+
+## Почта прайсов: `prajsy@sadparts.ru`
+
+Это **закреплённый ящик проекта**. Его нельзя сменить из формы настроек — только через `.env`, если когда-нибудь понадобится другой адрес.
+
+Поставщик шлёт прайс:
+
+- на общий ящик `prajsy@sadparts.ru` — распознаём по теме письма и имени файла (`ARMTEK прайс.csv`);
+- или на plus-алиас `prajsy+код@sadparts.ru` (`prajsy+armtek@sadparts.ru`) — сразу в карточку этого поставщика.
+
+Алиас прописывается в карточке поставщика автоматически.
+
+### Как ящик цепляется в сам проект
+
+1. Заведите ящик `prajsy@sadparts.ru` у регистратора домена (Яндекс 360 / Timeweb / свой IMAP).
+2. Скопируйте `.env.example` → `.env` рядом с проектом и заполните секреты. Перезапустите `npm start` или Docker — Next.js читает `.env` сам, Docker — через `docker-compose.yml`.
+3. **Основной крюк — входящий webhook.** Почтовый провайдер (Cloudflare Email Routing, Mailgun Inbound Parse, свой forwarder) делает `POST` сырого письма на:
+
+   `https://ваш-сайт/api/prices/email/inbound`
+
+   Заголовок: `Authorization: Bearer PRICE_MAILBOX_SECRET`. Тело: RFC822, `multipart` с полем `file` / `body-mime`, либо JSON `{ "raw": "..." }`. Без секрета в `.env` точка закрыта (401).
+4. **Запасной крюк — IMAP.** В `.env` задайте `PRICE_IMAP_HOST`, `PRICE_IMAP_USER`, `PRICE_IMAP_PASS` (для Яндекса обычно `imap.yandex.ru:993`). В Настройках → Прайсы появится «Забрать письма». Тот же разбор можно повесить на cron:
+
+   `curl -X POST -H "Authorization: Bearer $PRICE_MAILBOX_SECRET" https://ваш-сайт/api/prices/email/fetch`
+5. Пока DNS и ящик не заведены, в той же карточке можно перетащить `.eml` или CSV — разбор тот же.
+
+Проверить, что точка жива: `GET /api/prices/email/inbound` отдаёт адрес ящика и флаги `secretConfigured` / `imapConfigured` / `hooked`.
+
+```bash
+cp .env.example .env
+# вписать PRICE_MAILBOX_SECRET и IMAP
+npm start
+```
 
 ## Запуск
 

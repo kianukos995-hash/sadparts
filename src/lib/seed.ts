@@ -1,4 +1,5 @@
 import { DEMO_KEYS, DEMO_LOGIN_KEY, EXAMPLE_ORG_ID, ROSSKO_API_BASE, STORE_VERSION } from "@/lib/constants";
+import { plusAliasFor } from "@/lib/price-mailbox";
 import { mergeCrosses } from "@/lib/cross-catalog";
 import { offerKey } from "@/lib/format";
 import { CORE_PARTS, partPrice, partStock } from "@/lib/mock-parts";
@@ -179,7 +180,7 @@ export function createDemoSuppliers(): Supplier[] {
       sharedWithOrgIds: [EXAMPLE_ORG_ID],
       presetId: "rossko",
       logoUrl: "",
-      emailAlias: "rossko@prajsy.local",
+      emailAlias: plusAliasFor("rossko"),
       apiKind: "rossko-soap",
     },
     {
@@ -210,7 +211,7 @@ export function createDemoSuppliers(): Supplier[] {
       sharedWithOrgIds: [EXAMPLE_ORG_ID],
       presetId: "autopiter",
       logoUrl: "",
-      emailAlias: "apiter@prajsy.local",
+      emailAlias: plusAliasFor("apiter"),
       apiKind: "bearer",
     },
     {
@@ -241,7 +242,7 @@ export function createDemoSuppliers(): Supplier[] {
       sharedWithOrgIds: [EXAMPLE_ORG_ID],
       presetId: "exist",
       logoUrl: "",
-      emailAlias: "exist@prajsy.local",
+      emailAlias: plusAliasFor("exist"),
       apiKind: "query",
     },
     {
@@ -268,7 +269,7 @@ export function createDemoSuppliers(): Supplier[] {
       sharedWithOrgIds: [EXAMPLE_ORG_ID],
       presetId: "custom-file",
       logoUrl: "",
-      emailAlias: "file@prajsy.local",
+      emailAlias: plusAliasFor("file"),
       apiKind: "file",
     },
   ];

@@ -6,6 +6,13 @@ services:
     environment:
       HOST: "0.0.0.0"
       PORT: "43217"
+      PRICE_MAILBOX_ADDRESS: ${PRICE_MAILBOX_ADDRESS:-prajsy@sadparts.ru}
+      PRICE_MAILBOX_SECRET: ${PRICE_MAILBOX_SECRET:-}
+      PRICE_IMAP_HOST: ${PRICE_IMAP_HOST:-}
+      PRICE_IMAP_PORT: ${PRICE_IMAP_PORT:-993}
+      PRICE_IMAP_USER: ${PRICE_IMAP_USER:-}
+      PRICE_IMAP_PASS: ${PRICE_IMAP_PASS:-}
+      PRICE_IMAP_TLS: ${PRICE_IMAP_TLS:-1}
     volumes:
       - ./data:/app/data
     restart: unless-stopped
