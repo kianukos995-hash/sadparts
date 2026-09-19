@@ -193,10 +193,10 @@ export function RepriceQuickAccess({
 
   return (
     <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
           <p className="flex items-center gap-2 text-sm font-medium text-amber-950">
-            <AlertTriangle className="size-4" />
+            <AlertTriangle className="size-4 shrink-0" />
             Быстрый доступ — позиции на перепроценку
           </p>
           <p className="mt-0.5 text-xs text-amber-900/80">
@@ -205,7 +205,14 @@ export function RepriceQuickAccess({
           </p>
         </div>
         {onClose ? (
-          <Button size="icon-sm" variant="ghost" type="button" onClick={onClose} title="Скрыть ленту">
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            type="button"
+            className="shrink-0"
+            onClick={onClose}
+            title="Скрыть ленту"
+          >
             <X />
           </Button>
         ) : null}
