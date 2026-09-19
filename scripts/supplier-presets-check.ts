@@ -62,6 +62,23 @@ const names = [
   "DONAVTO PART.RU",
   "DROMEX.RU",
   "Эльбрус",
+  "EMEX",
+  "euro auto",
+  "Faeton37",
+  "FAVORIT",
+  "Феникс",
+  "FIXAUTO",
+  "Formula1",
+  "FORUM-AUTO",
+  "FROZA",
+  "GENESIS-10F",
+  "GEF PARTS",
+  "GPI G'PARTS IMPORT",
+  "Help-auto24.ru",
+  "INPARTSGROUP",
+  "Intercar",
+  "IRONUNIT",
+  "Gears",
 ];
 
 for (const name of names) {
@@ -73,7 +90,7 @@ for (const name of names) {
   }
 }
 
-assert(SUPPLIER_PRESETS.length >= 57, "мало пресетов");
+assert(SUPPLIER_PRESETS.length >= 74, "мало пресетов");
 assert(presetById("armtek")?.logoUrl === "/suppliers/armtek.png", "логотип ARMTEK");
 assert(presetById("autopiter")?.logoUrl === "/suppliers/autopiter.png", "логотип Автопитер");
 assert(presetById("exist")?.logoUrl === "/suppliers/exist.png", "логотип Exist");
@@ -88,6 +105,9 @@ assert(matchPreset("autopiter.ru")?.id === "autopiter", "autopiter.ru");
 assert(matchPreset("dromex.ru.csv")?.id === "dromex", "dromex");
 assert(matchPreset("Эльбрус прайс")?.id === "elbrus", "эльбрус тема");
 assert(matchPreset("exist.ru")?.id === "exist", "exist.ru");
+assert(matchPreset("emex прайс")?.id === "emex", "emex");
+assert(matchPreset("FLAGMAN AUTO")?.id === "avtoflagman", "flagman auto");
+assert(matchPreset("forum-auto.csv")?.id === "forum-auto", "forum-auto");
 
 const stub: Supplier = {
   ...emptySupplierFromPreset(presetById("armtek")!),
