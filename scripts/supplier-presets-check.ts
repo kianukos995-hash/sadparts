@@ -108,6 +108,25 @@ const names = [
   "Myparts86",
   "Норд",
   "Новая логистика",
+  "NEXTAUTO",
+  "Нижбел",
+  "oilCity",
+  "Омега",
+  "Осьминог",
+  "OSTROV",
+  "PartGRADE",
+  "PartezaAuto",
+  "Партком",
+  "PARTS REGION",
+  "PartSib.ru",
+  "Патриотпоставка",
+  "Пегас Авто",
+  "POINT",
+  "Профит Лига",
+  "sale-parts.ru",
+  "SCHOFFER",
+  "SellParts",
+  "7 seven cars",
 ];
 
 for (const name of names) {
@@ -119,7 +138,7 @@ for (const name of names) {
   }
 }
 
-assert(SUPPLIER_PRESETS.length >= 103, "мало пресетов");
+assert(SUPPLIER_PRESETS.length >= 122, "мало пресетов");
 assert(presetById("armtek")?.logoUrl === "/suppliers/armtek.png", "логотип ARMTEK");
 assert(presetById("autopiter")?.logoUrl === "/suppliers/autopiter.png", "логотип Автопитер");
 assert(presetById("exist")?.logoUrl === "/suppliers/exist.png", "логотип Exist");
@@ -141,6 +160,10 @@ assert(matchPreset("ixora auto parts")?.id === "ixora", "ixora");
 assert(matchPreset("mega-zap-auto.csv")?.id === "mega-zap-auto", "megazap");
 assert(matchPreset("mx group")?.id === "mx-group", "mx group");
 assert(matchPreset("Москворечье прайс")?.id === "moskvorechie", "москворечье");
+assert(matchPreset("sale-parts.ru")?.id === "sale-parts", "sale-parts.ru");
+assert(matchPreset("Партком")?.id === "partkom", "Партком");
+assert(presetById("rossko")?.logoUrl === "/suppliers/rossko.png", "логотип Росско");
+assert(presetById("rossko")?.apiKind === "rossko-soap", "rossko soap");
 
 const stub: Supplier = {
   ...emptySupplierFromPreset(presetById("armtek")!),
