@@ -23,6 +23,8 @@ export function offerToLine(offer: Offer, qty = 1): OrderLine {
     stockId: offer.stockId,
     vendorCode: offer.vendorCode,
     snapshotSell: offer.sellPrice,
+    snapshotStock: offer.stock,
+    snapshotAt: new Date().toISOString(),
     fulfillFrom: "supplier",
   };
 }

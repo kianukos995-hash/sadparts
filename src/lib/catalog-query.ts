@@ -88,7 +88,7 @@ export async function queryPriceOffers(
       })
     : [];
 
-  const demoSlice = demoHits.slice(0, Math.max(0, 12));
+  const demoSlice = demoHits.slice(0, Math.max(pageSize, 40));
   const seen = new Set(offers.map((item) => item.id));
   for (const offer of demoSlice) {
     if (seen.has(offer.id)) continue;

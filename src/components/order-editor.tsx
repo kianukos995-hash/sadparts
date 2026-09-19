@@ -18,7 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PriceFormula } from "@/components/price-formula";
-import { RepriceBanner } from "@/components/reprice-banner";
+import { RepriceBanner, useRepriceCheck } from "@/components/reprice-banner";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
 import { useViewerPricing } from "@/hooks/use-viewer-pricing";
 import { formatDays, formatMoney } from "@/lib/format";
@@ -57,6 +57,11 @@ export function OrderEditor({
     () => priceOrder(order, client, viewer.bands, settings.markupPercent, markup),
     [order, client, viewer.bands, settings.markupPercent, markup],
   );
+  const reprice = useRepriceCheck(order.id);
+  const problemSkus = useMemo(
+    () => new Set(reprice.problems.map((item) => item.line.sku.replace(/\s+/g, "").toUpperCase())),
+    [reprice.problems],
+  );
 
   async function persist(next: Order) {
     await upsertOrder({
@@ -83,7 +88,9 @@ export function OrderEditor({
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
-        {order.status !== "draft" ? <RepriceBanner orderId={order.id} clientId={order.clientId} /> : null}
+        {order.status === "draft" || order.status === "assembled" ? (
+          <RepriceBanner orderId={order.id} clientId={order.clientId} />
+        ) : null}
         <div className="grid gap-3 md:grid-cols-3">
           {viewer.locked ? (
             <div className="grid gap-1 text-sm">
@@ -197,9 +204,12 @@ export function OrderEditor({
                 );
                 const sell = pricedLine?.sell ?? breakdown.sell;
                 return (
-                  <TableRow key={line.id}>
+                  <TableRow
+                    key={line.id}
+                    className={problemSkus.has(line.sku.replace(/\s+/g, "").toUpperCase()) ? "bg-amber-50" : undefined}
+                  >
                     <TableCell>
-                      <p className="font-mono text-xs">{line.sku}</p>
+                      <p className={cn("font-mono text-xs", problemSkus.has(line.sku.replace(/\s+/g, "").toUpperCase()) && "font-semibold text-amber-900")}>{line.sku}</p>
                       <p className="text-sm">
                         {line.brand} · {line.name}
                       </p>

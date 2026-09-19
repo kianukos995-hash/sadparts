@@ -20,7 +20,7 @@ export async function addOfferToCart(
   addToDraft: ReturnType<typeof useAvtoPrice>["addToDraft"],
   orders: ReturnType<typeof useAvtoPrice>["orders"],
   qty: number,
-  options?: { clientId?: string; orderId?: string; newOrder?: boolean },
+  options?: { clientId?: string; orderId?: string; newOrder?: boolean; onAdded?: (offer: Offer) => void },
 ) {
   const step = qtyStep(offer);
   const count = Math.max(step, Math.ceil(qty / step) * step);
@@ -37,6 +37,7 @@ export async function addOfferToCart(
   }
   const next = await addToDraft(offer, count, options);
   toast.success(`${offer.sku} → ${next.number} · ${count} шт.`);
+  options?.onAdded?.(offer);
   return next;
 }
 
@@ -45,11 +46,13 @@ export function QtyControl({
   compact,
   clientId,
   orderId,
+  onAdded,
 }: {
   offer: Offer;
   compact?: boolean;
   clientId?: string;
   orderId?: string;
+  onAdded?: (offer: Offer) => void;
 }) {
   const { addToDraft, orders } = useAvtoPrice();
   const step = qtyStep(offer);
@@ -83,7 +86,7 @@ export function QtyControl({
         size="sm"
         variant="outline"
         type="button"
-        onClick={() => void addOfferToCart(offer, addToDraft, orders, qty, { clientId, orderId })}
+        onClick={() => void addOfferToCart(offer, addToDraft, orders, qty, { clientId, orderId, onAdded })}
       >
         <ShoppingCart />
         {compact ? "В корзину" : "Добавить"}
@@ -102,13 +105,15 @@ export function AddToOrderButtons({
   compact,
   clientId,
   orderId,
+  onAdded,
 }: {
   offer: Offer;
   compact?: boolean;
   clientId?: string;
   orderId?: string;
+  onAdded?: (offer: Offer) => void;
 }) {
-  return <QtyControl offer={offer} compact={compact} clientId={clientId} orderId={orderId} />;
+  return <QtyControl offer={offer} compact={compact} clientId={clientId} orderId={orderId} onAdded={onAdded} />;
 }
 
 export type QuoteMenuState = {

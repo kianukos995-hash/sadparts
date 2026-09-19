@@ -1,4 +1,4 @@
-export const STORE_VERSION = 15;
+export const STORE_VERSION = 16;
 
 export const EXAMPLE_ORG_ID = "org-example";
 export const EXAMPLE_ORG_USER_ID = "usr-org";

@@ -2,6 +2,7 @@ import { DEMO_KEYS, DEMO_LOGIN_KEY, EXAMPLE_ORG_ID, ROSSKO_API_BASE, STORE_VERSI
 import { plusAliasFor } from "@/lib/price-mailbox";
 import { mergeCrosses } from "@/lib/cross-catalog";
 import { offerKey } from "@/lib/format";
+import { buildDemoWarehouseOffers, mergeDemoRepriceOrders } from "@/lib/demo-warehouses";
 import { CORE_PARTS, partPrice, partStock } from "@/lib/mock-parts";
 import type { Client, ColumnMap, Offer, Organization, StoreSnapshot, Supplier } from "@/lib/types";
 import { DEFAULT_COLUMN_MAP } from "@/lib/types";
@@ -275,10 +276,8 @@ export function createDemoSuppliers(): Supplier[] {
   ];
 }
 
-function sliceForSupplier(supplierId: string): typeof CORE_PARTS {
-  if (supplierId === "sup-rossko") return CORE_PARTS.filter((_, i) => i % 5 !== 0);
-  if (supplierId === "sup-autopiter") return CORE_PARTS.filter((_, i) => i % 4 !== 3);
-  return CORE_PARTS.filter((_, i) => i % 6 !== 1);
+export function createDemoOffers(suppliers: Supplier[]): Offer[] {
+  return [...buildDemoWarehouseOffers(suppliers), ...EXTRA_ANALOGS];
 }
 
 const EXTRA_ANALOGS: Offer[] = [
@@ -322,88 +321,6 @@ const EXTRA_ANALOGS: Offer[] = [
   },
 ];
 
-export function createDemoOffers(suppliers: Supplier[]): Offer[] {
-  const configs = [
-    { id: "sup-rossko", priceMul: 1, stockSeed: 1, warehouse: "МСК-Юг" },
-    { id: "sup-autopiter", priceMul: 0.94, stockSeed: 3, warehouse: "СПБ-1" },
-    { id: "sup-exist", priceMul: 1.07, stockSeed: 5, warehouse: "МСК-Север" },
-  ];
-
-  const offers: Offer[] = [];
-  for (const config of configs) {
-    const supplier = suppliers.find((item) => item.id === config.id);
-    if (!supplier) continue;
-    const updatedAt = supplier.lastSyncAt ?? new Date().toISOString();
-    sliceForSupplier(config.id).forEach((part, index) => {
-      const sku = part.sku.replace(/\s+/g, "").toUpperCase();
-      const oem = part.oem.replace(/\s+/g, "").toUpperCase();
-      offers.push({
-        id: offerKey(config.id, sku),
-        supplierId: config.id,
-        sku,
-        brand: part.brand,
-        name: part.name,
-        displayName: "",
-        oem,
-        crossOems: mergeCrosses(oem),
-        category: part.category,
-        price: partPrice(part.basePrice, config.priceMul + (index % 3) * 0.01),
-        currency: "RUB",
-        stock: partStock(index + config.stockSeed),
-        warehouse: config.warehouse,
-        multiplicity: 1,
-        deliveryDays: supplier.deliveryDaysMoscow,
-        images: part.image ? [part.image] : undefined,
-        updatedAt,
-        source: "api",
-      });
-      if (config.id === "sup-rossko" && index === 0) {
-        offers.push({
-          id: offerKey(config.id, sku, "podolsk"),
-          supplierId: config.id,
-          sku,
-          brand: part.brand,
-          name: part.name,
-          displayName: "",
-          oem,
-          crossOems: mergeCrosses(oem),
-          category: part.category,
-          price: partPrice(part.basePrice, config.priceMul + 0.02),
-          currency: "RUB",
-          stock: 0,
-          warehouse: "Подольск",
-          multiplicity: 1,
-          deliveryDays: 2,
-          images: part.image ? [part.image] : undefined,
-          updatedAt,
-          source: "api",
-        });
-        offers.push({
-          id: offerKey(config.id, sku, "spb2"),
-          supplierId: config.id,
-          sku,
-          brand: part.brand,
-          name: part.name,
-          displayName: "",
-          oem,
-          crossOems: mergeCrosses(oem),
-          category: part.category,
-          price: partPrice(part.basePrice, config.priceMul + 0.04),
-          currency: "RUB",
-          stock: 6,
-          warehouse: "СПб-2",
-          multiplicity: 1,
-          deliveryDays: 4,
-          images: part.image ? [part.image] : undefined,
-          updatedAt,
-          source: "api",
-        });
-      }
-    });
-  }
-  return [...offers, ...EXTRA_ANALOGS];
-}
-
 export function createInitialStore(): StoreSnapshot {
   const suppliers = createDemoSuppliers();
   const offers = createDemoOffers(suppliers);
@@ -426,7 +343,7 @@ export function createInitialStore(): StoreSnapshot {
         source: supplier.source,
       })),
     clients: DEFAULT_CLIENTS,
-    orders: [],
+    orders: mergeDemoRepriceOrders([]),
     moneyMovements: [],
     supplierBills: [],
     organizations: DEFAULT_ORGANIZATIONS,

@@ -48,6 +48,7 @@ import type {
 import { DEFAULT_COLUMN_MAP } from "@/lib/types";
 import { PINNED_PRICE_MAILBOX, overlayMailboxSettings } from "@/lib/price-mailbox";
 import { attachPresetMeta } from "@/lib/supplier-presets";
+import { expandDemoWarehouseCatalogs, expandDemoWarehouseOffers, mergeDemoRepriceOrders } from "@/lib/demo-warehouses";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const STORE_FILE = path.join(DATA_DIR, "store.json");
@@ -147,7 +148,7 @@ function migrateStore(store: StoreSnapshot): StoreSnapshot {
   const demoPhotos = new Map(
     CORE_PARTS.filter((part) => part.image).map((part) => [normalizeSku(part.sku), part.image!]),
   );
-  const offers = store.offers.map((offer) => {
+  let offers: Offer[] = store.offers.map((offer) => {
     const demoPhoto = demoPhotos.get(normalizeSku(offer.sku.split("@")[0] ?? offer.sku));
     return {
       ...offer,
@@ -159,13 +160,16 @@ function migrateStore(store: StoreSnapshot): StoreSnapshot {
       images: offer.images?.length ? offer.images : demoPhoto ? [demoPhoto] : offer.images,
     };
   });
+  if (from < 16) {
+    offers = expandDemoWarehouseOffers(offers).offers;
+  }
   const moneyMovements = Array.isArray(store.moneyMovements)
     ? store.moneyMovements.map(normalizeMovement)
     : [];
   const supplierBills = Array.isArray(store.supplierBills)
     ? store.supplierBills.map(normalizeBill)
     : [];
-  const orders = dedupeOrders(Array.isArray(store.orders) ? store.orders : []);
+  const orders = mergeDemoRepriceOrders(dedupeOrders(Array.isArray(store.orders) ? store.orders : []));
   let clients = Array.isArray(store.clients) ? store.clients : DEFAULT_CLIENTS;
   if (!clients.some((item) => item.id === "cli-guest")) {
     clients = [
@@ -364,8 +368,9 @@ async function readStoreFile(): Promise<StoreSnapshot> {
     const parsed: unknown = JSON.parse(raw);
     if (isStore(parsed)) {
       const migrated = migrateStore(parsed);
+      const versionChanged = parsed.version !== migrated.version;
       if (
-        parsed.version !== migrated.version ||
+        versionChanged ||
         !Array.isArray(parsed.clients) ||
         !Array.isArray(parsed.moneyMovements) ||
         !Array.isArray(parsed.supplierBills) ||
@@ -375,6 +380,9 @@ async function readStoreFile(): Promise<StoreSnapshot> {
         !Array.isArray(parsed.warehouseDocs) ||
         !Array.isArray(parsed.supplierRequests)
       ) {
+        if (versionChanged && (parsed.version ?? 0) < 16) {
+          await expandDemoWarehouseCatalogs(migrated.suppliers);
+        }
         await persistStore(migrated);
       }
       return migrated;

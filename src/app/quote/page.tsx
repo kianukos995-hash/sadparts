@@ -29,6 +29,7 @@ import { QuoteContextMenu } from "@/components/quote-context-menu";
 import { ClientCartBar } from "@/components/client-carts";
 import { SearchPick } from "@/components/search-pick";
 import { SupplierFilter } from "@/components/supplier-filter";
+import { RepriceQuickAccess, useRepriceCheck } from "@/components/reprice-banner";
 import { SupplierLogo } from "@/components/supplier-logo";
 import { SortToggle, type SortDir } from "@/components/sort-toggle";
 import { useAvtoPrice } from "@/hooks/use-avtoprice";
@@ -74,6 +75,7 @@ function QuotePageInner() {
   const [live, setLive] = useState(false);
   const [clientId, setClientId] = useState(searchParams.get("clientId") ?? "");
   const [orderId, setOrderId] = useState(searchParams.get("orderId") ?? "");
+  const [repriceOpen, setRepriceOpen] = useState(searchParams.get("reprice") === "1");
   const [page, setPage] = useState(0);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [total, setTotal] = useState(0);
@@ -89,6 +91,12 @@ function QuotePageInner() {
   const [menu, setMenu] = useState<QuoteMenuState | null>(null);
   const viewer = useViewerPricing(clientId);
   const quoteClientId = viewer.locked && viewer.clientId ? viewer.clientId : clientId;
+  const repriceOrderId = orderId || draft?.id || "";
+  const reprice = useRepriceCheck(repriceOrderId);
+  const problemSkus = useMemo(
+    () => new Set(reprice.problems.map((item) => item.line.sku.replace(/\s+/g, "").toUpperCase())),
+    [reprice.problems],
+  );
 
   const client = viewer.client ?? clients.find((item) => item.id === quoteClientId);
   const targetOrder = orders.find((item) => item.id === orderId) ?? null;
@@ -109,11 +117,17 @@ function QuotePageInner() {
       setOrderId(fromOrder);
       setActiveDraftId(fromOrder);
     }
+    if (searchParams.get("reprice") === "1") setRepriceOpen(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
     if (fromSku) setSku(fromSku);
     if (fromName) setName(fromName);
     if (fromCategory) setCategory(fromCategory);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [searchParams, setActiveDraftId]);
+
+  useEffect(() => {
+    if (reprice.needsReprice) setRepriceOpen(true);
+  }, [reprice.needsReprice]);
 
   const load = useCallback(() => {
     const q = [sku, name].filter(Boolean).join(" ").trim();
@@ -272,8 +286,28 @@ function QuotePageInner() {
                 Сбросить
               </Button>
             ) : null}
+            {reprice.needsReprice ? (
+              <Button size="sm" type="button" onClick={() => setRepriceOpen(true)}>
+                Перепроценить
+              </Button>
+            ) : null}
           </div>
         </div>
+      ) : null}
+
+      {repriceOpen ? (
+        <RepriceQuickAccess
+          orderId={repriceOrderId}
+          problems={reprice.problems}
+          loading={reprice.loading}
+          error={reprice.error}
+          onPickSku={(value) => {
+            setSku(value);
+            setPage(0);
+            setRepriceOpen(true);
+          }}
+          onClose={() => setRepriceOpen(false)}
+        />
       ) : null}
 
       <div className="grid gap-3 rounded-xl border bg-card p-3">
@@ -541,7 +575,10 @@ function QuotePageInner() {
                 <Fragment key={offer.id}>
                   <TableRow
                     key={offer.id}
-                    className="cursor-pointer"
+                    className={cn(
+                      "cursor-pointer",
+                      problemSkus.has(offer.sku.replace(/\s+/g, "").toUpperCase()) && "bg-amber-50",
+                    )}
                     onClick={() => {
                       if (viewer.locked) {
                         openExpand(offer);
@@ -566,7 +603,10 @@ function QuotePageInner() {
                     }}
                     onContextMenu={(event) => openQuoteContextMenu(event, offer, setMenu)}
                   >
-                    <TableCell className="font-mono text-xs">
+                    <TableCell className={cn(
+                      "font-mono text-xs",
+                      problemSkus.has(offer.sku.replace(/\s+/g, "").toUpperCase()) && "font-semibold text-amber-900",
+                    )}>
                       {offer.sku}
                       {offer.pairSide ? (
                         <p className="text-[10px] text-muted-foreground">{pairLabel(offer.pairSide)}</p>
@@ -642,6 +682,7 @@ function QuotePageInner() {
                         compact
                         clientId={quoteClientId}
                         orderId={orderId || undefined}
+                        onAdded={(added) => reprice.resolveByOffer(added)}
                       />
                     </TableCell>
                   </TableRow>
@@ -698,6 +739,7 @@ function QuotePageInner() {
                                   compact
                                   clientId={quoteClientId}
                                   orderId={orderId || undefined}
+                                  onAdded={(added) => reprice.resolveByOffer(added)}
                                 />
                               </div>
                             </div>
