@@ -16,7 +16,7 @@ npm run pack
 
 Исходники, `Dockerfile`, шаблоны накладных, демо-прайс. `node_modules` в архив не входит — коллега ставит зависимости у себя (или собирает Docker-образ).
 
-Нужны **Node.js 20+** и npm. Порт по умолчанию **43217**. Для облака можно задать `PORT`.
+Нужны **Node.js 20+** и npm. Порт по умолчанию **888**. Для облака можно задать `PORT`.
 
 ---
 
@@ -27,9 +27,9 @@ npm run pack
 1. Node.js 20 LTS, установщик **Windows 64-bit (.msi)**, галочка Add to PATH: https://nodejs.org
 2. Правый клик по `sadparts-prices.zip` → **Извлечь всё** в `C:\SadParts` (не открывать zip двойным кликом и не запускать bat изнутри архива).
 3. Внутри папки дважды кликните **`start-windows.bat`**.
-4. В браузере на этом же ПК откроется http://127.0.0.1:43217
+4. В браузере на этом же ПК откроется http://127.0.0.1:888
 
-Превью агента Cursor на `127.0.0.1:43217` — это облако, не ваш Win11. Пока bat не запущен локально, обычный Chrome на компьютере ничего не покажет.
+Превью агента Cursor на `127.0.0.1:888` — это облако, не ваш Win11. Пока bat не запущен локально, обычный Chrome на компьютере ничего не покажет.
 
 Если брандмауэр Windows спросит доступ — разрешите Node.js. SmartScreen: «Подробнее» → выполнить.
 
@@ -49,7 +49,7 @@ macOS / Linux: `npm install && npm run build && npm start`.
 docker compose up -d --build
 ```
 
-Сайт: `http://IP-сервера:43217`. Папка `data/` на диске — прайсы, заказы, фото.
+Сайт: `http://IP-сервера:888`. Папка `data/` на диске — прайсы, заказы, фото.
 
 Без Docker:
 
@@ -59,19 +59,19 @@ sudo apt install -y nodejs npm
 # лучше Node 20 с https://github.com/nodesource/distributions
 npm install
 npm run build
-PORT=43217 npm start
+PORT=888 npm start
 ```
 
 Чтобы не падало после выхода из SSH, используйте systemd или `pm2 start scripts/start.mjs --name sadparts`.
 
-Пробросьте порт 43217 в файрволе или поставьте nginx:
+Пробросьте порт 888 в файрволе или поставьте nginx:
 
 ```nginx
 server {
   listen 80;
   server_name parts.example.ru;
   location / {
-    proxy_pass http://127.0.0.1:43217;
+    proxy_pass http://127.0.0.1:888;
     proxy_set_header Host $host;
     client_max_body_size 80m;
   }
@@ -106,7 +106,7 @@ gcloud run deploy sadparts-prices \
   --source . \
   --region europe-west1 \
   --allow-unauthenticated \
-  --port 43217 \
+  --port 888 \
   --memory 1Gi \
   --cpu 1
 ```
@@ -126,12 +126,12 @@ Cloud Run соберёт Docker и выдаст URL вида `https://sadparts-p
 | **Render / Fly.io / Railway** | Dockerfile, порт `PORT` | Как Cloud Run |
 | **Vercel** | не рекомендуется | Нет постоянного диска под jsonl-прайсы |
 | **Cloudflare Tunnel** | см. ниже | Быстро показать свой ПК без белого IP |
-| **ngrok** | `ngrok http 43217` | То же, нужна регистрация |
+| **ngrok** | `ngrok http 888` | То же, нужна регистрация |
 
 Быстрый туннель с вашего компьютера, пока программа запущена:
 
 ```bash
-npx --yes cloudflared tunnel --url http://127.0.0.1:43217
+npx --yes cloudflared tunnel --url http://127.0.0.1:888
 ```
 
 В терминале появится `https://….trycloudflare.com` — её можно скинуть коллеге. Работает, пока открыт туннель и запущен `npm start`.
@@ -140,7 +140,7 @@ npx --yes cloudflared tunnel --url http://127.0.0.1:43217
 
 ## 5. Что сказать коллеге
 
-> Скачай ZIP, поставь Node 20, в папке: `npm install && npm run build && npm start`, открой http://127.0.0.1:43217  
+> Скачай ZIP, поставь Node 20, в папке: `npm install && npm run build && npm start`, открой http://127.0.0.1:888  
 > Либо: `docker compose up --build` и тот же адрес.
 
 Ключи Росско и Telegram каждый вставляет в **Настройки** у себя. Боевые ключи в ZIP не кладите.

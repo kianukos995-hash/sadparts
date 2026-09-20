@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const nextPort = process.env.NEXT_PORT || "43218";
-const proxyPorts = process.env.PROXY_PORTS || "43151,43217";
+const proxyPorts = process.env.PROXY_PORTS || "888";
 const nextBin = path.join(root, "node_modules", "next", "dist", "bin", "next");
 const proxyBin = path.join(root, "scripts", "preview-proxy.mjs");
 

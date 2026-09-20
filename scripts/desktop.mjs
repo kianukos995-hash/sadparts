@@ -4,7 +4,7 @@ import { createConnection } from "node:net";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-const PORT = Number.parseInt(process.env.PORT || "43217", 10);
+const PORT = Number.parseInt(process.env.PORT || "888", 10);
 const URL = `http://127.0.0.1:${PORT}`;
 const ROOT = path.resolve(import.meta.dirname, "..");
 

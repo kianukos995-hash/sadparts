@@ -13,7 +13,7 @@ COPY . .
 RUN npm run build
 
 ENV HOST=0.0.0.0
-ENV PORT=43217
-EXPOSE 43217
+ENV PORT=888
+EXPOSE 888
 
 CMD ["node", "scripts/start.mjs"]

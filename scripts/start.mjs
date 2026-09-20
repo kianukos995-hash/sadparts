@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const port = process.env.PORT || "43217";
+const port = process.env.PORT || "888";
 const host = process.env.HOST || "0.0.0.0";
 const nextBin = path.join(root, "node_modules", "next", "dist", "bin", "next");
 

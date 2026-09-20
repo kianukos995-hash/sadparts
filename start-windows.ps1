@@ -37,10 +37,10 @@ if (-not (Test-Path -LiteralPath ".next")) {
 }
 
 Write-Host ""
-Write-Host " Сервер: http://127.0.0.1:43217"
+Write-Host " Сервер: http://127.0.0.1:888"
 Write-Host " Это окно не закрывайте."
 Write-Host ""
-Start-Process "http://127.0.0.1:43217"
+Start-Process "http://127.0.0.1:888"
 $env:HOST = "0.0.0.0"
-$env:PORT = "43217"
+$env:PORT = "888"
 npm start

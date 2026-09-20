@@ -55,14 +55,14 @@ if not exist ".next\" (
 )
 
 echo.
-echo  Сервер: http://127.0.0.1:43217
+echo  Сервер: http://127.0.0.1:888
 echo  Если Windows спросит доступ к сети — разрешите для Node.js.
 echo  Окно браузера откроется само. Это окно не закрывайте.
 echo.
 
-start "" "http://127.0.0.1:43217"
+start "" "http://127.0.0.1:888"
 set HOST=0.0.0.0
-set PORT=43217
+set PORT=888
 call npm start
 echo.
 echo  Сервер остановлен.

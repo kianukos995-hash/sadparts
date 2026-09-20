@@ -3,7 +3,7 @@ import net from "node:net";
 
 const UPSTREAM_HOST = process.env.UPSTREAM_HOST || "127.0.0.1";
 const UPSTREAM_PORT = Number(process.env.UPSTREAM_PORT || 43218);
-const PORTS = (process.env.PROXY_PORTS || "43151,43217")
+const PORTS = (process.env.PROXY_PORTS || "888")
   .split(",")
   .map((item) => Number(item.trim()))
   .filter(Boolean);
@@ -115,6 +115,7 @@ function listen(port, host) {
   });
   server.on("error", (error) => {
     console.error(`[preview-proxy] ${host}:${port} ${error.message}`);
+    process.exit(1);
   });
   return server;
 }
