@@ -109,6 +109,7 @@ export function visibleAccessKeys<T extends { issuedByUserId?: string; organizat
 }
 
 export function homeHref(role?: UserRole) {
+  void role;
   return "/";
 }
 

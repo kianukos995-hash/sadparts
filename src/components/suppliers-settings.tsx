@@ -45,7 +45,9 @@ export function SuppliersSettingsPanel() {
   const [fileName, setFileName] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const [fileBusy, setFileBusy] = useState(false);
-  const requestPreset = requestPresetFromUrl || (!canCreate ? presetFromUrl : undefined);
+  const [pickedRequestPreset, setPickedRequestPreset] = useState<string | undefined>();
+  const requestPreset =
+    pickedRequestPreset || requestPresetFromUrl || (!canCreate ? presetFromUrl : undefined);
 
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -175,6 +177,7 @@ export function SuppliersSettingsPanel() {
                     params.set("tab", "suppliers");
                     params.set("requestPreset", preset.id);
                     window.history.replaceState(null, "", `/settings?${params.toString()}`);
+                    setPickedRequestPreset(preset.id);
                     toast.message(`Запрос на «${preset.name}» — заполните форму ниже`);
                   }}
                 >
@@ -192,7 +195,7 @@ export function SuppliersSettingsPanel() {
         </CardContent>
       </Card>
 
-      <SupplierRequestPanel presetId={requestPreset} />
+      <SupplierRequestPanel key={requestPreset ?? "none"} presetId={requestPreset} />
 
       {canCreate ? (
       <Card>

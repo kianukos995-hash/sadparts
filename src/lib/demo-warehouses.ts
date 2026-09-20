@@ -76,7 +76,7 @@ function cloneOffer(base: Offer, warehouseKey: string, index: number, supplierId
     id: offerKey(supplierId, base.sku, spec.key),
     warehouse: spec.name,
     deliveryDays: spec.days,
-    price: partPrice(base.price, spec.priceMul),
+    price: partPrice(base.price, priceMul * spec.priceMul),
     stock: warehouseKey === "podolsk" && index === 0 ? 0 : stock,
   };
 }

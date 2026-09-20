@@ -85,7 +85,9 @@ export function useRepriceCheck(orderId?: string) {
   }, [orderId]);
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- reprice check loads from the server after mount / order change */
     load();
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [load]);
 
   const problems = useMemo(() => {

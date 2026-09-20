@@ -118,7 +118,6 @@ function QuotePageInner() {
       setActiveDraftId(fromOrder);
     }
     if (searchParams.get("reprice") === "1") setRepriceOpen(true);
-    /* eslint-enable react-hooks/set-state-in-effect */
     if (fromSku) setSku(fromSku);
     if (fromName) setName(fromName);
     if (fromCategory) setCategory(fromCategory);
@@ -126,7 +125,9 @@ function QuotePageInner() {
   }, [searchParams, setActiveDraftId]);
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- open the quick-access strip when the draft needs reprice */
     if (reprice.needsReprice) setRepriceOpen(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [reprice.needsReprice]);
 
   const load = useCallback(() => {

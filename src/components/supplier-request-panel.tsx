@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,18 +18,17 @@ import { formatDateTime } from "@/lib/format";
 
 export function SupplierRequestPanel({
   presetId,
-  onPresetConsumed,
 }: {
   presetId?: string;
-  onPresetConsumed?: () => void;
 }) {
   const { user } = useAuth();
   const { supplierRequests, refresh } = useAvtoPrice();
   const canCreate = canCreateSupplier(user);
   const canRequest = canRequestSupplier(user);
-  const [name, setName] = useState("");
+  const initialPreset = presetById(presetId ?? "");
+  const [name, setName] = useState(initialPreset?.name ?? "");
   const [comment, setComment] = useState("");
-  const [chosenPreset, setChosenPreset] = useState(presetId ?? "");
+  const [chosenPreset, setChosenPreset] = useState(initialPreset?.id ?? "");
   const [busy, setBusy] = useState(false);
   const [rejectNote, setRejectNote] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement>(null);
@@ -42,15 +41,6 @@ export function SupplierRequestPanel({
     () => supplierRequests.filter((item) => item.status !== "pending").slice(0, 12),
     [supplierRequests],
   );
-
-  useEffect(() => {
-    if (!presetId) return;
-    const preset = presetById(presetId);
-    if (!preset) return;
-    setChosenPreset(preset.id);
-    setName((current) => current.trim() || preset.name);
-    onPresetConsumed?.();
-  }, [presetId, onPresetConsumed]);
 
   async function submit() {
     const preset = presetById(chosenPreset);
