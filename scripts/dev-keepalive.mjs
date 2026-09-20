@@ -3,50 +3,79 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const port = process.env.PORT || "43217";
-const host = process.env.HOST || "0.0.0.0";
+const nextPort = process.env.NEXT_PORT || "43218";
+const proxyPorts = process.env.PROXY_PORTS || "43151,43217";
 const nextBin = path.join(root, "node_modules", "next", "dist", "bin", "next");
+const proxyBin = path.join(root, "scripts", "preview-proxy.mjs");
 
-let child = null;
+let nextChild = null;
+let proxyChild = null;
 let stopping = false;
 let restarts = 0;
 
-function start() {
+function spawnNext() {
   if (stopping) return;
-  child = spawn(process.execPath, [nextBin, "dev", "--hostname", host, "--port", String(port)], {
-    cwd: root,
-    stdio: "inherit",
-    env: { ...process.env, PORT: String(port), HOST: host, WATCHPACK_POLLING: "true" },
-  });
-  child.on("exit", (code, signal) => {
-    child = null;
-    if (stopping) {
-      process.exit(code ?? 0);
-      return;
-    }
+  nextChild = spawn(
+    process.execPath,
+    [nextBin, "dev", "--hostname", "127.0.0.1", "--port", String(nextPort)],
+    {
+      cwd: root,
+      stdio: "inherit",
+      env: { ...process.env, PORT: String(nextPort), HOST: "127.0.0.1", WATCHPACK_POLLING: "true" },
+    },
+  );
+  nextChild.on("exit", (code, signal) => {
+    nextChild = null;
+    if (stopping) return finish();
     restarts += 1;
     const delay = Math.min(8000, 400 * restarts);
     console.error(
       `[dev-keepalive] next вышел (code=${code ?? "-"} signal=${signal ?? "-"}), перезапуск через ${delay}мс`,
     );
-    setTimeout(start, delay);
+    setTimeout(spawnNext, delay);
   });
+}
+
+function spawnProxy() {
+  if (stopping) return;
+  proxyChild = spawn(process.execPath, [proxyBin], {
+    cwd: root,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      UPSTREAM_HOST: "127.0.0.1",
+      UPSTREAM_PORT: String(nextPort),
+      PROXY_PORTS: proxyPorts,
+    },
+  });
+  proxyChild.on("exit", (code, signal) => {
+    proxyChild = null;
+    if (stopping) return finish();
+    console.error(`[dev-keepalive] proxy вышел (code=${code ?? "-"} signal=${signal ?? "-"}), перезапуск`);
+    setTimeout(spawnProxy, 400);
+  });
+}
+
+function finish() {
+  if (nextChild || proxyChild) return;
+  process.exit(0);
 }
 
 function stop(signal) {
   stopping = true;
-  if (child?.pid) {
+  for (const child of [nextChild, proxyChild]) {
+    if (!child?.pid) continue;
     try {
       child.kill(signal);
     } catch {
-      /* процесс уже мёртв */
+      /* уже мёртв */
     }
-  } else {
-    process.exit(0);
   }
+  setTimeout(() => process.exit(0), 2000);
 }
 
 process.on("SIGTERM", () => stop("SIGTERM"));
 process.on("SIGINT", () => stop("SIGINT"));
 
-start();
+spawnNext();
+spawnProxy();
