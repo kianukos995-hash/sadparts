@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { copyClientVehicle, emptyDraft, findDraft, findDraftForClient, findDrafts, offerToLine } from "@/lib/order";
 import { DEFAULT_PRICE_BANDS } from "@/lib/price-bands";
 import { STORE_VERSION } from "@/lib/constants";
@@ -72,6 +73,25 @@ const EMPTY_PUBLIC: PublicSettings = {
 };
 
 const ORDERS_KEY = "sadparts-orders-v1";
+const STORE_SYNC_CHANNEL = "sadparts-store";
+const STORE_SYNC_BUMP = "sadparts-store-bump";
+
+function broadcastStoreChanged() {
+  if (typeof window === "undefined") return;
+  const stamp = String(Date.now());
+  try {
+    const channel = new BroadcastChannel(STORE_SYNC_CHANNEL);
+    channel.postMessage({ stamp });
+    channel.close();
+  } catch {
+    /* старые браузеры — хватит storage */
+  }
+  try {
+    window.localStorage.setItem(STORE_SYNC_BUMP, stamp);
+  } catch {
+    /* private mode */
+  }
+}
 
 export interface AvtoPriceApi {
   ready: boolean;
@@ -195,11 +215,13 @@ async function mutate(body: unknown) {
   });
   const data = (await response.json()) as StoreSnapshot & { error?: string };
   if (!response.ok) throw new Error(data.error || "Не удалось сохранить");
+  broadcastStoreChanged();
   return data;
 }
 
 export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const pathname = usePathname();
   const userId = user?.id ?? "";
   const locked = user?.role === "client" || user?.role === "guest";
   const clientId = user?.clientId ?? "";
@@ -209,6 +231,8 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [activeDraftId, setActiveDraftIdState] = useState("");
   const dirty = useRef(false);
+  const skipPathRefresh = useRef(true);
+  const inflight = useRef<Promise<void> | null>(null);
 
   const applyStore = useCallback(
     (data: StoreSnapshot, local = loadLocalOrders(userId)) => {
@@ -240,50 +264,85 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
   );
 
   const refresh = useCallback(async () => {
-    try {
-      const [storeResponse, settingsResponse] = await Promise.all([
-        fetch("/api/store", { cache: "no-store" }),
-        fetch("/api/settings", { cache: "no-store" }),
-      ]);
-      if (!storeResponse.ok) throw new Error("Не загрузить склад");
-      const data = (await storeResponse.json()) as StoreSnapshot;
-      const publicSettings = (await settingsResponse.json()) as PublicSettings;
-      const orders = applyStore(data);
-      setSettings(publicSettings);
-      setError(null);
-      setReady(true);
-      setActiveDraftIdState((current) => {
-        if (current && orders.some((item) => item.id === current)) return current;
-        const saved =
-          typeof window !== "undefined" ? window.localStorage.getItem(draftStorageKey(userId)) : "";
-        if (saved && orders.some((item) => item.id === saved)) return saved;
-        const own = clientId
-          ? findDraftForClient(orders, clientId)
-          : findDraft(orders);
-        return own?.id ?? "";
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Не загрузить данные");
-      setReady(true);
-    }
+    if (inflight.current) return inflight.current;
+    inflight.current = (async () => {
+      try {
+        const [storeResponse, settingsResponse] = await Promise.all([
+          fetch("/api/store", { cache: "no-store" }),
+          fetch("/api/settings", { cache: "no-store" }),
+        ]);
+        if (!storeResponse.ok) throw new Error("Не загрузить склад");
+        const data = (await storeResponse.json()) as StoreSnapshot;
+        const publicSettings = (await settingsResponse.json()) as PublicSettings;
+        const orders = applyStore(data);
+        setSettings(publicSettings);
+        setError(null);
+        setReady(true);
+        setActiveDraftIdState((current) => {
+          if (current && orders.some((item) => item.id === current)) return current;
+          const saved =
+            typeof window !== "undefined" ? window.localStorage.getItem(draftStorageKey(userId)) : "";
+          if (saved && orders.some((item) => item.id === saved)) return saved;
+          const own = clientId
+            ? findDraftForClient(orders, clientId)
+            : findDraft(orders);
+          return own?.id ?? "";
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Не загрузить данные");
+        setReady(true);
+      } finally {
+        inflight.current = null;
+      }
+    })();
+    return inflight.current;
   }, [applyStore, userId, clientId]);
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- store is loaded from the server after mount */
     void refresh();
-    const timer = window.setInterval(() => {
+    const pull = () => {
       if (!dirty.current) void refresh();
-    }, 60_000);
+    };
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") pull();
+    }, 4_000);
     const persist = () => {
       dirty.current = false;
+      pull();
+    };
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel(STORE_SYNC_CHANNEL);
+      channel.onmessage = () => pull();
+    } catch {
+      channel = null;
+    }
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === STORE_SYNC_BUMP || event.key === ordersStorageKey(userId)) pull();
     };
     window.addEventListener("online", persist);
+    window.addEventListener("focus", pull);
+    document.addEventListener("visibilitychange", pull);
+    window.addEventListener("storage", onStorage);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("online", persist);
+      window.removeEventListener("focus", pull);
+      document.removeEventListener("visibilitychange", pull);
+      window.removeEventListener("storage", onStorage);
+      channel?.close();
     };
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [refresh]);
+  }, [refresh, userId]);
+
+  useEffect(() => {
+    if (skipPathRefresh.current) {
+      skipPathRefresh.current = false;
+      return;
+    }
+    if (!dirty.current) void refresh();
+  }, [pathname, refresh]);
 
   const setActiveDraftId = useCallback(
     (id: string) => {
@@ -322,6 +381,7 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       const data = (await response.json()) as { store?: StoreSnapshot; error?: string };
       if (!response.ok) throw new Error(data.error || "Не сохранить позицию");
       if (data.store) applyStore(data.store);
+      broadcastStoreChanged();
     },
     [applyStore],
   );
@@ -460,6 +520,7 @@ export function AvtoPriceProvider({ children }: { children: React.ReactNode }) {
       const data = (await response.json()) as PublicSettings & { error?: string };
       if (!response.ok) throw new Error(data.error || "Не сохранить настройки");
       setSettings(data);
+      broadcastStoreChanged();
     },
     [],
   );
