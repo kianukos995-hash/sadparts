@@ -111,15 +111,14 @@ export function filterOffersForActor(
 export function sanitizeSupplierForActor(
   supplier: Supplier,
   actor: PublicUser | null | undefined,
-  orgs: Organization[],
+  _orgs: Organization[],
 ): Supplier {
-  const canSeeKeys = actor?.role === "admin" || canEditSupplier(supplier, actor, orgs);
-  if (canSeeKeys) return { ...supplier };
+  const locked = Boolean(actor && actor.role !== "admin" && isSupplierLockedForOrg(supplier));
   return {
     ...supplier,
     apiKey: supplier.apiKey ? "••••" : "",
     apiKey2: supplier.apiKey2 ? "••••" : "",
-    apiUrl: isSupplierLockedForOrg(supplier) ? "" : supplier.apiUrl,
+    apiUrl: locked ? "" : supplier.apiUrl,
   };
 }
 

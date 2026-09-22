@@ -8,6 +8,7 @@ import {
   filterOffersForActor,
   looksMaskedSecret,
   resolveSupplierSecrets,
+  sanitizeSupplierForActor,
   supplierVisibleTo,
 } from "../src/lib/suppliers-scope";
 import type {
@@ -193,6 +194,11 @@ function main() {
   ];
   const filtered = filterOffersForActor(offers, [locked, own, privateAdmin], org);
   assert(filtered.length === 2, "org offers include all suppliers");
+
+  const hidden = sanitizeSupplierForActor(locked, admin, orgs);
+  assert(hidden.apiKey === "••••" && !hidden.apiKey.includes("rk_"), "admin response hides key");
+  const orgView = sanitizeSupplierForActor(own, org, orgs);
+  assert(orgView.apiKey === "••••" && orgView.apiKey !== "org-secret", "org response hides key");
 
   assert(looksMaskedSecret("••••"), "mask");
   assert(!looksMaskedSecret("live-key"), "live");
