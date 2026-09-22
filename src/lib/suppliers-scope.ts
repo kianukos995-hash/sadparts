@@ -111,6 +111,8 @@ export function filterOffersForActor(
 export function sanitizeSupplierForActor(
   supplier: Supplier,
   actor: PublicUser | null | undefined,
+  // Список организаций оставлен в сигнатуре: ключи больше не зависят от права редактировать.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _orgs: Organization[],
 ): Supplier {
   const locked = Boolean(actor && actor.role !== "admin" && isSupplierLockedForOrg(supplier));
